@@ -27,6 +27,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency, formatDuration } from "@/lib/format";
 import { CATEGORY_LABEL } from "@/lib/validations/services";
@@ -86,6 +93,17 @@ function buildConfirmationMessage(args: {
   const time = format(date, "HH:mm", { locale: es });
   const services = joinServiceNames(args.serviceNames);
   return `¡Buenísimo! Te agendé ${services} para el ${day} a las ${time} hs. Cualquier cosa avisame ✨`;
+}
+
+function toLocalInput(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromLocalInput(value: string): string {
+  return new Date(value).toISOString();
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -165,6 +183,18 @@ export function NewTurnoDialog({
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [isPending, startTransition] = useTransition();
+
+  // Mobile detection — the embedded FullCalendar is unusable on phones
+  // (touch slot selection is unreliable + every pro is a tiny column), so on
+  // mobile we replace it with a plain Pro select + datetime input.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 639px)");
+    const update = () => setIsMobile(mql.matches);
+    update();
+    mql.addEventListener("change", update);
+    return () => mql.removeEventListener("change", update);
+  }, []);
 
   // Reset every time the dialog opens for a (possibly different) conversation
   useEffect(() => {
@@ -378,64 +408,124 @@ export function NewTurnoDialog({
         <DialogHeader className="space-y-0.5">
           <DialogTitle className="text-base">Nuevo turno desde el chat</DialogTitle>
           <DialogDescription className="text-xs">
-            Tocá un hueco libre en la mini-agenda para elegir profesional y horario. Los servicios definen la duración.
+            Elegí profesional, horario y servicios. La duración la calculamos
+            sumando los servicios.
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)] gap-3">
-          {/* Mini-agenda */}
-          <div className="rounded-md border bg-card p-2 zenna-calendar zenna-mini-calendar min-w-0">
-            {resources.length === 0 ? (
-              <div className="flex items-center justify-center h-[460px] text-sm text-muted-foreground text-center px-4">
-                Todavía no hay profesionales activas. Cargá al menos una en
-                «Profesionales» para poder agendar.
-              </div>
-            ) : (
-              <FullCalendar
-                plugins={[
-                  resourceTimeGridPlugin,
-                  timeGridPlugin,
-                  interactionPlugin,
-                ]}
-                schedulerLicenseKey="CC-Attribution-NonCommercial-NoDerivatives"
-                locale={esLocale}
-                firstDay={1}
-                initialView="resourceTimeGridDay"
-                headerToolbar={{
-                  left: "prev,next today",
-                  center: "title",
-                  right: "",
-                }}
-                titleFormat={{ day: "numeric", month: "short" }}
-                buttonText={{ today: "Hoy" }}
-                allDaySlot={false}
-                slotMinTime="08:00:00"
-                slotMaxTime="22:00:00"
-                slotDuration="00:30:00"
-                slotLabelInterval="01:00"
-                slotLabelFormat={{
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  hour12: false,
-                }}
-                eventTimeFormat={{
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  hour12: false,
-                }}
-                nowIndicator
-                selectable
-                selectMirror
-                editable={false}
-                eventDurationEditable={false}
-                height={320}
-                expandRows
-                resources={resources}
-                events={events}
-                select={handleSelect}
-              />
-            )}
-          </div>
+          {/* Slot picker: mini-agenda on desktop, plain selectors on mobile */}
+          {isMobile ? (
+            <div className="rounded-md border bg-card p-3 space-y-3 min-w-0">
+              {resources.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center px-2 py-4">
+                  Todavía no hay profesionales activas. Cargá al menos una en
+                  «Profesionales» para poder agendar.
+                </p>
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Profesional</Label>
+                    <Select
+                      value={professionalId}
+                      onValueChange={setProfessionalId}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Elegí profesional…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {professionals
+                          .filter((p) => p.active)
+                          .map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              <span className="inline-flex items-center gap-2">
+                                <span
+                                  className="size-3 rounded-full border"
+                                  style={{ backgroundColor: p.color }}
+                                />
+                                {p.full_name}
+                              </span>
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs" htmlFor="new-turno-when">
+                      Día y hora
+                    </Label>
+                    <Input
+                      id="new-turno-when"
+                      type="datetime-local"
+                      value={toLocalInput(startsAt)}
+                      onChange={(e) =>
+                        setStartsAt(
+                          e.target.value ? fromLocalInput(e.target.value) : "",
+                        )
+                      }
+                      step={1800}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-md border bg-card p-2 zenna-calendar zenna-mini-calendar min-w-0">
+              {resources.length === 0 ? (
+                <div className="flex items-center justify-center h-[460px] text-sm text-muted-foreground text-center px-4">
+                  Todavía no hay profesionales activas. Cargá al menos una en
+                  «Profesionales» para poder agendar.
+                </div>
+              ) : (
+                <FullCalendar
+                  plugins={[
+                    resourceTimeGridPlugin,
+                    timeGridPlugin,
+                    interactionPlugin,
+                  ]}
+                  schedulerLicenseKey="CC-Attribution-NonCommercial-NoDerivatives"
+                  locale={esLocale}
+                  firstDay={1}
+                  initialView="resourceTimeGridDay"
+                  headerToolbar={{
+                    left: "prev,next today",
+                    center: "title",
+                    right: "",
+                  }}
+                  titleFormat={{ day: "numeric", month: "short" }}
+                  buttonText={{ today: "Hoy" }}
+                  allDaySlot={false}
+                  slotMinTime="08:00:00"
+                  slotMaxTime="22:00:00"
+                  slotDuration="00:30:00"
+                  slotLabelInterval="01:00"
+                  slotLabelFormat={{
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                  }}
+                  eventTimeFormat={{
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                  }}
+                  nowIndicator
+                  selectable
+                  selectMirror
+                  editable={false}
+                  eventDurationEditable={false}
+                  longPressDelay={250}
+                  selectLongPressDelay={250}
+                  height={460}
+                  expandRows
+                  resources={resources}
+                  events={events}
+                  select={handleSelect}
+                />
+              )}
+            </div>
+          )}
 
           {/* Right column: client + services + summary + notes */}
           <div className="flex flex-col gap-3 min-w-0">
