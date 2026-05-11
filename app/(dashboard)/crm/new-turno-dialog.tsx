@@ -261,7 +261,12 @@ export function NewTurnoDialog({
     return () => mql.removeEventListener("change", update);
   }, []);
 
-  // Reset every time the dialog opens for a (possibly different) conversation
+  // Reset every time the dialog opens for a (possibly different) conversation.
+  // IMPORTANT: depend on the conversation *id*, not the conversation object —
+  // the parent re-renders on every CRM realtime/poll tick with a new object
+  // reference for the same conversation, which would otherwise wipe the user's
+  // selections (pro, slot, services) mid-flow.
+  const conversationId = conversation?.id ?? null;
   useEffect(() => {
     if (!open) return;
     setClientId(conversation?.clients?.id ?? "");
@@ -277,7 +282,8 @@ export function NewTurnoDialog({
     setStartsAt("");
     setSelectedServiceIds([]);
     setNotes("");
-  }, [open, conversation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, conversationId]);
 
   // ──── Derived ─────────────────────────────────────────────────────────────
   const allClients = useMemo<QuickClient[]>(
