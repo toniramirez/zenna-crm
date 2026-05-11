@@ -1,0 +1,519 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@source "../app/**/*.{ts,tsx}";
+@source "../components/**/*.{ts,tsx}";
+@source "../lib/**/*.{ts,tsx}";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Zenna CRM — design tokens (v4: cream & ink)
+ *
+ * Anchored to the wordmark logo (black serif "ZENNA" on cream background).
+ *  - Background: cream (matches the logo card)
+ *  - Surfaces:    pure white cards on cream → soft contrast
+ *  - Primary:     ink black (not wine — the logo has no wine)
+ *  - Accent:      champagne gold, used SPARINGLY (focus, active, decorative
+ *                 hairlines only — never as a full card border)
+ *  - Borders:     almost invisible warm gray, hairline (1px) — gives the
+ *                 "premium minimal" feel instead of the "Excel grid" feel
+ *  - Radius:      generous (1rem base, 1.25rem for cards/dialogs)
+ *
+ * Calendar status colors remain semantic (sky/amber/emerald/rose) for clarity.
+ */
+:root {
+  --radius: 1rem;
+
+  --background: oklch(0.965 0.012 85);
+  --foreground: oklch(0.16 0.005 50);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.16 0.005 50);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.16 0.005 50);
+
+  /* Primary = ink black. Reads premium and matches the wordmark. */
+  --primary: oklch(0.16 0.005 50);
+  --primary-foreground: oklch(0.98 0.008 85);
+
+  --secondary: oklch(0.955 0.008 80);
+  --secondary-foreground: oklch(0.22 0.006 50);
+
+  --muted: oklch(0.95 0.008 82);
+  --muted-foreground: oklch(0.48 0.008 60);
+
+  --accent: oklch(0.95 0.008 80);
+  --accent-foreground: oklch(0.22 0.006 50);
+
+  --destructive: oklch(0.555 0.20 25);
+  --destructive-foreground: oklch(0.98 0.008 85);
+
+  /* Hairline borders — nearly invisible warm gray */
+  --border: oklch(0.92 0.008 80);
+  --input: oklch(0.92 0.008 80);
+  --ring: oklch(0.74 0.07 80);
+
+  --chart-1: oklch(0.55 0.10 30);
+  --chart-2: oklch(0.74 0.07 80);
+  --chart-3: oklch(0.42 0.05 50);
+  --chart-4: oklch(0.65 0.10 40);
+  --chart-5: oklch(0.32 0.03 50);
+
+  --sidebar: oklch(0.952 0.014 85);
+  --sidebar-foreground: oklch(0.22 0.006 50);
+  --sidebar-primary: oklch(0.16 0.005 50);
+  --sidebar-primary-foreground: oklch(0.98 0.008 85);
+  --sidebar-accent: oklch(0.93 0.012 82);
+  --sidebar-accent-foreground: oklch(0.22 0.006 50);
+  --sidebar-border: oklch(0.92 0.008 80);
+  --sidebar-ring: oklch(0.74 0.07 80);
+
+  /* Champagne gold (more refined than the bright gold we had) */
+  --gold: oklch(0.74 0.07 80);
+  --gold-soft: oklch(0.88 0.04 80);
+  --bone: oklch(0.965 0.012 85);
+  --ink: oklch(0.16 0.005 50);
+}
+
+.dark {
+  --background: oklch(0.14 0.005 50);
+  --foreground: oklch(0.96 0.008 85);
+
+  --card: oklch(0.18 0.008 50);
+  --card-foreground: oklch(0.96 0.008 85);
+
+  --popover: oklch(0.18 0.008 50);
+  --popover-foreground: oklch(0.96 0.008 85);
+
+  --primary: oklch(0.94 0.008 80);
+  --primary-foreground: oklch(0.18 0.008 50);
+
+  --secondary: oklch(0.25 0.012 55);
+  --secondary-foreground: oklch(0.96 0.008 85);
+
+  --muted: oklch(0.25 0.012 55);
+  --muted-foreground: oklch(0.72 0.012 70);
+
+  --accent: oklch(0.25 0.012 55);
+  --accent-foreground: oklch(0.96 0.008 85);
+
+  --destructive: oklch(0.65 0.18 25);
+  --destructive-foreground: oklch(0.96 0.008 85);
+
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.78 0.08 80);
+
+  --sidebar: oklch(0.18 0.008 50);
+  --sidebar-foreground: oklch(0.96 0.008 85);
+  --sidebar-primary: oklch(0.94 0.008 80);
+  --sidebar-primary-foreground: oklch(0.18 0.008 50);
+  --sidebar-accent: oklch(0.25 0.012 55);
+  --sidebar-accent-foreground: oklch(0.96 0.008 85);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --sidebar-ring: oklch(0.78 0.08 80);
+
+  --gold: oklch(0.78 0.08 80);
+  --gold-soft: oklch(0.5 0.06 80);
+  --bone: oklch(0.96 0.008 85);
+  --ink: oklch(0.16 0.005 50);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 8px);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-bone: var(--bone);
+  --color-ink: var(--ink);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-display);
+
+  --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.04);
+  --shadow-sm: 0 1px 3px oklch(0 0 0 / 0.05), 0 1px 2px oklch(0 0 0 / 0.03);
+  --shadow-md: 0 4px 8px -2px oklch(0 0 0 / 0.05), 0 2px 4px -2px oklch(0 0 0 / 0.03);
+  --shadow-lg: 0 12px 20px -6px oklch(0 0 0 / 0.06), 0 4px 8px -4px oklch(0 0 0 / 0.04);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply text-foreground;
+    background: var(--background);
+    /* Faint warm bloom from the top — keeps the cream from looking flat */
+    background-image:
+      radial-gradient(60% 50% at 50% 0%, oklch(0.99 0.006 85 / 0.5) 0%, transparent 60%);
+    background-attachment: fixed;
+    font-feature-settings: "cv11", "ss01", "ss03";
+  }
+
+  h1, h2, h3 {
+    letter-spacing: -0.02em;
+  }
+
+  /* Micro-interactions */
+  button,
+  a,
+  [role="combobox"],
+  [role="checkbox"],
+  [data-slot="card"],
+  [data-slot="dropdown-menu-item"],
+  [data-slot="select-trigger"],
+  [data-slot="input"] {
+    transition-property: background-color, border-color, color, fill, stroke,
+      box-shadow, transform, opacity;
+    transition-duration: 180ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Cards: white surface on cream + soft shadow + generous radius */
+  [data-slot="card"] {
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+  }
+
+  main [data-slot="card"]:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+  }
+
+  [data-slot="dialog-content"] {
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+  }
+
+  [data-slot="popover-content"] {
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Inputs / selects: rounded with subtle border, champagne gold on focus */
+  [data-slot="input"],
+  [data-slot="textarea"],
+  [data-slot="select-trigger"] {
+    border-radius: var(--radius-md);
+  }
+
+  [data-slot="input"]:focus,
+  [data-slot="input"]:focus-visible,
+  [data-slot="textarea"]:focus,
+  [data-slot="textarea"]:focus-visible,
+  [data-slot="select-trigger"]:focus,
+  [data-slot="select-trigger"]:focus-visible {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px oklch(0.74 0.07 80 / 0.18);
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.015em;
+  }
+
+  .sidebar-nav-active::before {
+    content: "";
+    position: absolute;
+    left: -3px;
+    top: 30%;
+    bottom: 30%;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background: var(--gold);
+  }
+
+  .text-gold {
+    color: var(--gold);
+  }
+
+  /* Decorative hairline divider with a champagne gleam in the middle */
+  .gold-hairline {
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--gold-soft) 30%,
+      var(--gold-soft) 70%,
+      transparent
+    );
+  }
+}
+
+/* ── Page entrance (subtle, fast) ──────────────────────────────────── */
+
+@keyframes zenna-page-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+main > * {
+  animation: zenna-page-in 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+main > * > *:nth-child(1) { animation: zenna-page-in 280ms ease-out 30ms both; }
+main > * > *:nth-child(2) { animation: zenna-page-in 280ms ease-out 70ms both; }
+main > * > *:nth-child(3) { animation: zenna-page-in 280ms ease-out 110ms both; }
+main > * > *:nth-child(4) { animation: zenna-page-in 280ms ease-out 150ms both; }
+
+/* ── FullCalendar — de-Excel-ified ─────────────────────────────────── */
+
+.zenna-calendar .fc {
+  --fc-border-color: transparent;
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: transparent;
+  --fc-list-event-hover-bg-color: var(--muted);
+  --fc-today-bg-color: oklch(from var(--gold) l c h / 0.05);
+  --fc-now-indicator-color: var(--ink);
+  font-family: inherit;
+  font-size: 0.875rem;
+}
+
+/* Hide the harsh grid lines that make it look like a spreadsheet */
+.zenna-calendar .fc-theme-standard td,
+.zenna-calendar .fc-theme-standard th {
+  border-color: transparent;
+}
+
+/* Bring back ONLY the horizontal hour separators — very faint */
+.zenna-calendar .fc-timegrid-slot {
+  border-top: 1px solid var(--border) !important;
+}
+
+/* Light vertical column dividers only between resources, very subtle */
+.zenna-calendar .fc-timegrid-col {
+  border-left: 1px solid oklch(0.94 0.006 80) !important;
+}
+
+.zenna-calendar .fc-timegrid-col:first-child {
+  border-left: none !important;
+}
+
+/* Header row: no boxy background, just space + bottom hairline */
+.zenna-calendar .fc-col-header-cell {
+  background: transparent;
+  border: none !important;
+  padding: 0.75rem 0.5rem;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+}
+
+.zenna-calendar .fc-col-header-cell-cushion {
+  text-decoration: none;
+  color: inherit;
+  padding: 0;
+}
+
+.zenna-calendar .fc-scrollgrid {
+  border: none !important;
+}
+
+.zenna-calendar .fc-scrollgrid-section > * {
+  border: none !important;
+}
+
+/* Hour labels: muted, no harsh background */
+.zenna-calendar .fc-timegrid-axis,
+.zenna-calendar .fc-timegrid-slot-label {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  border: none !important;
+}
+
+/* Toolbar */
+.zenna-calendar .fc-toolbar {
+  padding: 0.25rem 0 0.75rem;
+}
+
+.zenna-calendar .fc-toolbar-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.zenna-calendar .fc-button {
+  background-color: transparent !important;
+  border: 1px solid var(--border) !important;
+  color: var(--foreground) !important;
+  font-weight: 500;
+  font-size: 0.8125rem;
+  text-transform: capitalize;
+  border-radius: 0.625rem !important;
+  padding: 0.4rem 0.85rem !important;
+  box-shadow: none !important;
+  transition: all 160ms ease;
+}
+
+.zenna-calendar .fc-button:hover {
+  background-color: var(--muted) !important;
+}
+
+.zenna-calendar .fc-button-primary:not(:disabled).fc-button-active,
+.zenna-calendar .fc-button-primary:not(:disabled):active {
+  background-color: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+}
+
+/* Events: pill-style with thicker left accent, rounded, with padding */
+.zenna-calendar .fc-event {
+  border-radius: 0.625rem;
+  border-width: 0 0 0 3px;
+  padding: 0.25rem 0.5rem;
+  box-shadow: var(--shadow-xs);
+  cursor: pointer;
+  font-weight: 500;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.zenna-calendar .fc-event:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.zenna-calendar .fc-event-main {
+  padding: 0;
+}
+
+.zenna-calendar .fc-event-time {
+  font-weight: 600;
+  font-size: 0.7rem;
+  opacity: 0.85;
+}
+
+.zenna-calendar .fc-event-title {
+  font-weight: 500;
+  font-size: 0.75rem;
+}
+
+/* Now indicator: thin ink line */
+.zenna-calendar .fc-timegrid-now-indicator-line {
+  border-top-width: 1.5px;
+  border-color: var(--ink);
+}
+
+.zenna-calendar .fc-timegrid-now-indicator-arrow {
+  display: none;
+}
+
+/* Event status states */
+.zenna-calendar .fc-event.zenna-event-cancelled,
+.zenna-calendar .fc-event.zenna-event-noshow {
+  opacity: 0.55;
+}
+
+.zenna-calendar .fc-event.zenna-event-cancelled .fc-event-title,
+.zenna-calendar .fc-event.zenna-event-cancelled .fc-event-time {
+  text-decoration: line-through;
+}
+
+.zenna-calendar .fc-event.zenna-event-completed::after {
+  content: "✓";
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 0.7rem;
+  color: var(--foreground);
+  opacity: 0.6;
+}
+
+.zenna-calendar .fc-event {
+  position: relative;
+}
+
+.zenna-calendar .fc-license-message {
+  display: none !important;
+}
+
+/*
+ * Mini-agenda inside the CRM "new turno" dialog. Tighter typography +
+ * the synthetic "pick" event uses a solid ink color so it stands out from
+ * the soft pro-color tints around it.
+ */
+.zenna-mini-calendar .fc-toolbar {
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.zenna-mini-calendar .fc-toolbar-title {
+  font-size: 0.85rem;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.zenna-mini-calendar .fc-button {
+  padding: 0.15rem 0.45rem;
+  font-size: 0.7rem;
+}
+
+.zenna-mini-calendar .fc-col-header-cell-cushion {
+  font-size: 0.7rem;
+  padding: 0.25rem 0.15rem;
+}
+
+.zenna-mini-calendar .fc-timegrid-slot-label-cushion {
+  font-size: 0.65rem;
+}
+
+.zenna-mini-calendar .fc-timegrid-axis-cushion {
+  font-size: 0.65rem;
+}
+
+.zenna-calendar .fc-event.zenna-pick-event {
+  font-weight: 600;
+  box-shadow: 0 0 0 2px var(--brand-gold, #b89968);
+}
