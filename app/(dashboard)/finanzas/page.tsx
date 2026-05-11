@@ -12,6 +12,8 @@ import {
 } from "@/lib/validations/expense-templates";
 import { EstadisticasPanel } from "./estadisticas-panel";
 import { GastosFijosPanel } from "./gastos-fijos-panel";
+import { PinGate } from "./pin-gate";
+import { hasFinanzasPinAccess } from "./pin-config";
 import { ProfesionalesPanel } from "./profesionales-panel";
 import { loadProfessionalPayouts } from "./professional-payouts";
 import { loadMonthStats } from "./stats";
@@ -32,6 +34,16 @@ type ValidTab = (typeof VALID_TABS)[number];
 
 export default async function FinanzasPage({ searchParams }: Props) {
   await requireRole("owner");
+
+  if (!(await hasFinanzasPinAccess())) {
+    return (
+      <div className="space-y-6 max-w-6xl">
+        <h1 className="text-2xl font-semibold tracking-tight">Finanzas</h1>
+        <PinGate />
+      </div>
+    );
+  }
+
   const { tab, month } = await searchParams;
 
   const initialTab: ValidTab = (VALID_TABS as readonly string[]).includes(
