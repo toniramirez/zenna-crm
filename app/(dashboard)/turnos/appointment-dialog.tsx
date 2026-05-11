@@ -81,6 +81,9 @@ type Props = {
   professionals: ProfessionalRow[];
   services: ServiceRow[];
   clients: Pick<ClientRow, "id" | "full_name" | "phone">[];
+  // Used by the mobile slot picker to mark busy 30-min slots per pro/day.
+  // Optional so the dialog still renders when callers haven't supplied it.
+  appointments?: AppointmentWithRelations[];
 };
 
 function toLocalInput(iso: string): string {
@@ -93,6 +96,80 @@ function fromLocalInput(value: string): string {
   return new Date(value).toISOString();
 }
 
+function localDatePart(local: string): string {
+  // "2026-05-11T15:00" -> "2026-05-11"  (or today's date if empty)
+  if (local && local.length >= 10) return local.slice(0, 10);
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+const OPEN_HOUR = 8;
+const CLOSE_HOUR = 22;
+const SLOT_MINUTES = 30;
+
+type DaySlot = {
+  iso: string;
+  local: string;
+  label: string;
+  taken: boolean;
+  busyWith?: string;
+};
+
+function buildDaySlots(
+  dateStr: string,
+  proId: string,
+  appointments: AppointmentWithRelations[],
+  editingAppointmentId?: string,
+): DaySlot[] {
+  if (!dateStr || !proId) return [];
+  const [y, m, d] = dateStr.split("-").map(Number);
+  if (!y || !m || !d) return [];
+  const dayStart = new Date(y, m - 1, d, OPEN_HOUR, 0, 0, 0);
+  const dayEnd = new Date(y, m - 1, d, CLOSE_HOUR, 0, 0, 0);
+  const now = new Date();
+
+  const busy = appointments
+    .filter(
+      (a) =>
+        a.professional_id === proId &&
+        a.status !== "cancelled" &&
+        a.status !== "no_show" &&
+        // When editing, ignore the appointment itself so the user can re-pick
+        // its current slot without it being marked as "taken".
+        a.id !== editingAppointmentId,
+    )
+    .map((a) => ({
+      start: new Date(a.starts_at).getTime(),
+      end: new Date(a.ends_at).getTime(),
+      title: a.clients?.full_name ?? "Ocupado",
+    }));
+
+  const slots: DaySlot[] = [];
+  const pad = (n: number) => String(n).padStart(2, "0");
+  for (
+    let t = dayStart.getTime();
+    t < dayEnd.getTime();
+    t += SLOT_MINUTES * 60 * 1000
+  ) {
+    const slotStart = t;
+    const slotEnd = t + SLOT_MINUTES * 60 * 1000;
+    if (slotEnd <= now.getTime()) continue;
+    const overlap = busy.find(
+      (b) => b.start < slotEnd && b.end > slotStart,
+    );
+    const dt = new Date(slotStart);
+    slots.push({
+      iso: dt.toISOString(),
+      local: `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`,
+      label: `${pad(dt.getHours())}:${pad(dt.getMinutes())}`,
+      taken: !!overlap,
+      busyWith: overlap?.title,
+    });
+  }
+  return slots;
+}
+
 export function AppointmentDialog({
   open,
   onOpenChange,
@@ -100,8 +177,23 @@ export function AppointmentDialog({
   professionals,
   services,
   clients,
+  appointments = [],
 }: Props) {
   const editing = mode?.type === "edit";
+
+  // Mobile detection — datetime-local is clunky on phones and doesn't show
+  // which slots are already taken. On mobile we swap it for a date input +
+  // slot grid with busy slots disabled.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 639px)");
+    const update = () => setIsMobile(mql.matches);
+    update();
+    mql.addEventListener("change", update);
+    return () => mql.removeEventListener("change", update);
+  }, []);
+
+  const [pickedDate, setPickedDate] = useState<string>("");
 
   const [clientId, setClientId] = useState<string>("");
   const [professionalId, setProfessionalId] = useState<string>("");
@@ -132,15 +224,19 @@ export function AppointmentDialog({
     if (mode.type === "create") {
       setClientId("");
       setProfessionalId(mode.professionalId);
-      setStartsAt(toLocalInput(mode.startsAt));
+      const local = toLocalInput(mode.startsAt);
+      setStartsAt(local);
+      setPickedDate(localDatePart(local));
       setStatus("scheduled");
       setNotes("");
       setSelectedServiceIds([]);
     } else {
       const a = mode.appointment;
+      const local = toLocalInput(a.starts_at);
       setClientId(a.clients?.id ?? "");
       setProfessionalId(a.professional_id);
-      setStartsAt(toLocalInput(a.starts_at));
+      setStartsAt(local);
+      setPickedDate(localDatePart(local));
       setStatus(a.status);
       setNotes(a.notes ?? "");
       setSelectedServiceIds(
@@ -154,6 +250,13 @@ export function AppointmentDialog({
     setQuickPhone("");
     setClientSearch("");
   }, [open, mode]);
+
+  // Mobile slot grid for the current (date, pro) pair
+  const editingId = mode?.type === "edit" ? mode.appointment.id : undefined;
+  const daySlots = useMemo(
+    () => buildDaySlots(pickedDate, professionalId, appointments, editingId),
+    [pickedDate, professionalId, appointments, editingId],
+  );
 
   // Combined client list: any walk-ins created in this dialog first, then the server-loaded list
   const allClients = useMemo<QuickClient[]>(
@@ -594,25 +697,109 @@ export function AppointmentDialog({
             </Popover>
           </div>
 
-          {/* Inicio (Fin se auto-calcula) */}
-          <div className="space-y-2">
-            <Label htmlFor="starts-at">Inicio</Label>
-            <Input
-              id="starts-at"
-              type="datetime-local"
-              step={900}
-              value={startsAt}
-              onChange={(e) => setStartsAt(e.target.value)}
-            />
-            {endsAt && endLabel && totalDuration > 0 ? (
-              <p className="text-xs text-muted-foreground flex items-center gap-2">
-                <Badge variant="outline" className="text-xs font-normal">
-                  Termina a las {endLabel}
-                </Badge>
-                <span>{formatDuration(totalDuration)} en total</span>
-              </p>
-            ) : null}
-          </div>
+          {/* Inicio — datetime-local on desktop, date + slot grid on mobile */}
+          {isMobile ? (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="picked-date" className="text-xs">
+                    Día
+                  </Label>
+                  <Input
+                    id="picked-date"
+                    type="date"
+                    value={pickedDate}
+                    onChange={(e) => {
+                      setPickedDate(e.target.value);
+                      // Clear the start time when changing day — the user
+                      // needs to pick a slot below.
+                      setStartsAt("");
+                    }}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Inicio elegido</Label>
+                  <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm tabular-nums h-9 flex items-center">
+                    {startsAt ? (
+                      startsAt.slice(11, 16)
+                    ) : (
+                      <span className="text-muted-foreground italic text-xs">
+                        Elegí un horario ↓
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Horarios del día</Label>
+                {!professionalId ? (
+                  <p className="text-xs text-muted-foreground italic px-1">
+                    Elegí una profesional para ver los horarios.
+                  </p>
+                ) : daySlots.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic px-1">
+                    No hay horarios disponibles para este día.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-1.5 max-h-[260px] overflow-y-auto pr-1">
+                    {daySlots.map((s) => {
+                      const isPicked = s.local === startsAt;
+                      return (
+                        <button
+                          type="button"
+                          key={s.local}
+                          onClick={() => !s.taken && setStartsAt(s.local)}
+                          disabled={s.taken}
+                          title={
+                            s.taken ? `Ocupado · ${s.busyWith}` : undefined
+                          }
+                          className={cn(
+                            "rounded-md border px-2 py-2 text-sm tabular-nums transition-colors",
+                            isPicked
+                              ? "bg-foreground text-background border-foreground font-semibold"
+                              : s.taken
+                                ? "bg-muted/40 text-muted-foreground line-through cursor-not-allowed border-transparent"
+                                : "bg-card hover:bg-muted/40",
+                          )}
+                        >
+                          {s.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {endsAt && endLabel && totalDuration > 0 ? (
+                <p className="text-xs text-muted-foreground flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs font-normal">
+                    Termina a las {endLabel}
+                  </Badge>
+                  <span>{formatDuration(totalDuration)} en total</span>
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="starts-at">Inicio</Label>
+              <Input
+                id="starts-at"
+                type="datetime-local"
+                step={900}
+                value={startsAt}
+                onChange={(e) => setStartsAt(e.target.value)}
+              />
+              {endsAt && endLabel && totalDuration > 0 ? (
+                <p className="text-xs text-muted-foreground flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs font-normal">
+                    Termina a las {endLabel}
+                  </Badge>
+                  <span>{formatDuration(totalDuration)} en total</span>
+                </p>
+              ) : null}
+            </div>
+          )}
 
           {/* Notas */}
           <div className="space-y-2">

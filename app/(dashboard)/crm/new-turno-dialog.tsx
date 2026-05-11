@@ -95,15 +95,80 @@ function buildConfirmationMessage(args: {
   return `¡Buenísimo! Te agendé ${services} para el ${day} a las ${time} hs. Cualquier cosa avisame ✨`;
 }
 
-function toLocalInput(iso: string): string {
-  if (!iso) return "";
+function toDateInput(iso: string): string {
+  if (!iso) {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function fromLocalInput(value: string): string {
-  return new Date(value).toISOString();
+const OPEN_HOUR = 8;
+const CLOSE_HOUR = 22;
+const SLOT_MINUTES = 30;
+
+type DaySlot = {
+  iso: string;
+  label: string;
+  taken: boolean;
+  busyWith?: string;
+};
+
+/**
+ * Build the 30-min slot grid for a (date, pro) pair and mark taken slots
+ * using the existing appointment intervals. Cancelled / no-show turnos
+ * free up the slot. The "now" cutoff hides past slots when picking today.
+ */
+function buildDaySlots(
+  dateStr: string,
+  proId: string,
+  appointments: AppointmentWithRelations[],
+): DaySlot[] {
+  if (!dateStr || !proId) return [];
+  const [y, m, d] = dateStr.split("-").map(Number);
+  if (!y || !m || !d) return [];
+  const dayStart = new Date(y, m - 1, d, OPEN_HOUR, 0, 0, 0);
+  const dayEnd = new Date(y, m - 1, d, CLOSE_HOUR, 0, 0, 0);
+  const now = new Date();
+
+  const busy = appointments
+    .filter(
+      (a) =>
+        a.professional_id === proId &&
+        a.status !== "cancelled" &&
+        a.status !== "no_show",
+    )
+    .map((a) => ({
+      start: new Date(a.starts_at).getTime(),
+      end: new Date(a.ends_at).getTime(),
+      title: a.clients?.full_name ?? "Ocupado",
+    }));
+
+  const slots: DaySlot[] = [];
+  for (
+    let t = dayStart.getTime();
+    t < dayEnd.getTime();
+    t += SLOT_MINUTES * 60 * 1000
+  ) {
+    const slotStart = t;
+    const slotEnd = t + SLOT_MINUTES * 60 * 1000;
+    if (slotEnd <= now.getTime()) continue;
+    const overlap = busy.find(
+      (b) => b.start < slotEnd && b.end > slotStart,
+    );
+    const dt = new Date(slotStart);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    slots.push({
+      iso: dt.toISOString(),
+      label: `${pad(dt.getHours())}:${pad(dt.getMinutes())}`,
+      taken: !!overlap,
+      busyWith: overlap?.title,
+    });
+  }
+  return slots;
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -416,60 +481,15 @@ export function NewTurnoDialog({
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)] gap-3">
           {/* Slot picker: mini-agenda on desktop, plain selectors on mobile */}
           {isMobile ? (
-            <div className="rounded-md border bg-card p-3 space-y-3 min-w-0">
-              {resources.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center px-2 py-4">
-                  Todavía no hay profesionales activas. Cargá al menos una en
-                  «Profesionales» para poder agendar.
-                </p>
-              ) : (
-                <>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Profesional</Label>
-                    <Select
-                      value={professionalId}
-                      onValueChange={setProfessionalId}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Elegí profesional…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {professionals
-                          .filter((p) => p.active)
-                          .map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              <span className="inline-flex items-center gap-2">
-                                <span
-                                  className="size-3 rounded-full border"
-                                  style={{ backgroundColor: p.color }}
-                                />
-                                {p.full_name}
-                              </span>
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs" htmlFor="new-turno-when">
-                      Día y hora
-                    </Label>
-                    <Input
-                      id="new-turno-when"
-                      type="datetime-local"
-                      value={toLocalInput(startsAt)}
-                      onChange={(e) =>
-                        setStartsAt(
-                          e.target.value ? fromLocalInput(e.target.value) : "",
-                        )
-                      }
-                      step={1800}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
+            <MobileSlotPicker
+              resources={resources}
+              professionals={professionals}
+              professionalId={professionalId}
+              setProfessionalId={setProfessionalId}
+              startsAt={startsAt}
+              setStartsAt={setStartsAt}
+              appointments={appointments}
+            />
           ) : (
             <div className="rounded-md border bg-card p-2 zenna-calendar zenna-mini-calendar min-w-0">
               {resources.length === 0 ? (
@@ -716,5 +736,128 @@ export function NewTurnoDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function MobileSlotPicker({
+  resources,
+  professionals,
+  professionalId,
+  setProfessionalId,
+  startsAt,
+  setStartsAt,
+  appointments,
+}: {
+  resources: { id: string }[];
+  professionals: ProfessionalRow[];
+  professionalId: string;
+  setProfessionalId: (id: string) => void;
+  startsAt: string;
+  setStartsAt: (iso: string) => void;
+  appointments: AppointmentWithRelations[];
+}) {
+  // The picker has its own day cursor so the user can browse availability
+  // without losing their slot selection on the other field.
+  const [pickedDate, setPickedDate] = useState<string>(() =>
+    toDateInput(startsAt || ""),
+  );
+
+  // Keep pickedDate in sync if startsAt changes (e.g. dialog reset).
+  useEffect(() => {
+    if (startsAt) setPickedDate(toDateInput(startsAt));
+  }, [startsAt]);
+
+  const slots = useMemo(
+    () => buildDaySlots(pickedDate, professionalId, appointments),
+    [pickedDate, professionalId, appointments],
+  );
+
+  if (resources.length === 0) {
+    return (
+      <div className="rounded-md border bg-card p-3 min-w-0">
+        <p className="text-sm text-muted-foreground text-center px-2 py-4">
+          Todavía no hay profesionales activas. Cargá al menos una en
+          «Profesionales» para poder agendar.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-md border bg-card p-3 space-y-3 min-w-0">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1.5">
+          <Label className="text-xs">Profesional</Label>
+          <Select value={professionalId} onValueChange={setProfessionalId}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Elegí…" />
+            </SelectTrigger>
+            <SelectContent>
+              {professionals
+                .filter((p) => p.active)
+                .map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        className="size-3 rounded-full border"
+                        style={{ backgroundColor: p.color }}
+                      />
+                      {p.full_name}
+                    </span>
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs" htmlFor="new-turno-day">
+            Día
+          </Label>
+          <Input
+            id="new-turno-day"
+            type="date"
+            value={pickedDate}
+            onChange={(e) => setPickedDate(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs">Horario disponible</Label>
+        {!professionalId ? (
+          <p className="text-xs text-muted-foreground italic px-1">
+            Elegí una profesional para ver los horarios.
+          </p>
+        ) : slots.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic px-1">
+            No hay horarios disponibles para este día.
+          </p>
+        ) : (
+          <div className="grid grid-cols-3 gap-1.5 max-h-[280px] overflow-y-auto pr-1">
+            {slots.map((s) => {
+              const isPicked = s.iso === startsAt;
+              return (
+                <button
+                  type="button"
+                  key={s.iso}
+                  onClick={() => !s.taken && setStartsAt(s.iso)}
+                  disabled={s.taken}
+                  title={s.taken ? `Ocupado · ${s.busyWith}` : undefined}
+                  className={`rounded-md border px-2 py-2 text-sm tabular-nums transition-colors ${
+                    isPicked
+                      ? "bg-foreground text-background border-foreground font-semibold"
+                      : s.taken
+                        ? "bg-muted/40 text-muted-foreground line-through cursor-not-allowed border-transparent"
+                        : "bg-card hover:bg-muted/40"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

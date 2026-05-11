@@ -349,6 +349,7 @@ export function CalendarView({
         professionals={professionals}
         services={services}
         clients={clients}
+        appointments={appointments}
       />
     </>
   );
