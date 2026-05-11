@@ -1,6 +1,6 @@
 "use client";
 
-import { CreditCard, Tag, Wand2, Zap } from "lucide-react";
+import { CreditCard, Sparkles, Tag, Wand2, Zap } from "lucide-react";
 import {
   Tabs,
   TabsContent,
@@ -15,6 +15,8 @@ import type {
   QuickReply,
   ServiceSlim,
 } from "./config-types";
+import { OutreachManager } from "./outreach-manager";
+import type { OutreachSuggestionWithRelations } from "./outreach-types";
 import { PaymentMethodsManager } from "./payment-methods-manager";
 import { QuickRepliesManager } from "./quick-replies-manager";
 import { TagsManager } from "./tags-manager";
@@ -30,13 +32,18 @@ export function CrmConfig({
   flows,
   services,
   paymentMethods,
+  outreachSuggestions,
 }: {
   tags: ClientTag[];
   quickReplies: QuickReply[];
   flows: AutomationFlow[];
   services: ServiceSlim[];
   paymentMethods: PaymentMethod[];
+  outreachSuggestions: OutreachSuggestionWithRelations[];
 }) {
+  const pendingOutreach = outreachSuggestions.filter(
+    (s) => s.status === "pending",
+  ).length;
   return (
     <Tabs defaultValue="tags" className="space-y-4">
       <TabsList>
@@ -68,6 +75,15 @@ export function CrmConfig({
             {paymentMethods.length}
           </span>
         </TabsTrigger>
+        <TabsTrigger value="outreach">
+          <Sparkles className="size-3.5" />
+          Recomendaciones IA
+          {pendingOutreach > 0 ? (
+            <span className="ml-1 inline-flex items-center justify-center rounded-full bg-gold/20 text-gold px-1.5 text-[10px] tabular-nums">
+              {pendingOutreach}
+            </span>
+          ) : null}
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="tags">
@@ -81,6 +97,9 @@ export function CrmConfig({
       </TabsContent>
       <TabsContent value="payments">
         <PaymentMethodsManager methods={paymentMethods} />
+      </TabsContent>
+      <TabsContent value="outreach">
+        <OutreachManager suggestions={outreachSuggestions} />
       </TabsContent>
     </Tabs>
   );

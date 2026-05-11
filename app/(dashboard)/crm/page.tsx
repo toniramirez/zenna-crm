@@ -10,6 +10,7 @@ import type {
   ServiceSlim,
 } from "./config-types";
 import { CrmShell } from "./crm-shell";
+import type { OutreachSuggestionWithRelations } from "./outreach-types";
 import type { ConversationWithClient } from "./types";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +51,7 @@ export default async function CrmPage({ searchParams }: Props) {
     clientsResult,
     appointmentsResult,
     paymentMethodsResult,
+    outreachResult,
   ] = await Promise.all([
     supabase
       .from("conversations")
@@ -96,6 +98,20 @@ export default async function CrmPage({ searchParams }: Props) {
       .order("active", { ascending: false })
       .order("sort_order")
       .order("label"),
+    // Outreach inbox: pendings first (so they show on top), then recent
+    // sent/dismissed for the history strip. 60-day window keeps the list
+    // sized — anything older isn't useful context anyway.
+    supabase
+      .from("outreach_suggestions")
+      .select(
+        "*, clients(id, full_name, phone, last_visit_at), services(id, name)",
+      )
+      .gte(
+        "generated_at",
+        new Date(Date.now() - 60 * 86400 * 1000).toISOString(),
+      )
+      .order("status", { ascending: true }) // 'pending' < 'sent' < 'dismissed' alphabetically; pending shows first
+      .order("generated_at", { ascending: false }),
   ]);
 
   return (
@@ -118,6 +134,11 @@ export default async function CrmPage({ searchParams }: Props) {
         }
         paymentMethods={
           (paymentMethodsResult.data as PaymentMethod[] | null) ?? []
+        }
+        outreachSuggestions={
+          (outreachResult.data as
+            | OutreachSuggestionWithRelations[]
+            | null) ?? []
         }
       />
     </div>

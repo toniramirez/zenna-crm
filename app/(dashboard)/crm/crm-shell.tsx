@@ -24,6 +24,7 @@ import type {
 } from "./config-types";
 import { CrmConfig } from "./crm-config";
 import { CrmView } from "./crm-view";
+import type { OutreachSuggestionWithRelations } from "./outreach-types";
 import type { ConversationWithClient } from "./types";
 
 /**
@@ -46,6 +47,7 @@ export function CrmShell({
   clients,
   appointments,
   paymentMethods,
+  outreachSuggestions,
 }: {
   initialTab: "chat" | "config";
   conversations: ConversationWithClient[];
@@ -59,6 +61,7 @@ export function CrmShell({
   clients: Pick<ClientRow, "id" | "full_name" | "phone">[];
   appointments: AppointmentWithRelations[];
   paymentMethods: PaymentMethod[];
+  outreachSuggestions: OutreachSuggestionWithRelations[];
 }) {
   const { focused, toggle } = useFocusMode();
 
@@ -124,6 +127,7 @@ export function CrmShell({
           flows={flows}
           services={services}
           paymentMethods={paymentMethods}
+          outreachSuggestions={outreachSuggestions}
         />
       </TabsContent>
     </Tabs>
