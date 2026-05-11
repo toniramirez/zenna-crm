@@ -452,18 +452,20 @@ function FlowDialog({
                                     : [...value, s.id],
                                 );
                               };
+                              const id = `flow-service-${s.id}`;
                               return (
-                                <li
-                                  key={s.id}
-                                  className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/30"
-                                  onClick={toggle}
-                                >
-                                  <Checkbox
-                                    checked={checked}
-                                    onCheckedChange={toggle}
-                                    tabIndex={-1}
-                                  />
-                                  <span className="text-sm">{s.name}</span>
+                                <li key={s.id}>
+                                  <label
+                                    htmlFor={id}
+                                    className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/30"
+                                  >
+                                    <Checkbox
+                                      id={id}
+                                      checked={checked}
+                                      onCheckedChange={toggle}
+                                    />
+                                    <span className="text-sm">{s.name}</span>
+                                  </label>
                                 </li>
                               );
                             })}
