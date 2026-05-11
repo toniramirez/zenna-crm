@@ -8,12 +8,15 @@ import type {
 } from "@fullcalendar/core";
 import esLocale from "@fullcalendar/core/locales/es";
 import interactionPlugin from "@fullcalendar/interaction";
+import listPlugin from "@fullcalendar/list";
 import FullCalendar from "@fullcalendar/react";
 import resourceTimeGridPlugin from "@fullcalendar/resource-timegrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
+import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { moveAppointmentAction } from "./actions";
 import {
   AppointmentDialog,
@@ -215,6 +218,31 @@ export function CalendarView({
     }
   }
 
+  // Mobile "Nuevo turno" entry point — tap-to-create on the list view isn't a
+  // FullCalendar feature, so we offer an explicit button that opens the
+  // dialog with the next round half-hour as a sensible default.
+  function openCreateFromButton() {
+    const firstPro = professionals.find((p) => p.active);
+    if (!firstPro) {
+      toast.error(
+        "Cargá al menos una profesional activa antes de crear turnos.",
+      );
+      return;
+    }
+    const now = new Date();
+    now.setSeconds(0, 0);
+    // Round up to the next 30-minute mark
+    const minutes = now.getMinutes();
+    const add = minutes === 0 || minutes === 30 ? 0 : minutes < 30 ? 30 - minutes : 60 - minutes;
+    now.setMinutes(minutes + add);
+    setDialogMode({
+      type: "create",
+      professionalId: firstPro.id,
+      startsAt: now.toISOString(),
+    });
+    setDialogOpen(true);
+  }
+
   if (resources.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed bg-muted/20 py-16 text-center">
@@ -229,6 +257,19 @@ export function CalendarView({
 
   return (
     <>
+      {isMobile ? (
+        <div className="flex sm:hidden">
+          <Button
+            type="button"
+            onClick={openCreateFromButton}
+            className="w-full"
+          >
+            <Plus className="size-4" />
+            Nuevo turno
+          </Button>
+        </div>
+      ) : null}
+
       <div className="rounded-md border bg-card p-2 sm:p-4 zenna-calendar">
         <FullCalendar
           // Force a remount when switching between mobile/desktop so that
@@ -239,14 +280,15 @@ export function CalendarView({
             resourceTimeGridPlugin,
             timeGridPlugin,
             interactionPlugin,
+            listPlugin,
           ]}
           schedulerLicenseKey="CC-Attribution-NonCommercial-NoDerivatives"
           locale={esLocale}
           firstDay={1}
-          // Mobile: collapse all professionals into one day column. Drag-drop
-          // between pros isn't viable on a phone screen anyway; the dialog
-          // covers professional selection.
-          initialView={isMobile ? "timeGridDay" : "resourceTimeGridDay"}
+          // Mobile: use a clean list view by default. timeGrid overlapped
+          // events from multiple pros and made tap-to-create unreliable.
+          // The "Nuevo turno" button above the calendar handles creation.
+          initialView={isMobile ? "listDay" : "resourceTimeGridDay"}
           initialDate={initialDate}
           headerToolbar={
             isMobile
@@ -261,7 +303,13 @@ export function CalendarView({
             today: "Hoy",
             week: "Semana",
             day: "Día",
+            list: "Lista",
           }}
+          noEventsContent={
+            isMobile
+              ? "No hay turnos para este día. Tocá «Nuevo turno» arriba para agendar."
+              : "No hay turnos para este día."
+          }
           allDaySlot={false}
           slotMinTime="08:00:00"
           slotMaxTime="22:00:00"
@@ -279,9 +327,11 @@ export function CalendarView({
           }}
           nowIndicator
           editable={!isMobile}
-          selectable
+          selectable={!isMobile}
           selectMirror
           eventDurationEditable={!isMobile}
+          longPressDelay={250}
+          selectLongPressDelay={250}
           height="auto"
           expandRows
           resources={resources}
