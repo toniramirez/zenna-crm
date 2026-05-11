@@ -16,20 +16,18 @@ import type { AppRole } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { ROLE_LABEL } from "./nav";
 
-function initialsFromName(name: string | null | undefined, fallback: string) {
-  const source = (name ?? fallback).trim();
-  if (!source) return "??";
-  const parts = source.split(/\s+/).slice(0, 2);
+function initialsFromEmail(email: string) {
+  const local = email.split("@")[0] ?? email;
+  const parts = local.split(/[._-]+/).filter(Boolean).slice(0, 2);
+  if (parts.length === 0) return "??";
   return parts.map((p) => p[0]?.toUpperCase()).join("") || "??";
 }
 
 export function UserMenu({
-  fullName,
   email,
   role,
   compact = false,
 }: {
-  fullName: string | null;
   email: string;
   role: AppRole;
   compact?: boolean;
@@ -40,8 +38,8 @@ export function UserMenu({
         <Button
           variant="ghost"
           size="sm"
-          aria-label={compact ? (fullName ?? email) : undefined}
-          title={compact ? (fullName ?? email) : undefined}
+          aria-label={compact ? email : undefined}
+          title={compact ? email : undefined}
           className={cn(
             "h-auto w-full",
             compact
@@ -51,13 +49,13 @@ export function UserMenu({
         >
           <Avatar className="size-8">
             <AvatarFallback className="text-xs">
-              {initialsFromName(fullName, email)}
+              {initialsFromEmail(email)}
             </AvatarFallback>
           </Avatar>
           {compact ? null : (
             <div className="flex flex-col items-start leading-tight overflow-hidden">
               <span className="text-sm font-medium truncate max-w-[160px]">
-                {fullName ?? email}
+                {email}
               </span>
               <span className="text-xs text-muted-foreground">
                 {ROLE_LABEL[role]}
@@ -68,9 +66,9 @@ export function UserMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel className="flex flex-col">
-          <span className="text-sm font-medium">{fullName ?? "Usuaria"}</span>
+          <span className="text-sm font-medium truncate">{email}</span>
           <span className="text-xs font-normal text-muted-foreground">
-            {email}
+            {ROLE_LABEL[role]}
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />

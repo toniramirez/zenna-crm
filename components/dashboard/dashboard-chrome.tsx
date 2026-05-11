@@ -17,7 +17,7 @@ export function DashboardChrome({
   children,
 }: {
   items: NavItem[];
-  profile: { full_name: string | null; role: AppRole };
+  profile: { role: AppRole };
   email: string;
   children: ReactNode;
 }) {
@@ -65,7 +65,6 @@ export function DashboardChrome({
           <div className="gold-hairline mx-3 opacity-50" />
           <div className="p-2">
             <UserMenu
-              fullName={profile.full_name}
               email={email}
               role={profile.role}
               compact={focused}
@@ -86,7 +85,6 @@ export function DashboardChrome({
           </div>
           <div className="ml-auto md:hidden">
             <UserMenu
-              fullName={profile.full_name}
               email={email}
               role={profile.role}
             />

@@ -95,7 +95,7 @@ export const NAV_ITEMS: NavItem[] = [
 ];
 
 export const ROLE_LABEL: Record<AppRole, string> = {
-  owner: "Dueña",
+  owner: "Admin",
   receptionist: "Recepcionista",
   professional: "Profesional",
 };

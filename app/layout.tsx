@@ -29,6 +29,12 @@ export const metadata: Metadata = {
   title: "Zenna CRM",
   description:
     "Sistema integral para peluquería: turnero, clientas, finanzas y CRM con WhatsApp.",
+  applicationName: "Zenna",
+  appleWebApp: {
+    capable: true,
+    title: "Zenna",
+    statusBarStyle: "default",
+  },
 };
 
 export default function RootLayout({
