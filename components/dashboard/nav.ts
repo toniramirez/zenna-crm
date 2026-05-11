@@ -58,14 +58,8 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/clientas",
-    label: "Clientas",
+    label: "Clientas y servicios",
     iconName: "users",
-    roles: ["owner", "receptionist"],
-  },
-  {
-    href: "/servicios",
-    label: "Servicios",
-    iconName: "scissors",
     roles: ["owner", "receptionist"],
   },
   {
@@ -90,12 +84,6 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/crm",
     label: "CRM",
     iconName: "message",
-    roles: ["owner", "receptionist"],
-  },
-  {
-    href: "/ia",
-    label: "IA",
-    iconName: "sparkles",
     roles: ["owner", "receptionist"],
   },
   {
