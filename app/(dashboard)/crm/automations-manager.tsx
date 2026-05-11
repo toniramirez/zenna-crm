@@ -299,13 +299,11 @@ function FlowDialog({
   }
 
   function toggleService(id: string) {
-    setSelectedServices((prev) => {
-      const next = prev.includes(id)
-        ? prev.filter((s) => s !== id)
-        : [...prev, id];
-      form.setValue("serviceFilterIds", next);
-      return next;
-    });
+    const next = selectedServices.includes(id)
+      ? selectedServices.filter((s) => s !== id)
+      : [...selectedServices, id];
+    setSelectedServices(next);
+    form.setValue("serviceFilterIds", next);
   }
 
   function insertVariable(key: string) {
@@ -459,7 +457,11 @@ function FlowDialog({
                             className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/30"
                             onClick={() => toggleService(s.id)}
                           >
-                            <Checkbox checked={checked} tabIndex={-1} />
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={() => toggleService(s.id)}
+                              tabIndex={-1}
+                            />
                             <span className="text-sm">{s.name}</span>
                           </li>
                         );
