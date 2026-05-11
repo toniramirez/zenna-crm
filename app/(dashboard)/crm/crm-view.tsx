@@ -142,28 +142,32 @@ export function CrmView({
 
   // Subscribe to conversation changes (new conversations, last_message_at updates)
   useEffect(() => {
+    let cancelled = false;
+
+    async function refetch() {
+      const { data } = await supabase
+        .from("conversations")
+        .select("*, clients ( id, full_name, phone, tags )")
+        .eq("archived", false)
+        .order("last_message_at", { ascending: false, nullsFirst: false })
+        .limit(100);
+      if (!cancelled && data) setConversations(data as ConversationWithClient[]);
+    }
+
     const channel = supabase
       .channel("crm-conversations")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "conversations" },
-        async () => {
-          const { data } = await supabase
-            .from("conversations")
-            .select(
-              "*, clients ( id, full_name, phone, tags )",
-            )
-            .eq("archived", false)
-            .order("last_message_at", {
-              ascending: false,
-              nullsFirst: false,
-            })
-            .limit(100);
-          if (data) setConversations(data as ConversationWithClient[]);
-        },
+        () => void refetch(),
       )
       .subscribe();
+
+    const pollId = setInterval(() => void refetch(), 5000);
+
     return () => {
+      cancelled = true;
+      clearInterval(pollId);
       void supabase.removeChannel(channel);
     };
   }, [supabase]);
@@ -174,20 +178,46 @@ export function CrmView({
       setMessages([]);
       return;
     }
+    // Capture into a const so TS narrows it inside the inner closures —
+    // outer narrowing doesn't propagate through async function boundaries.
+    const sid: string = selectedId;
     let cancelled = false;
 
-    setLoadingMessages(true);
-    void (async () => {
+    async function refetch(initial = false) {
       const { data } = await supabase
         .from("messages")
         .select("*")
-        .eq("conversation_id", selectedId)
+        .eq("conversation_id", sid)
         .order("sent_at", { ascending: true })
         .limit(500);
+      if (cancelled || !data) return;
+      const fetched = data as MessageRow[];
+      if (initial) {
+        setMessages(fetched);
+        return;
+      }
+      // Only replace if something actually changed — avoids spurious
+      // re-renders and scroll jumps when realtime already kept us in sync.
+      setMessages((prev) => {
+        if (prev.length !== fetched.length) return fetched;
+        for (let i = 0; i < prev.length; i++) {
+          if (
+            prev[i].id !== fetched[i].id ||
+            prev[i].status !== fetched[i].status ||
+            prev[i].delivered_at !== fetched[i].delivered_at
+          ) {
+            return fetched;
+          }
+        }
+        return prev;
+      });
+    }
+
+    setLoadingMessages(true);
+    void (async () => {
+      await refetch(true);
       if (cancelled) return;
-      setMessages((data as MessageRow[]) ?? []);
       setLoadingMessages(false);
-      // Mark as read
       void markConversationReadAction(selectedId);
     })();
 
@@ -202,9 +232,10 @@ export function CrmView({
           filter: `conversation_id=eq.${selectedId}`,
         },
         (payload) => {
+          const incoming = payload.new as MessageRow;
           setMessages((prev) => {
-            const next = [...prev, payload.new as MessageRow];
-            return next;
+            if (prev.some((m) => m.id === incoming.id)) return prev;
+            return [...prev, incoming];
           });
           void markConversationReadAction(selectedId);
         },
@@ -226,8 +257,11 @@ export function CrmView({
       )
       .subscribe();
 
+    const pollId = setInterval(() => void refetch(false), 3000);
+
     return () => {
       cancelled = true;
+      clearInterval(pollId);
       void supabase.removeChannel(channel);
     };
   }, [selectedId, supabase]);
@@ -627,7 +661,7 @@ export function CrmView({
 
             <form
               onSubmit={handleSend}
-              className="border-t p-3 flex items-center gap-2 bg-card"
+              className="border-t p-2 sm:p-3 flex items-center gap-1.5 sm:gap-2 bg-card"
             >
               <MediaInput
                 conversationId={selected.id}
@@ -646,11 +680,13 @@ export function CrmView({
                 placeholder="Escribí un mensaje…"
                 autoComplete="off"
                 disabled={isPending}
+                className="flex-1 min-w-0"
               />
               <Button
                 type="submit"
                 disabled={isPending || draft.trim().length === 0}
                 size="icon"
+                className="shrink-0"
               >
                 <Send className="size-4" />
                 <span className="sr-only">Enviar</span>

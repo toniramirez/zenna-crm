@@ -104,6 +104,17 @@ export function CalendarView({
     setInitialDate(new Date().toISOString());
   }, []);
 
+  // Track viewport width so we can switch to a single-column day view on
+  // mobile — ResourceTimeGrid with N professionals is unreadable below ~640px.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 639px)");
+    const update = () => setIsMobile(mql.matches);
+    update();
+    mql.addEventListener("change", update);
+    return () => mql.removeEventListener("change", update);
+  }, []);
+
   const proColorById = useMemo(
     () => new Map(professionals.map((p) => [p.id, p.color])),
     [professionals],
@@ -220,6 +231,10 @@ export function CalendarView({
     <>
       <div className="rounded-md border bg-card p-2 sm:p-4 zenna-calendar">
         <FullCalendar
+          // Force a remount when switching between mobile/desktop so that
+          // `initialView` actually changes — FullCalendar caches the view at
+          // mount and won't switch live otherwise.
+          key={isMobile ? "mobile" : "desktop"}
           plugins={[
             resourceTimeGridPlugin,
             timeGridPlugin,
@@ -228,13 +243,20 @@ export function CalendarView({
           schedulerLicenseKey="CC-Attribution-NonCommercial-NoDerivatives"
           locale={esLocale}
           firstDay={1}
-          initialView="resourceTimeGridDay"
+          // Mobile: collapse all professionals into one day column. Drag-drop
+          // between pros isn't viable on a phone screen anyway; the dialog
+          // covers professional selection.
+          initialView={isMobile ? "timeGridDay" : "resourceTimeGridDay"}
           initialDate={initialDate}
-          headerToolbar={{
-            left: "prev,next today",
-            center: "title",
-            right: "resourceTimeGridDay,timeGridWeek",
-          }}
+          headerToolbar={
+            isMobile
+              ? { left: "prev,next", center: "title", right: "today" }
+              : {
+                  left: "prev,next today",
+                  center: "title",
+                  right: "resourceTimeGridDay,timeGridWeek",
+                }
+          }
           buttonText={{
             today: "Hoy",
             week: "Semana",
@@ -243,7 +265,7 @@ export function CalendarView({
           allDaySlot={false}
           slotMinTime="08:00:00"
           slotMaxTime="22:00:00"
-          slotDuration="00:30:00"
+          slotDuration={isMobile ? "01:00:00" : "00:30:00"}
           slotLabelInterval="01:00"
           slotLabelFormat={{
             hour: "2-digit",
@@ -256,10 +278,10 @@ export function CalendarView({
             hour12: false,
           }}
           nowIndicator
-          editable
+          editable={!isMobile}
           selectable
           selectMirror
-          eventDurationEditable
+          eventDurationEditable={!isMobile}
           height="auto"
           expandRows
           resources={resources}

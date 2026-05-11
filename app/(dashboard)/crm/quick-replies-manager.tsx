@@ -198,7 +198,7 @@ function QuickReplyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
             {editing ? "Editar mensaje rápido" : "Nuevo mensaje rápido"}

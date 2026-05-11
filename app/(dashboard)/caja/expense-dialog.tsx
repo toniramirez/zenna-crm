@@ -130,7 +130,7 @@ export function NewExpenseButton({
       <DialogTrigger asChild>
         <Button variant={variant}>Registrar egreso</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Nuevo egreso</DialogTitle>
           <DialogDescription>

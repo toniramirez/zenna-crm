@@ -44,7 +44,17 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <Providers>{children}</Providers>
-        <Toaster richColors closeButton position="top-right" />
+        {/*
+         * Mobile-safe toast position: bottom-right never overlaps the mobile
+         * header (h-14) at the top. mobileOffset adds breathing room on
+         * narrow screens.
+         */}
+        <Toaster
+          richColors
+          closeButton
+          position="bottom-right"
+          mobileOffset={{ bottom: "1rem", right: "0.75rem", left: "0.75rem" }}
+        />
       </body>
     </html>
   );

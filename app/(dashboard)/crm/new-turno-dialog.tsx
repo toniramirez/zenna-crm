@@ -373,7 +373,7 @@ export function NewTurnoDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[96vw] sm:max-w-none sm:w-[min(1280px,96vw)] max-h-[94vh] overflow-hidden p-4 sm:p-6"
+        className="w-[96vw] sm:max-w-none sm:w-[min(1280px,96vw)] max-h-[94dvh] p-3 sm:p-6"
       >
         <DialogHeader className="space-y-0.5">
           <DialogTitle className="text-base">Nuevo turno desde el chat</DialogTitle>
@@ -428,7 +428,7 @@ export function NewTurnoDialog({
                 selectMirror
                 editable={false}
                 eventDurationEditable={false}
-                height={460}
+                height={320}
                 expandRows
                 resources={resources}
                 events={events}

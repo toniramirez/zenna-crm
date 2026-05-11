@@ -392,7 +392,7 @@ export function PresupuestoDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[96vw] sm:max-w-none sm:w-[min(1100px,96vw)] max-h-[94vh] overflow-y-auto p-4 sm:p-6">
+      <DialogContent className="w-[96vw] sm:max-w-none sm:w-[min(1100px,96vw)] max-h-[94dvh] p-3 sm:p-6">
         <DialogHeader className="space-y-0.5">
           <DialogTitle className="text-base">Nuevo presupuesto</DialogTitle>
           <DialogDescription className="text-xs">
