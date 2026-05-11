@@ -173,9 +173,21 @@
   --font-display: var(--font-display);
 
   --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.04);
-  --shadow-sm: 0 1px 3px oklch(0 0 0 / 0.05), 0 1px 2px oklch(0 0 0 / 0.03);
-  --shadow-md: 0 4px 8px -2px oklch(0 0 0 / 0.05), 0 2px 4px -2px oklch(0 0 0 / 0.03);
-  --shadow-lg: 0 12px 20px -6px oklch(0 0 0 / 0.06), 0 4px 8px -4px oklch(0 0 0 / 0.04);
+  --shadow-sm:
+    0 1px 3px oklch(0 0 0 / 0.05),
+    0 1px 2px oklch(0 0 0 / 0.03),
+    0 0 0 1px oklch(0.74 0.07 80 / 0.04);
+  --shadow-md:
+    0 4px 12px -2px oklch(0 0 0 / 0.06),
+    0 2px 4px -2px oklch(0 0 0 / 0.03),
+    0 0 0 1px oklch(0.74 0.07 80 / 0.06);
+  --shadow-lg:
+    0 18px 30px -8px oklch(0 0 0 / 0.07),
+    0 6px 12px -4px oklch(0 0 0 / 0.04),
+    0 0 0 1px oklch(0.74 0.07 80 / 0.08);
+  --shadow-gold:
+    0 8px 24px -6px oklch(0.74 0.07 80 / 0.22),
+    0 0 0 1px oklch(0.74 0.07 80 / 0.18);
 }
 
 @layer base {
@@ -186,11 +198,22 @@
   body {
     @apply text-foreground;
     background: var(--background);
-    /* Faint warm bloom from the top — keeps the cream from looking flat */
+    /* Layered luminous bloom — a bright crown at the top and a soft
+     * champagne wash near the bottom. Gives the cream a "lit-from-within"
+     * feel instead of looking like flat paper. */
     background-image:
-      radial-gradient(60% 50% at 50% 0%, oklch(0.99 0.006 85 / 0.5) 0%, transparent 60%);
+      radial-gradient(70% 55% at 50% -5%, oklch(1 0 0 / 0.85) 0%, transparent 55%),
+      radial-gradient(45% 35% at 12% 8%, oklch(0.74 0.07 80 / 0.10) 0%, transparent 60%),
+      radial-gradient(50% 40% at 92% 95%, oklch(0.74 0.07 80 / 0.08) 0%, transparent 65%);
     background-attachment: fixed;
     font-feature-settings: "cv11", "ss01", "ss03";
+  }
+
+  .dark body {
+    background-image:
+      radial-gradient(70% 55% at 50% -5%, oklch(0.30 0.012 60 / 0.6) 0%, transparent 55%),
+      radial-gradient(45% 35% at 12% 8%, oklch(0.78 0.08 80 / 0.10) 0%, transparent 60%),
+      radial-gradient(50% 40% at 92% 95%, oklch(0.78 0.08 80 / 0.08) 0%, transparent 65%);
   }
 
   h1, h2, h3 {
@@ -212,20 +235,93 @@
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  /* Cards: white surface on cream + soft shadow + generous radius */
+  /* Cards: white surface on cream + soft shadow + generous radius +
+   * a hairline champagne gleam along the top edge. The gleam is drawn
+   * via a pseudo-element so it doesn't fight with the existing border. */
   [data-slot="card"] {
+    position: relative;
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-sm);
+    background-image: linear-gradient(
+      180deg,
+      oklch(1 0 0) 0%,
+      oklch(0.985 0.006 85) 100%
+    );
+  }
+
+  [data-slot="card"]::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 12%;
+    right: 12%;
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      transparent,
+      oklch(0.74 0.07 80 / 0.55) 50%,
+      transparent
+    );
+    border-radius: 1px;
+    pointer-events: none;
   }
 
   main [data-slot="card"]:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md), 0 0 24px -8px oklch(0.74 0.07 80 / 0.25);
+  }
+
+  main [data-slot="card"]:hover::before {
+    left: 8%;
+    right: 8%;
+    background: linear-gradient(
+      to right,
+      transparent,
+      oklch(0.74 0.07 80 / 0.85) 50%,
+      transparent
+    );
+  }
+
+  [data-slot="card"]::before {
+    transition:
+      left 280ms cubic-bezier(0.4, 0, 0.2, 1),
+      right 280ms cubic-bezier(0.4, 0, 0.2, 1),
+      background 280ms ease;
   }
 
   [data-slot="dialog-content"] {
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-lg);
+    background-image: linear-gradient(
+      180deg,
+      oklch(1 0 0) 0%,
+      oklch(0.985 0.006 85) 100%
+    );
+    position: relative;
+  }
+
+  [data-slot="dialog-content"]::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      135deg,
+      oklch(0.74 0.07 80 / 0.45),
+      oklch(0.74 0.07 80 / 0.05) 35%,
+      oklch(0.74 0.07 80 / 0.05) 65%,
+      oklch(0.74 0.07 80 / 0.4)
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+            mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    pointer-events: none;
   }
 
   [data-slot="popover-content"] {
@@ -266,15 +362,36 @@
     content: "";
     position: absolute;
     left: -3px;
-    top: 30%;
-    bottom: 30%;
+    top: 22%;
+    bottom: 22%;
     width: 3px;
-    border-radius: 0 2px 2px 0;
-    background: var(--gold);
+    border-radius: 0 3px 3px 0;
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      var(--gold) 25%,
+      var(--gold) 75%,
+      transparent
+    );
+    box-shadow: 0 0 12px oklch(0.74 0.07 80 / 0.65);
+    animation: zenna-gold-rise 360ms cubic-bezier(0.4, 0, 0.2, 1) both;
   }
 
   .text-gold {
     color: var(--gold);
+  }
+
+  .text-gold-gradient {
+    background: linear-gradient(
+      135deg,
+      oklch(0.62 0.10 75) 0%,
+      oklch(0.82 0.08 85) 45%,
+      oklch(0.68 0.10 75) 100%
+    );
+    -webkit-background-clip: text;
+            background-clip: text;
+    -webkit-text-fill-color: transparent;
+            color: transparent;
   }
 
   /* Decorative hairline divider with a champagne gleam in the middle */
@@ -284,27 +401,200 @@
       to right,
       transparent,
       var(--gold-soft) 30%,
+      var(--gold) 50%,
       var(--gold-soft) 70%,
       transparent
     );
+  }
+
+  /* Glassy chrome surface for sidebar / sticky headers */
+  .surface-glass {
+    background: oklch(0.97 0.012 85 / 0.72);
+    backdrop-filter: saturate(140%) blur(14px);
+    -webkit-backdrop-filter: saturate(140%) blur(14px);
   }
 }
 
 /* ── Page entrance (subtle, fast) ──────────────────────────────────── */
 
 @keyframes zenna-page-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(6px) scale(0.995); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes zenna-gold-rise {
+  from { opacity: 0; transform: scaleY(0.3); }
+  to   { opacity: 1; transform: scaleY(1); }
+}
+
+@keyframes zenna-shine {
+  0%   { transform: translateX(-120%) skewX(-18deg); }
+  100% { transform: translateX(260%) skewX(-18deg); }
+}
+
+@keyframes zenna-gold-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 oklch(0.74 0.07 80 / 0); }
+  50%      { box-shadow: 0 0 24px 2px oklch(0.74 0.07 80 / 0.18); }
 }
 
 main > * {
-  animation: zenna-page-in 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: zenna-page-in 280ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
-main > * > *:nth-child(1) { animation: zenna-page-in 280ms ease-out 30ms both; }
-main > * > *:nth-child(2) { animation: zenna-page-in 280ms ease-out 70ms both; }
-main > * > *:nth-child(3) { animation: zenna-page-in 280ms ease-out 110ms both; }
-main > * > *:nth-child(4) { animation: zenna-page-in 280ms ease-out 150ms both; }
+main > * > *:nth-child(1) { animation: zenna-page-in 320ms cubic-bezier(0.4, 0, 0.2, 1) 30ms both; }
+main > * > *:nth-child(2) { animation: zenna-page-in 320ms cubic-bezier(0.4, 0, 0.2, 1) 80ms both; }
+main > * > *:nth-child(3) { animation: zenna-page-in 320ms cubic-bezier(0.4, 0, 0.2, 1) 130ms both; }
+main > * > *:nth-child(4) { animation: zenna-page-in 320ms cubic-bezier(0.4, 0, 0.2, 1) 180ms both; }
+
+/* ── Premium primary button: gradient + gold sheen sweep on hover ──── */
+
+[data-slot="button"][data-variant="default"] {
+  background-image: linear-gradient(
+    180deg,
+    oklch(0.22 0.006 50) 0%,
+    oklch(0.13 0.005 50) 100%
+  );
+  box-shadow:
+    0 1px 0 oklch(1 0 0 / 0.08) inset,
+    0 1px 2px oklch(0 0 0 / 0.12),
+    0 0 0 1px oklch(0.74 0.07 80 / 0.15);
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+[data-slot="button"][data-variant="default"]:hover {
+  box-shadow:
+    0 1px 0 oklch(1 0 0 / 0.10) inset,
+    0 4px 14px -4px oklch(0 0 0 / 0.25),
+    0 0 0 1px oklch(0.74 0.07 80 / 0.35),
+    0 0 18px -6px oklch(0.74 0.07 80 / 0.45);
+  transform: translateY(-1px);
+}
+
+[data-slot="button"][data-variant="default"]:active {
+  transform: translateY(0);
+}
+
+[data-slot="button"][data-variant="default"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    oklch(0.74 0.07 80 / 0) 35%,
+    oklch(0.96 0.06 85 / 0.45) 50%,
+    oklch(0.74 0.07 80 / 0) 65%,
+    transparent 100%
+  );
+  transform: translateX(-120%) skewX(-18deg);
+  pointer-events: none;
+  z-index: -1;
+}
+
+[data-slot="button"][data-variant="default"]:hover::after {
+  animation: zenna-shine 720ms cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+/* Outline button: subtle gold lift on hover */
+[data-slot="button"][data-variant="outline"]:hover {
+  border-color: oklch(0.74 0.07 80 / 0.55);
+  box-shadow: 0 0 0 3px oklch(0.74 0.07 80 / 0.08);
+}
+
+/* ── Sidebar: warm cream column, gold seam against content ─────────── */
+
+aside.surface-glass {
+  background:
+    linear-gradient(
+      180deg,
+      oklch(0.97 0.014 85) 0%,
+      oklch(0.952 0.014 85) 60%,
+      oklch(0.94 0.012 82) 100%
+    );
+  border-right: 1px solid transparent;
+  background-clip: padding-box;
+  position: relative;
+}
+
+aside.surface-glass::after {
+  content: "";
+  position: absolute;
+  top: 8%;
+  bottom: 8%;
+  right: -1px;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    oklch(0.74 0.07 80 / 0.35) 18%,
+    oklch(0.74 0.07 80 / 0.55) 50%,
+    oklch(0.74 0.07 80 / 0.35) 82%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+/* ── Sidebar nav items: hover gleam + buttery active state ─────────── */
+
+aside nav a {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+aside nav a:hover:not(.sidebar-nav-active) {
+  background: linear-gradient(
+    90deg,
+    oklch(0.74 0.07 80 / 0.08),
+    oklch(0.74 0.07 80 / 0.02)
+  );
+  color: var(--foreground);
+}
+
+aside nav a.sidebar-nav-active {
+  background-image: linear-gradient(
+    180deg,
+    oklch(0.22 0.006 50) 0%,
+    oklch(0.12 0.005 50) 100%
+  );
+  box-shadow:
+    0 1px 0 oklch(1 0 0 / 0.06) inset,
+    0 4px 12px -6px oklch(0 0 0 / 0.25),
+    0 0 0 1px oklch(0.74 0.07 80 / 0.25);
+}
+
+/* ── Avatar inside user menu: gold ring ────────────────────────────── */
+
+[data-slot="dropdown-menu-trigger"] [data-slot="avatar"] {
+  box-shadow:
+    0 0 0 1px oklch(1 0 0),
+    0 0 0 2px oklch(0.74 0.07 80 / 0.45);
+}
+
+/* ── Inputs: lift on focus instead of feeling stamped ──────────────── */
+
+[data-slot="input"]:focus,
+[data-slot="input"]:focus-visible,
+[data-slot="textarea"]:focus,
+[data-slot="textarea"]:focus-visible,
+[data-slot="select-trigger"]:focus,
+[data-slot="select-trigger"]:focus-visible {
+  box-shadow:
+    0 0 0 3px oklch(0.74 0.07 80 / 0.18),
+    0 4px 10px -6px oklch(0.74 0.07 80 / 0.25);
+}
+
+/* Respect reduced motion: kill shine sweeps + entrance animations */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 
 /* ── FullCalendar — de-Excel-ified ─────────────────────────────────── */
 

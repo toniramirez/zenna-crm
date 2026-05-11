@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Separator } from "@/components/ui/separator";
 import type { AppRole } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { BrandWordmark } from "./brand-wordmark";
@@ -31,14 +30,18 @@ export function DashboardChrome({
         focused ? "md:grid-cols-[68px_1fr]" : "md:grid-cols-[260px_1fr]",
       )}
     >
-      <aside className="hidden md:flex border-r border-border/60 bg-sidebar text-sidebar-foreground">
+      <aside className="surface-glass hidden md:flex text-sidebar-foreground">
         <div className="flex flex-col w-full">
           <div
             className={cn(
-              "flex items-center justify-center border-b border-border/60",
+              "flex items-center justify-center relative",
               focused ? "px-2 py-5" : "px-4 py-8",
             )}
           >
+            <span
+              aria-hidden
+              className="absolute bottom-0 left-[15%] right-[15%] h-px bg-gradient-to-r from-transparent via-[color:var(--gold)]/55 to-transparent"
+            />
             {focused ? (
               <span
                 className="font-display font-medium text-foreground text-2xl select-none"
@@ -59,7 +62,7 @@ export function DashboardChrome({
           >
             <SidebarNav items={items} compact={focused} />
           </div>
-          <Separator className="bg-border/60" />
+          <div className="gold-hairline mx-3 opacity-50" />
           <div className="p-2">
             <UserMenu
               fullName={profile.full_name}
@@ -72,7 +75,11 @@ export function DashboardChrome({
       </aside>
 
       <div className="flex flex-col min-w-0 min-h-0">
-        <header className="md:hidden flex h-14 shrink-0 items-center gap-2 border-b border-border/60 bg-background/80 backdrop-blur px-3">
+        <header className="md:hidden relative flex h-14 shrink-0 items-center gap-2 surface-glass px-3">
+          <span
+            aria-hidden
+            className="absolute bottom-0 left-[10%] right-[10%] h-px bg-gradient-to-r from-transparent via-[color:var(--gold)]/55 to-transparent"
+          />
           <MobileSidebar items={items} />
           <div className="flex items-center gap-2 md:hidden">
             <BrandWordmark size="sm" />

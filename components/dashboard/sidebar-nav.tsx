@@ -35,8 +35,8 @@ export function SidebarNav({
                 ? "justify-center px-2 py-2"
                 : "gap-3 px-3 py-2",
               active
-                ? "sidebar-nav-active bg-primary text-primary-foreground shadow-soft"
-                : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",
+                ? "sidebar-nav-active text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             <Icon className="size-4 shrink-0" />

@@ -247,7 +247,6 @@ function FlowDialog({
   const [isPending, startTransition] = useTransition();
   const [offsetValue, setOffsetValue] = useState(24);
   const [offsetUnit, setOffsetUnit] = useState<"min" | "h" | "d">("h");
-  const [selectedServices, setSelectedServices] = useState<string[]>([]);
 
   const form = useForm<AutomationFlowInput>({
     resolver: zodResolver(automationFlowSchema),
@@ -267,7 +266,6 @@ function FlowDialog({
       const { value, unit } = fromMinutes(flow.trigger_offset_minutes);
       setOffsetValue(value);
       setOffsetUnit(unit);
-      setSelectedServices(flow.service_filter_ids);
       form.reset({
         name: flow.name,
         trigger: flow.trigger,
@@ -279,7 +277,6 @@ function FlowDialog({
     } else {
       setOffsetValue(24);
       setOffsetUnit("h");
-      setSelectedServices([]);
       form.reset({
         name: "",
         trigger: "before_appointment",
@@ -296,14 +293,6 @@ function FlowDialog({
     setOffsetValue(value);
     setOffsetUnit(unit);
     form.setValue("triggerOffsetMinutes", toMinutes(value, unit));
-  }
-
-  function toggleService(id: string) {
-    const next = selectedServices.includes(id)
-      ? selectedServices.filter((s) => s !== id)
-      : [...selectedServices, id];
-    setSelectedServices(next);
-    form.setValue("serviceFilterIds", next);
   }
 
   function insertVariable(key: string) {
@@ -378,7 +367,6 @@ function FlowDialog({
                     // Triggers that don't operate on appointments can't carry
                     // a service filter; clear it when switching to one.
                     if (!APPOINTMENT_TRIGGERS.includes(next)) {
-                      setSelectedServices([]);
                       form.setValue("serviceFilterIds", []);
                     }
                   }}
@@ -435,51 +423,68 @@ function FlowDialog({
             </div>
 
             {APPOINTMENT_TRIGGERS.includes(form.watch("trigger")) ? (
-              <div className="space-y-2">
-                <FormLabel>Aplica a estos servicios (opcional)</FormLabel>
-                <FormDescription>
-                  Si no elegís ninguno, el flujo se dispara para CUALQUIER
-                  turno. Si elegís uno o más, solo se dispara cuando el turno
-                  incluye alguno de esos servicios.
-                </FormDescription>
-                <div className="rounded-md border max-h-44 overflow-y-auto">
-                  {services.length === 0 ? (
-                    <p className="p-3 text-sm text-muted-foreground">
-                      No hay servicios activos cargados.
-                    </p>
-                  ) : (
-                    <ul className="divide-y">
-                      {services.map((s) => {
-                        const checked = selectedServices.includes(s.id);
-                        return (
-                          <li
-                            key={s.id}
-                            className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/30"
-                            onClick={() => toggleService(s.id)}
-                          >
-                            <Checkbox
-                              checked={checked}
-                              onCheckedChange={() => toggleService(s.id)}
-                              tabIndex={-1}
-                            />
-                            <span className="text-sm">{s.name}</span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </div>
-                {selectedServices.length === 0 ? (
-                  <Badge variant="outline" className="text-xs font-normal">
-                    Se aplica a TODOS los servicios
-                  </Badge>
-                ) : (
-                  <Badge className="text-xs">
-                    {selectedServices.length} servicio
-                    {selectedServices.length === 1 ? "" : "s"} seleccionados
-                  </Badge>
-                )}
-              </div>
+              <FormField
+                control={form.control}
+                name="serviceFilterIds"
+                render={({ field }) => {
+                  const value = field.value ?? [];
+                  return (
+                    <FormItem>
+                      <FormLabel>Aplica a estos servicios (opcional)</FormLabel>
+                      <FormDescription>
+                        Si no elegís ninguno, el flujo se dispara para CUALQUIER
+                        turno. Si elegís uno o más, solo se dispara cuando el
+                        turno incluye alguno de esos servicios.
+                      </FormDescription>
+                      <div className="rounded-md border max-h-44 overflow-y-auto">
+                        {services.length === 0 ? (
+                          <p className="p-3 text-sm text-muted-foreground">
+                            No hay servicios activos cargados.
+                          </p>
+                        ) : (
+                          <ul className="divide-y">
+                            {services.map((s) => {
+                              const checked = value.includes(s.id);
+                              const toggle = () => {
+                                field.onChange(
+                                  checked
+                                    ? value.filter((v) => v !== s.id)
+                                    : [...value, s.id],
+                                );
+                              };
+                              return (
+                                <li
+                                  key={s.id}
+                                  className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/30"
+                                  onClick={toggle}
+                                >
+                                  <Checkbox
+                                    checked={checked}
+                                    onCheckedChange={toggle}
+                                    tabIndex={-1}
+                                  />
+                                  <span className="text-sm">{s.name}</span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                      {value.length === 0 ? (
+                        <Badge variant="outline" className="text-xs font-normal">
+                          Se aplica a TODOS los servicios
+                        </Badge>
+                      ) : (
+                        <Badge className="text-xs">
+                          {value.length} servicio
+                          {value.length === 1 ? "" : "s"} seleccionados
+                        </Badge>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
+              />
             ) : (
               <div className="rounded-md border border-dashed bg-muted/10 p-3 text-xs text-muted-foreground">
                 Este trigger reacciona a mensajes entrantes de WhatsApp, no a

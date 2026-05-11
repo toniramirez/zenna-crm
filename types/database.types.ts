@@ -803,6 +803,66 @@ export type Database = {
           },
         ]
       }
+      outreach_suggestions: {
+        Row: {
+          client_id: string
+          created_at: string
+          dismissed_at: string | null
+          generated_at: string
+          generated_by: string | null
+          id: string
+          message_body: string
+          reason: string
+          sent_at: string | null
+          service_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          dismissed_at?: string | null
+          generated_at?: string
+          generated_by?: string | null
+          id?: string
+          message_body: string
+          reason: string
+          sent_at?: string | null
+          service_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          dismissed_at?: string | null
+          generated_at?: string
+          generated_by?: string | null
+          id?: string
+          message_body?: string
+          reason?: string
+          sent_at?: string | null
+          service_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outreach_suggestions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outreach_suggestions_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_methods: {
         Row: {
           active: boolean

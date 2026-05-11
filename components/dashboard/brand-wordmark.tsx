@@ -53,7 +53,7 @@ export function BrandWordmark({
       </span>
       <span
         className={cn(
-          "uppercase font-medium text-muted-foreground",
+          "uppercase font-medium text-gold-gradient",
           s.tag,
           s.gap,
           s.tracking,
