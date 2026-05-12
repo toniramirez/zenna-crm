@@ -1,6 +1,5 @@
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { ArrowDownRight, ArrowUpRight, Wallet } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import {
   dayRangeISO,
@@ -15,6 +14,7 @@ import { CajaDateNav } from "./date-nav";
 import { NewExpenseButton } from "./expense-dialog";
 import { ExpensesList } from "./expenses-list";
 import { PaymentsList } from "./payments-list";
+import { CajaSummaryCards } from "./summary-cards";
 import type { ExpenseRow, PaymentWithDetails, UnpaidAppointment } from "./types";
 import { UnpaidList } from "./unpaid-list";
 
@@ -177,67 +177,17 @@ export default async function CajaPage({ searchParams }: Props) {
       </div>
 
       {/* Top cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="rounded-xl border bg-card p-5 shadow-sm">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
-            <Wallet className="size-3.5 text-gold" />
-            Efectivo a rendir
-          </div>
-          <div className="mt-2 text-3xl font-semibold tabular-nums">
-            {formatCurrency(cashToRender)}
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Cobrado en efectivo {formatCurrency(cashIncome)}
-            {cashExpensesForDay > 0
-              ? ` − egresos atribuidos a esta caja ${formatCurrency(cashExpensesForDay)}`
-              : ""}
-          </p>
-        </div>
-
-        <div className="rounded-xl border bg-card p-5 shadow-sm">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
-            <ArrowUpRight className="size-3.5 text-emerald-600" />
-            Ingresos del día
-          </div>
-          <div className="mt-2 text-3xl font-semibold tabular-nums">
-            {formatCurrency(totalIncome)}
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {payments.length} cobro{payments.length === 1 ? "" : "s"}
-          </p>
-        </div>
-
-        {isOwner ? (
-          <div className="rounded-xl border bg-card p-5 shadow-sm">
-            <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
-              <ArrowDownRight className="size-3.5 text-rose-600" />
-              Egresos del mes
-            </div>
-            <div className="mt-2 text-3xl font-semibold tabular-nums text-rose-700">
-              −{formatCurrency(totalExpensesMonth)}
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground capitalize-first">
-              {monthLabel} · resultado del día:{" "}
-              <strong
-                className={
-                  netResultDay >= 0 ? "text-emerald-700" : "text-rose-700"
-                }
-              >
-                {formatCurrency(netResultDay)}
-              </strong>
-            </p>
-          </div>
-        ) : (
-          <div className="rounded-xl border bg-card p-5 shadow-sm opacity-60">
-            <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
-              Egresos
-            </div>
-            <div className="mt-2 text-sm text-muted-foreground">
-              Solo la dueña los ve.
-            </div>
-          </div>
-        )}
-      </div>
+      <CajaSummaryCards
+        isOwner={isOwner}
+        cashToRender={cashToRender}
+        cashIncome={cashIncome}
+        cashExpensesForDay={cashExpensesForDay}
+        totalIncome={totalIncome}
+        paymentsCount={payments.length}
+        totalExpensesMonth={totalExpensesMonth}
+        netResultDay={netResultDay}
+        monthLabel={monthLabel}
+      />
 
       {/* Breakdown by method */}
       {payments.length > 0 ? (
