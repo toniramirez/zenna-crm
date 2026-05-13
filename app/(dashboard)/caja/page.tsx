@@ -38,13 +38,15 @@ export default async function CajaPage({ searchParams }: Props) {
 
   const supabase = await createClient();
 
-  // Payments for the selected day
+  // Payments for the selected day — la caja pertenece al día del TURNO (starts_at),
+  // no al momento en que se registró el cobro. Así, si la recepcionista carga
+  // hoy un servicio de ayer, el cobro aparece en la caja de ayer.
   const paymentsResult = await supabase
     .from("payments")
     .select(
       `
       *,
-      appointments (
+      appointments!inner (
         id, starts_at, professional_id,
         professionals ( id, full_name, color ),
         clients ( id, full_name ),
@@ -52,8 +54,8 @@ export default async function CajaPage({ searchParams }: Props) {
       )
     `,
     )
-    .gte("paid_at", dayStart)
-    .lte("paid_at", dayEnd)
+    .gte("appointments.starts_at", dayStart)
+    .lte("appointments.starts_at", dayEnd)
     .order("paid_at", { ascending: false });
 
   // Expenses for the whole month (only owner — receptionist gets empty)
@@ -67,26 +69,25 @@ export default async function CajaPage({ searchParams }: Props) {
         .order("created_at", { ascending: false })
     : { data: [] as never[] };
 
-  // Pendientes de cobro: today's not-yet-paid non-cancelled turnos
-  // Only meaningful for "today"
-  const unpaidResult = isToday
-    ? await supabase
-        .from("appointments")
-        .select(
-          `
-          id, starts_at, ends_at, status,
-          professionals!inner ( id, full_name, color ),
-          clients ( id, full_name, phone ),
-          appointment_services ( id, professional_id, price_at_booking, duration_at_booking, services ( name ) ),
-          payments ( id )
-        `,
-        )
-        .gte("starts_at", dayStart)
-        .lte("starts_at", dayEnd)
-        .neq("status", "cancelled")
-        .neq("status", "no_show")
-        .order("starts_at")
-    : { data: [] as never[] };
+  // Pendientes de cobro del día seleccionado (no sólo hoy): la recepcionista
+  // puede pararse en la caja de un día pasado para cobrar un servicio cargado
+  // tarde a la agenda.
+  const unpaidResult = await supabase
+    .from("appointments")
+    .select(
+      `
+      id, starts_at, ends_at, status,
+      professionals!inner ( id, full_name, color ),
+      clients ( id, full_name, phone ),
+      appointment_services ( id, professional_id, price_at_booking, duration_at_booking, services ( name ) ),
+      payments ( id )
+    `,
+    )
+    .gte("starts_at", dayStart)
+    .lte("starts_at", dayEnd)
+    .neq("status", "cancelled")
+    .neq("status", "no_show")
+    .order("starts_at");
 
   const payments = (paymentsResult.data as PaymentWithDetails[] | null) ?? [];
   const expenses = (expensesResult.data as ExpenseRow[]) ?? [];
@@ -217,15 +218,13 @@ export default async function CajaPage({ searchParams }: Props) {
         </div>
       ) : null}
 
-      {/* Pendientes — solo para hoy */}
-      {isToday ? (
-        <section className="space-y-2">
-          <h2 className="text-base font-semibold tracking-tight">
-            Pendientes de cobro hoy
-          </h2>
-          <UnpaidList appointments={unpaid} />
-        </section>
-      ) : null}
+      {/* Pendientes del día seleccionado */}
+      <section className="space-y-2">
+        <h2 className="text-base font-semibold tracking-tight">
+          {isToday ? "Pendientes de cobro hoy" : "Pendientes de cobro del día"}
+        </h2>
+        <UnpaidList appointments={unpaid} />
+      </section>
 
       {/* Cobros del día */}
       <section className="space-y-2">

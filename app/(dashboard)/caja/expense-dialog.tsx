@@ -186,8 +186,9 @@ export function NewExpenseButton({
                     <FormControl>
                       <Input
                         type="number"
+                        inputMode="decimal"
                         min={0}
-                        step={500}
+                        step="0.01"
                         {...field}
                         onChange={(e) =>
                           field.onChange(e.target.valueAsNumber || 0)
