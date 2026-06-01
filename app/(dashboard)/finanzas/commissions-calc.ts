@@ -27,12 +27,17 @@ export type GrossOwedSnapshot = {
 
 /**
  * Para cada pago:
- *   1. Suma `price_at_booking` de todos sus servicios.
- *   2. Atribuye al pago a cada profesional según su porción de precio.
+ *   1. Calcula un peso por servicio: `price_at_booking` si el turno tiene
+ *      precios cargados; si están todos en 0/null, cae a peso uniforme (1 por
+ *      servicio). El monto real lo aporta `payments.amount`, no la suma de
+ *      precios — el prorrateo sólo decide cómo repartir ese monto entre las
+ *      profesionales del turno.
+ *   2. Atribuye el pago a cada profesional según su porción del peso total.
  *   3. Multiplica el monto atribuido por la tasa actual de la profesional.
  *
- * Pagos sin servicios o con total de precios = 0 se ignoran (no se puede
- * atribuir).
+ * Pagos sin servicios se ignoran (no hay a quién atribuir). Cuando los precios
+ * están en 0 igual se atribuye: con una sola profesional asignada le toca el
+ * 100%; con varias, se reparte en partes iguales por cantidad de servicios.
  */
 export function computeGrossOwed(
   payments: ProrrateablePayment[],
@@ -47,22 +52,26 @@ export function computeGrossOwed(
   for (const pay of payments) {
     const services = pay.appointments?.appointment_services ?? [];
     if (services.length === 0) continue;
+    const amount = Number(pay.amount);
     const totalPrice = services.reduce(
       (s, sv) => s + Number(sv.price_at_booking),
       0,
     );
-    if (totalPrice <= 0) continue;
-    const amount = Number(pay.amount);
-    const priceByProf = new Map<string, number>();
+    // Si no hay precios cargados, repartimos por cantidad de servicios.
+    const usePrice = totalPrice > 0;
+    const weightByProf = new Map<string, number>();
+    let totalWeight = 0;
     for (const sv of services) {
-      priceByProf.set(
+      const w = usePrice ? Number(sv.price_at_booking) : 1;
+      totalWeight += w;
+      weightByProf.set(
         sv.professional_id,
-        (priceByProf.get(sv.professional_id) ?? 0) +
-          Number(sv.price_at_booking),
+        (weightByProf.get(sv.professional_id) ?? 0) + w,
       );
     }
-    for (const [profId, profPrice] of priceByProf) {
-      const share = (amount * profPrice) / totalPrice;
+    if (totalWeight <= 0) continue;
+    for (const [profId, weight] of weightByProf) {
+      const share = (amount * weight) / totalWeight;
       paymentsAttributedByProf.set(
         profId,
         (paymentsAttributedByProf.get(profId) ?? 0) + share,

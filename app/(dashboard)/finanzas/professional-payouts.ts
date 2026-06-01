@@ -58,9 +58,11 @@ function monthDateBounds(period: string): { firstDay: string; lastDay: string } 
  * Bruto se calcula DINÁMICAMENTE sobre los pagos cobrados, no sobre la tabla
  * `commissions` (esa queda como audit log con el snapshot histórico). Para
  * cada pago del mes:
- *   1. Sumamos `price_at_booking` de cada `appointment_services` del turno.
+ *   1. Pesamos cada `appointment_services` del turno por `price_at_booking`;
+ *      si el turno no tiene precios cargados (todos en 0/null) usamos peso
+ *      uniforme por servicio. El monto lo aporta `payments.amount`.
  *   2. La porción del pago que le corresponde a cada profesional =
- *      payment.amount × (suma_de_sus_precios / suma_total_precios).
+ *      payment.amount × (peso_de_sus_servicios / peso_total_del_turno).
  *   3. Bruto del mes para la profesional X = Σ porciones × commission_rate_X / 100.
  *
  * Si la profesional cambió su tasa después de cobrar, los pendientes reflejan
