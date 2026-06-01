@@ -15,6 +15,12 @@ export type MonthStats = {
    *  real del salón asumiendo que las comisiones brutas se van a pagar. */
   netoMonth: number;
   netoPrev: number;
+  /** Arqueo de caja del mes: efectivo que debería haber para contar.
+   *  efectivoEsperado = cobrado en efectivo − egresos pagados en efectivo. */
+  cashIncomeMonth: number;
+  cashIncomeCount: number;
+  cashExpensesMonth: number;
+  cashExpensesCount: number;
   topServices: { id: string; name: string; count: number; revenue: number }[];
   byProfessional: {
     id: string;
@@ -58,7 +64,7 @@ export async function loadMonthStats(monthDate: Date): Promise<MonthStats> {
     supabase
       .from("payments")
       .select(
-        "amount, appointment_id, appointments ( client_id, clients ( id, full_name ), appointment_services ( professional_id, price_at_booking ) )",
+        "method, amount, appointment_id, appointments ( client_id, clients ( id, full_name ), appointment_services ( professional_id, price_at_booking ) )",
       )
       .gte("paid_at", cur.start)
       .lt("paid_at", cur.end),
@@ -71,7 +77,7 @@ export async function loadMonthStats(monthDate: Date): Promise<MonthStats> {
       .lt("paid_at", prev.end),
     supabase
       .from("expenses")
-      .select("amount, category")
+      .select("amount, category, payment_method")
       .gte("expense_date", cur.firstDay)
       .lte("expense_date", cur.lastDay),
     supabase
@@ -110,6 +116,24 @@ export async function loadMonthStats(monthDate: Date): Promise<MonthStats> {
     0,
   );
   const egresosPrev = (expensesPrev.data ?? []).reduce(
+    (acc, e) => acc + Number(e.amount),
+    0,
+  );
+
+  // Arqueo de caja: efectivo físico que debería haber para contar.
+  // Cobrado en efectivo (paid_at del mes) − egresos pagados en efectivo
+  // (expense_date del mes, incluye sueldos/comisiones pagados en efectivo).
+  const cashPaymentsCur = (paymentsCur.data ?? []).filter(
+    (p) => p.method === "cash",
+  );
+  const cashIncomeMonth = cashPaymentsCur.reduce(
+    (acc, p) => acc + Number(p.amount),
+    0,
+  );
+  const cashExpensesCur = (expensesCur.data ?? []).filter(
+    (e) => e.payment_method === "cash",
+  );
+  const cashExpensesMonth = cashExpensesCur.reduce(
     (acc, e) => acc + Number(e.amount),
     0,
   );
@@ -279,6 +303,10 @@ export async function loadMonthStats(monthDate: Date): Promise<MonthStats> {
     comisionesBrutasPrev,
     netoMonth: ingresosMonth - egresosMonth - comisionesBrutasMonth,
     netoPrev: ingresosPrev - egresosPrev - comisionesBrutasPrev,
+    cashIncomeMonth,
+    cashIncomeCount: cashPaymentsCur.length,
+    cashExpensesMonth,
+    cashExpensesCount: cashExpensesCur.length,
     topServices,
     byProfessional,
     topClients,

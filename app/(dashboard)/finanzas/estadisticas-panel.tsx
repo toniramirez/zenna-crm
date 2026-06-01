@@ -8,6 +8,7 @@ import {
   Crown,
   Scissors,
   TrendingUp,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
@@ -119,6 +120,52 @@ export function EstadisticasPanel({
             <PctBadge pct={netoPct} />
           </div>
         </div>
+      </div>
+
+      {/* Arqueo de caja — efectivo a contar */}
+      <div className="rounded-xl border bg-card p-5 shadow-sm">
+        <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
+          <Wallet className="size-3.5 text-gold" />
+          Efectivo en caja · para contar
+        </div>
+        <div className="mt-3 max-w-md space-y-2">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="text-muted-foreground">
+              Cobrado en efectivo{" "}
+              <span className="text-xs tabular-nums">
+                ({stats.cashIncomeCount} cobro
+                {stats.cashIncomeCount === 1 ? "" : "s"})
+              </span>
+            </span>
+            <span className="tabular-nums font-medium text-emerald-700">
+              +{formatCurrency(stats.cashIncomeMonth)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="text-muted-foreground">
+              Egresos en efectivo{" "}
+              <span className="text-xs tabular-nums">
+                ({stats.cashExpensesCount} egreso
+                {stats.cashExpensesCount === 1 ? "" : "s"})
+              </span>
+            </span>
+            <span className="tabular-nums font-medium text-rose-700">
+              −{formatCurrency(stats.cashExpensesMonth)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t pt-2">
+            <span className="font-semibold">Efectivo esperado</span>
+            <span className="text-2xl font-semibold tabular-nums">
+              {formatCurrency(stats.cashIncomeMonth - stats.cashExpensesMonth)}
+            </span>
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Lo que debería haber físicamente juntando todo el efectivo del mes
+          (cobros en efectivo menos egresos pagados en efectivo, incluidas
+          comisiones/sueldos pagados en efectivo). Contá la caja y comparalo
+          con este número.
+        </p>
       </div>
 
       {/* Detail row */}
