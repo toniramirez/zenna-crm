@@ -643,10 +643,14 @@ export function AppointmentDialog({
                 </Button>
               </PopoverTrigger>
               <PopoverContent
-                className="w-[var(--radix-popover-trigger-width)] p-0"
+                // Cap the popover to the space actually available between the
+                // trigger and the screen edge so the full list is reachable on
+                // mobile (a fixed max-height used to push the bottom services
+                // off-screen, making it look like only some services existed).
+                className="w-[var(--radix-popover-trigger-width)] p-0 flex flex-col max-h-[min(20rem,var(--radix-popover-content-available-height))]"
                 align="start"
               >
-                <div className="max-h-72 overflow-y-auto">
+                <div className="flex-1 min-h-0 overflow-y-auto">
                   {services.length === 0 ? (
                     <p className="p-3 text-sm text-muted-foreground">
                       No hay servicios cargados. Andá a Servicios para crear
@@ -680,7 +684,7 @@ export function AppointmentDialog({
                   )}
                 </div>
                 {selectedServices.length > 0 ? (
-                  <div className="border-t px-3 py-2 text-xs text-muted-foreground flex items-center justify-between bg-muted/20">
+                  <div className="shrink-0 border-t px-3 py-2 text-xs text-muted-foreground flex items-center justify-between bg-muted/20">
                     <span>
                       {selectedServices.length} seleccionado
                       {selectedServices.length === 1 ? "" : "s"}
@@ -732,7 +736,15 @@ export function AppointmentDialog({
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs">Horarios del día</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Horarios del día</Label>
+                  {daySlots.some((s) => s.taken) ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-700">
+                      <span className="size-1.5 rounded-full bg-amber-500" />
+                      ya tiene turno
+                    </span>
+                  ) : null}
+                </div>
                 {!professionalId ? (
                   <p className="text-xs text-muted-foreground italic px-1">
                     Elegí una profesional para ver los horarios.
@@ -749,21 +761,28 @@ export function AppointmentDialog({
                         <button
                           type="button"
                           key={s.local}
-                          onClick={() => !s.taken && setStartsAt(s.local)}
-                          disabled={s.taken}
+                          // Taken slots stay selectable so the salon can book
+                          // more than one turno at the same time. The amber
+                          // dot just flags that there's already a turno there.
+                          onClick={() => setStartsAt(s.local)}
                           title={
-                            s.taken ? `Ocupado · ${s.busyWith}` : undefined
+                            s.taken
+                              ? `Ya hay un turno (${s.busyWith}) · tocá para agregar otro`
+                              : undefined
                           }
                           className={cn(
-                            "rounded-md border px-2 py-2 text-sm tabular-nums transition-colors",
+                            "relative rounded-md border px-2 py-2 text-sm tabular-nums transition-colors",
                             isPicked
                               ? "bg-foreground text-background border-foreground font-semibold"
                               : s.taken
-                                ? "bg-muted/40 text-muted-foreground line-through cursor-not-allowed border-transparent"
+                                ? "bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100"
                                 : "bg-card hover:bg-muted/40",
                           )}
                         >
                           {s.label}
+                          {s.taken && !isPicked ? (
+                            <span className="absolute right-1 top-1 size-1.5 rounded-full bg-amber-500" />
+                          ) : null}
                         </button>
                       );
                     })}

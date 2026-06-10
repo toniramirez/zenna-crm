@@ -764,6 +764,44 @@ aside nav a.sidebar-nav-active {
   position: relative;
 }
 
+/*
+ * "+" affordance to add a second turno at the same time/pro. Hidden until the
+ * turno is hovered/focused so the agenda stays clean, then sits in the
+ * bottom-right corner (top-right is reserved for the completed ✓ mark).
+ */
+.zenna-calendar .fc-event .zenna-event-add {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 9999px;
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease, transform 120ms ease;
+  z-index: 3;
+}
+
+.zenna-calendar .fc-event:hover .zenna-event-add,
+.zenna-calendar .fc-event:focus-within .zenna-event-add {
+  opacity: 0.9;
+}
+
+.zenna-calendar .fc-event .zenna-event-add:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
 .zenna-calendar .fc-license-message {
   display: none !important;
 }

@@ -545,6 +545,8 @@ export function NewTurnoDialog({
                   selectLongPressDelay={250}
                   height={460}
                   expandRows
+                  // Render simultaneous turnos side by side instead of stacked.
+                  slotEventOverlap={false}
                   resources={resources}
                   events={events}
                   select={handleSelect}
@@ -829,7 +831,15 @@ function MobileSlotPicker({
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-xs">Horario disponible</Label>
+        <div className="flex items-center justify-between">
+          <Label className="text-xs">Horario disponible</Label>
+          {slots.some((s) => s.taken) ? (
+            <span className="inline-flex items-center gap-1 text-[10px] text-amber-700">
+              <span className="size-1.5 rounded-full bg-amber-500" />
+              ya tiene turno
+            </span>
+          ) : null}
+        </div>
         {!professionalId ? (
           <p className="text-xs text-muted-foreground italic px-1">
             Elegí una profesional para ver los horarios.
@@ -846,18 +856,26 @@ function MobileSlotPicker({
                 <button
                   type="button"
                   key={s.iso}
-                  onClick={() => !s.taken && setStartsAt(s.iso)}
-                  disabled={s.taken}
-                  title={s.taken ? `Ocupado · ${s.busyWith}` : undefined}
-                  className={`rounded-md border px-2 py-2 text-sm tabular-nums transition-colors ${
+                  // Taken slots stay selectable to allow more than one turno
+                  // at the same time. The amber dot just flags an existing one.
+                  onClick={() => setStartsAt(s.iso)}
+                  title={
+                    s.taken
+                      ? `Ya hay un turno (${s.busyWith}) · tocá para agregar otro`
+                      : undefined
+                  }
+                  className={`relative rounded-md border px-2 py-2 text-sm tabular-nums transition-colors ${
                     isPicked
                       ? "bg-foreground text-background border-foreground font-semibold"
                       : s.taken
-                        ? "bg-muted/40 text-muted-foreground line-through cursor-not-allowed border-transparent"
+                        ? "bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100"
                         : "bg-card hover:bg-muted/40"
                   }`}
                 >
                   {s.label}
+                  {s.taken && !isPicked ? (
+                    <span className="absolute right-1 top-1 size-1.5 rounded-full bg-amber-500" />
+                  ) : null}
                 </button>
               );
             })}

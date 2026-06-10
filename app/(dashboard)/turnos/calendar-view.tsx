@@ -5,6 +5,7 @@ import type {
   EventChangeArg,
   EventClickArg,
   EventInput,
+  EventMountArg,
 } from "@fullcalendar/core";
 import esLocale from "@fullcalendar/core/locales/es";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -180,6 +181,47 @@ export function CalendarView({
     [appointments],
   );
 
+  // Inject a small "+" button into each turno on the desktop time-grid so the
+  // salon can add a SECOND turno at the exact same time/professional with one
+  // click. Tapping the body of a turno still opens it (eventClick); the "+"
+  // stops propagation and opens the create dialog pre-filled instead. We do
+  // this on mount (rather than via eventContent) to leave FullCalendar's
+  // default time/title rendering — and the cancelled/completed styles —
+  // completely untouched.
+  const handleEventDidMount = useCallback(
+    (arg: EventMountArg) => {
+      if (isMobile) return;
+      if (arg.view.type === "listDay") return;
+
+      const resourceId = arg.event.getResources()[0]?.id;
+      const start = arg.event.start;
+      if (!resourceId || !start) return;
+      const startsAtIso = start.toISOString();
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "zenna-event-add";
+      btn.textContent = "+";
+      btn.title = "Agregar otro turno a esta hora";
+      btn.setAttribute("aria-label", "Agregar otro turno a esta hora");
+      // Stop the gestures FullCalendar binds on the event (drag-to-move on
+      // mousedown, open-turno on click) so the button does its own thing.
+      btn.addEventListener("mousedown", (e) => e.stopPropagation());
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        setDialogMode({
+          type: "create",
+          professionalId: resourceId,
+          startsAt: startsAtIso,
+        });
+        setDialogOpen(true);
+      });
+      arg.el.appendChild(btn);
+    },
+    [isMobile],
+  );
+
   const handleEventChange = useCallback(
     async (arg: EventChangeArg) => {
       const start = arg.event.start;
@@ -334,11 +376,16 @@ export function CalendarView({
           selectLongPressDelay={250}
           height="auto"
           expandRows
+          // Allow more than one turno in the same time slot. With overlap
+          // disabled, simultaneous turnos for the same pro render as clean
+          // side-by-side columns instead of stacking on top of each other.
+          slotEventOverlap={false}
           resources={resources}
           events={events}
           select={handleSelect}
           eventClick={handleEventClick}
           eventChange={handleEventChange}
+          eventDidMount={handleEventDidMount}
         />
       </div>
 
