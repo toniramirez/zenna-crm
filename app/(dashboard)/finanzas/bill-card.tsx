@@ -6,6 +6,7 @@ import {
   Calendar as CalendarIcon,
   Check,
   Loader2,
+  Pencil,
   Trash2,
   Wallet,
 } from "lucide-react";
@@ -26,12 +27,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { EXPENSE_CATEGORY_LABEL } from "@/lib/validations/expenses";
+import { monthToPeriod } from "@/lib/validations/expense-templates";
 import {
   PAYMENT_METHODS,
   PAYMENT_METHOD_LABEL,
   type PaymentMethod,
 } from "@/lib/validations/payments";
-import { payTemplateAction, unpayTemplateAction } from "./actions";
+import {
+  payTemplateAction,
+  unpayTemplateAction,
+  updateTemplatePaymentAction,
+} from "./actions";
 import type { ExpenseRow, ExpenseTemplateRow } from "./types";
 
 function todayIsoDate(): string {
@@ -61,6 +67,7 @@ export function BillCard({
 }) {
   const [isPending, startTransition] = useTransition();
   const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState<number>(
     template.default_amount ? Number(template.default_amount) : 0,
   );
@@ -130,6 +137,37 @@ export function BillCard({
     });
   }
 
+  function handleSaveEdit(values: {
+    amount: number;
+    expenseDate: string;
+    month: string; // YYYY-MM
+    method: PaymentMethod;
+    notes: string;
+  }) {
+    if (!existing) return;
+    if (values.amount <= 0) {
+      toast.error("Cargá el monto pagado.");
+      return;
+    }
+    const formData = new FormData();
+    formData.set("expenseId", existing.id);
+    formData.set("period", monthToPeriod(values.month));
+    formData.set("amount", String(values.amount));
+    formData.set("expenseDate", values.expenseDate);
+    formData.set("paymentMethod", values.method);
+    formData.set("notes", values.notes);
+
+    startTransition(async () => {
+      const result = await updateTemplatePaymentAction(formData);
+      if (result?.error) {
+        toast.error(result.error);
+      } else if (result?.success) {
+        toast.success("Pago actualizado.");
+        setEditing(false);
+      }
+    });
+  }
+
   const relLabel = relativeDueLabel(dueDate, today, status);
 
   return (
@@ -161,11 +199,21 @@ export function BillCard({
 
       <div className="border-t bg-muted/10 p-3">
         {existing ? (
-          <PaidBlock
-            existing={existing}
-            isPending={isPending}
-            onUnpay={handleUnpay}
-          />
+          editing ? (
+            <EditPaidBlock
+              existing={existing}
+              isPending={isPending}
+              onCancel={() => setEditing(false)}
+              onSave={handleSaveEdit}
+            />
+          ) : (
+            <PaidBlock
+              existing={existing}
+              isPending={isPending}
+              onEdit={() => setEditing(true)}
+              onUnpay={handleUnpay}
+            />
+          )
         ) : expanded ? (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
@@ -306,10 +354,12 @@ function StatusBadge({
 function PaidBlock({
   existing,
   isPending,
+  onEdit,
   onUnpay,
 }: {
   existing: ExpenseRow;
   isPending: boolean;
+  onEdit: () => void;
   onUnpay: () => void;
 }) {
   return (
@@ -332,17 +382,166 @@ function PaidBlock({
           ) : null}
         </span>
       </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-7 shrink-0"
-        onClick={onUnpay}
-        disabled={isPending}
-        title="Quitar pago"
-      >
-        <Trash2 className="size-3.5 text-destructive" />
-        <span className="sr-only">Quitar pago</span>
-      </Button>
+      <div className="flex items-center gap-1 shrink-0">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7"
+          onClick={onEdit}
+          disabled={isPending}
+          title="Editar pago"
+        >
+          <Pencil className="size-3.5" />
+          <span className="sr-only">Editar pago</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7"
+          onClick={onUnpay}
+          disabled={isPending}
+          title="Quitar pago"
+        >
+          <Trash2 className="size-3.5 text-destructive" />
+          <span className="sr-only">Quitar pago</span>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function EditPaidBlock({
+  existing,
+  isPending,
+  onCancel,
+  onSave,
+}: {
+  existing: ExpenseRow;
+  isPending: boolean;
+  onCancel: () => void;
+  onSave: (values: {
+    amount: number;
+    expenseDate: string;
+    month: string;
+    method: PaymentMethod;
+    notes: string;
+  }) => void;
+}) {
+  const [amount, setAmount] = useState<number>(Number(existing.amount));
+  const [expenseDate, setExpenseDate] = useState<string>(existing.expense_date);
+  // period is stored as YYYY-MM-01; the month input works with YYYY-MM.
+  const [month, setMonth] = useState<string>(
+    (existing.period ?? existing.expense_date).slice(0, 7),
+  );
+  const [method, setMethod] = useState<PaymentMethod>(
+    existing.payment_method ?? "transfer",
+  );
+  const [notes, setNotes] = useState<string>(existing.notes ?? "");
+
+  // When the month changes, keep the day-of-month but move the payment date
+  // into the newly-selected month, so the common "move to another month" case
+  // is a single edit.
+  function handleMonthChange(nextMonth: string) {
+    setMonth(nextMonth);
+    if (/^\d{4}-\d{2}$/.test(nextMonth)) {
+      const day = expenseDate.slice(8, 10) || "01";
+      setExpenseDate(`${nextMonth}-${day}`);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+            Monto pagado
+          </Label>
+          <Input
+            type="number"
+            min={0}
+            step={500}
+            value={amount || ""}
+            onChange={(e) => setAmount(Number(e.target.value) || 0)}
+            className="tabular-nums"
+            placeholder="0"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+            Mes
+          </Label>
+          <Input
+            type="month"
+            value={month}
+            onChange={(e) => handleMonthChange(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+          Fecha de pago
+        </Label>
+        <Input
+          type="date"
+          value={expenseDate}
+          onChange={(e) => setExpenseDate(e.target.value)}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+          Método
+        </Label>
+        <Select
+          value={method}
+          onValueChange={(v) => setMethod(v as PaymentMethod)}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PAYMENT_METHODS.map((m) => (
+              <SelectItem key={m.value} value={m.value}>
+                {m.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+          Notas (opcional)
+        </Label>
+        <Textarea
+          rows={2}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Detalles, recargo, etc."
+        />
+      </div>
+      <div className="flex gap-2">
+        <Button
+          onClick={() =>
+            onSave({ amount, expenseDate, month, method, notes })
+          }
+          disabled={isPending}
+          className="flex-1"
+        >
+          {isPending ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Guardando…
+            </>
+          ) : (
+            <>
+              <Check className="size-4" />
+              Guardar cambios
+            </>
+          )}
+        </Button>
+        <Button variant="ghost" onClick={onCancel} disabled={isPending}>
+          Cancelar
+        </Button>
+      </div>
     </div>
   );
 }

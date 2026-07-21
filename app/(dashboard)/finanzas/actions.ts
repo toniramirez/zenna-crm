@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
+  editTemplatePaymentSchema,
   expenseTemplateSchema,
   payTemplateSchema,
 } from "@/lib/validations/expense-templates";
@@ -194,6 +195,79 @@ export async function unpayTemplateAction(
     .eq("template_id", templateId)
     .eq("period", period);
   if (error) return { error: "No pudimos revertir el pago." };
+  revalidatePath("/finanzas");
+  revalidatePath("/caja");
+  return { success: true };
+}
+
+/**
+ * Edit an existing template payment. Lets the owner fix amount, date, payment
+ * method, notes and — importantly — the month (`period`) of a paid fixed
+ * expense, e.g. when it was loaded under the wrong month. Guards against
+ * creating two payments of the same template in the target month.
+ */
+export async function updateTemplatePaymentAction(
+  formData: FormData,
+): Promise<ActionState> {
+  await requireRole("owner");
+
+  const parsed = editTemplatePaymentSchema.safeParse({
+    expenseId: formData.get("expenseId"),
+    period: formData.get("period"),
+    amount: Number(formData.get("amount")),
+    expenseDate: formData.get("expenseDate"),
+    paymentMethod: formData.get("paymentMethod") || undefined,
+    notes: formData.get("notes") || undefined,
+  });
+
+  if (!parsed.success) return { fieldErrors: fieldErrorsFromZod(parsed) };
+
+  const supabase = await createClient();
+
+  // Load the row to make sure it's a template payment and get its template_id.
+  const { data: expense, error: loadError } = await supabase
+    .from("expenses")
+    .select("id, template_id")
+    .eq("id", parsed.data.expenseId)
+    .single();
+
+  if (loadError || !expense) {
+    return { error: "No encontramos el pago." };
+  }
+  if (!expense.template_id) {
+    return { error: "Este gasto no es un gasto fijo editable." };
+  }
+
+  // Prevent two payments of the same template in the target month.
+  const { count } = await supabase
+    .from("expenses")
+    .select("id", { count: "exact", head: true })
+    .eq("template_id", expense.template_id)
+    .eq("period", parsed.data.period)
+    .neq("id", expense.id);
+
+  if ((count ?? 0) > 0) {
+    return {
+      error: "Esa plantilla ya tiene un pago registrado en el mes elegido.",
+    };
+  }
+
+  const { error } = await supabase
+    .from("expenses")
+    .update({
+      amount: parsed.data.amount,
+      expense_date: parsed.data.expenseDate,
+      period: parsed.data.period,
+      payment_method: parsed.data.paymentMethod || null,
+      notes: parsed.data.notes || null,
+    })
+    .eq("id", expense.id);
+
+  if (error) {
+    console.error("[finanzas] update template payment failed:", error);
+    return { error: "No pudimos guardar los cambios." };
+  }
+
   revalidatePath("/finanzas");
   revalidatePath("/caja");
   return { success: true };
