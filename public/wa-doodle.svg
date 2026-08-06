@@ -3,8 +3,11 @@
     Muro de garabatos de la conversación, al estilo del fondo de WhatsApp.
     El referente sirve un .webp propio; este SVG es equivalente y nuestro,
     así no dependemos de un asset de terceros. Se pinta desde
-    `.wa-conv-bg::before` con opacidad muy baja (~5%), por eso los trazos van
-    en negro plano: el color final lo pone la opacidad sobre `--wa-conv`.
+    `.wa-conv-bg::before` con opacidad muy baja, por eso los trazos van en
+    negro plano: el color final lo pone esa opacidad sobre el papel crema.
+
+    OJO: nada de dos guiones seguidos acá adentro. XML no los permite en un
+    comentario y el SVG entero deja de parsear (el fondo sale liso, sin aviso).
   -->
   <g fill="none" stroke="#0b141a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
     <!-- corazón -->

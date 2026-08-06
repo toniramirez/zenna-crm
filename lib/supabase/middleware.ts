@@ -6,7 +6,7 @@ import type { Database } from "@/types/database.types";
 // Si no estuviera acá, el proxy le devolvería un redirect a /login y Meta
 // interpretaría el webhook como caído. Se autentica por firma HMAC, no por
 // sesión (ver app/api/instagram/webhook/route.ts).
-const PUBLIC_PATHS = ["/login", "/register", "/auth", "/api/instagram/webhook", "/preview"];
+const PUBLIC_PATHS = ["/login", "/register", "/auth", "/api/instagram/webhook"];
 
 function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

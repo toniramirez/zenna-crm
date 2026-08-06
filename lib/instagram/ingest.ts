@@ -237,11 +237,27 @@ async function insertMessage(
   supabase: Db,
   row: Database["public"]["Tables"]["messages"]["Insert"],
 ): Promise<boolean> {
+  // Meta reintenta el webhook si tardamos en responder 200, y reenvía el mismo
+  // `mid`. Dos defensas contra eso, en este orden:
+  //
+  //   1. Este chequeo, que es el que hace el trabajo. No depende de que el
+  //      índice único exista — en bases con histórico de WhatsApp puede no
+  //      haberse podido crear.
+  //   2. El 23505 de más abajo, para la carrera en la que dos entregas del
+  //      mismo evento pasan el chequeo a la vez.
+  if (row.external_id) {
+    const { data: existing } = await supabase
+      .from("messages")
+      .select("id")
+      .eq("conversation_id", row.conversation_id)
+      .eq("external_id", row.external_id)
+      .maybeSingle();
+    if (existing) return false;
+  }
+
   const { error } = await supabase.from("messages").insert(row);
 
   if (error) {
-    // Meta reintenta el webhook si tardamos en responder 200. El índice único
-    // sobre external_id convierte ese reintento en un no-op silencioso.
     if (error.code === UNIQUE_VIOLATION) return false;
     console.error("[instagram] message insert error:", error.message);
     return false;

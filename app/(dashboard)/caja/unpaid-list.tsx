@@ -19,8 +19,11 @@ import type { UnpaidAppointment } from "./types";
 
 export function UnpaidList({
   appointments,
+  loadError = null,
 }: {
   appointments: UnpaidAppointment[];
+  /** Mensaje de error si la consulta falló. Nunca lo disfrazamos de lista vacía. */
+  loadError?: string | null;
 }) {
   const [target, setTarget] = useState<UnpaidAppointment | null>(null);
   const [open, setOpen] = useState(false);
@@ -28,6 +31,25 @@ export function UnpaidList({
   function openCobrar(a: UnpaidAppointment) {
     setTarget(a);
     setOpen(true);
+  }
+
+  // Si la consulta falló no sabemos si hay pendientes o no. Decir "no hay"
+  // sería mentir y hacer que se pierda un cobro.
+  if (loadError) {
+    return (
+      <div className="rounded-md border border-destructive/40 bg-destructive/5 p-6 text-center">
+        <p className="text-sm font-medium text-destructive">
+          No pudimos cargar los turnos pendientes de cobro.
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Puede haber turnos sin cobrar que no se están mostrando. Recargá la
+          página y, si sigue igual, avisá.
+        </p>
+        <p className="mt-2 text-xs font-mono text-muted-foreground break-all">
+          {loadError}
+        </p>
+      </div>
+    );
   }
 
   if (appointments.length === 0) {

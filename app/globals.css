@@ -597,11 +597,12 @@
   background-image: url("/wa-doodle.svg");
   background-repeat: repeat;
   background-size: 400px 400px;
-  opacity: 0.055;
+  opacity: 0.06;
 }
 
+/* En oscuro invertimos el trazo (queda claro sobre el papel casi negro). */
 .dark .wa-conv-bg::before {
-  opacity: 0.045;
+  opacity: 0.05;
   filter: invert(1);
 }
 

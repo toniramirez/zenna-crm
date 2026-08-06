@@ -29,13 +29,26 @@ create unique index if not exists conversations_channel_external_id_key
   on public.conversations (channel, external_id);
 
 -- Dedup de mensajes entrantes: Meta reintenta la entrega del webhook si no
--- respondemos 200 a tiempo, y reenvía el mismo `mid`. El índice parcial deja
--- que el insert falle con 23505 y lo ignoramos como duplicado.
--- Parcial porque los mensajes salientes nacen sin external_id (se completa
--- recién cuando la API responde) y varios NULL no colisionan de todos modos.
-create unique index if not exists messages_external_id_key
-  on public.messages (external_id)
-  where external_id is not null;
+-- respondemos 200 a tiempo, y reenvía el mismo `mid`. Con el índice, ese
+-- reintento choca con un 23505 que el código ignora como duplicado.
+--
+-- Va sobre (conversation_id, external_id) y NO sobre external_id solo: un id
+-- de mensaje de WhatsApp es único dentro de un chat, no globalmente, y el
+-- histórico ya tiene ids repetidos entre conversaciones distintas.
+--
+-- Envuelto en un bloque con excepción a propósito: si el histórico de WhatsApp
+-- llegara a tener duplicados incluso dentro de una misma conversación, el
+-- índice no se crea y la migración sigue igual en vez de abortar entera. El
+-- dedup no depende de esto para funcionar — `ingest.ts` chequea antes de
+-- insertar. El índice es la red de seguridad contra carreras, no el mecanismo.
+do $$
+begin
+  create unique index if not exists messages_conv_external_id_key
+    on public.messages (conversation_id, external_id)
+    where external_id is not null;
+exception when others then
+  raise notice 'Índice de dedup omitido (ya hay external_id duplicados en el histórico). El dedup por código sigue activo.';
+end $$;
 
 -- 3 ─── cuenta de Instagram conectada ─────────────────────────────────────
 create table if not exists public.instagram_accounts (

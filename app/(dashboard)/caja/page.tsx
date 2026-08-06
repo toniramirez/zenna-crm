@@ -94,6 +94,17 @@ export default async function CajaPage({ searchParams }: Props) {
     .neq("status", "no_show")
     .order("starts_at");
 
+  // Una consulta que falla NO puede renderizarse como "no hay nada". En una caja
+  // registradora un empty state mentiroso hace que un turno quede sin cobrar y
+  // nadie se entere: preferimos gritar. Lo logueamos con el código de Postgres
+  // (aparece en los logs de Railway) y además lo mostramos en pantalla.
+  if (unpaidResult.error) {
+    console.error("[caja] unpaid query failed:", unpaidResult.error);
+  }
+  if (paymentsResult.error) {
+    console.error("[caja] payments query failed:", paymentsResult.error);
+  }
+
   const payments = (paymentsResult.data as PaymentWithDetails[] | null) ?? [];
   const expenses = (expensesResult.data as ExpenseRow[]) ?? [];
 
@@ -232,7 +243,10 @@ export default async function CajaPage({ searchParams }: Props) {
         <h2 className="text-base font-semibold tracking-tight">
           {isToday ? "Pendientes de cobro hoy" : "Pendientes de cobro del día"}
         </h2>
-        <UnpaidList appointments={unpaid} />
+        <UnpaidList
+          appointments={unpaid}
+          loadError={unpaidResult.error?.message ?? null}
+        />
       </section>
 
       {/* Cobros del día */}
