@@ -86,6 +86,22 @@ export async function POST(request: NextRequest) {
   }
 
   const events = flattenMessagingEvents(body);
+
+  // Log de diagnóstico. Sin esto no hay forma de distinguir "Meta nunca lo
+  // mandó" de "llegó y lo descartamos": las dos se ven igual desde afuera,
+  // porque a Meta siempre le contestamos 200.
+  console.log(
+    `[instagram/webhook] object=${body.object} entries=${body.entry?.length ?? 0} eventos=${events.length}`,
+  );
+  if (events.length === 0) {
+    // Payload que no supimos interpretar. Se loguea entero (truncado) para
+    // poder ver la forma real y ajustar el parseo.
+    console.warn(
+      "[instagram/webhook] sin eventos utilizables. Payload:",
+      rawBody.slice(0, 2000),
+    );
+  }
+
   if (events.length > 0) {
     void processEvents(events);
   }
@@ -97,9 +113,12 @@ async function processEvents(
   events: ReturnType<typeof flattenMessagingEvents>,
 ): Promise<void> {
   try {
+    // Si falta SUPABASE_SERVICE_ROLE_KEY esto tira acá mismo. Es la causa más
+    // probable de "el webhook contesta 200 pero no aparece nada en la bandeja".
     const supabase = createServiceClient();
     const account = await loadAccount(supabase);
     await ingestMessagingEvents(supabase, events, account);
+    console.log(`[instagram/webhook] ${events.length} evento(s) procesado(s)`);
   } catch (err) {
     console.error(
       "[instagram/webhook] fallo procesando eventos:",

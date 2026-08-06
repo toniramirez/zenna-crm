@@ -84,11 +84,42 @@ export function parseWebhookBody(raw: string): IgWebhookBody | null {
 }
 
 /**
- * Aplana `entry[].messaging[]` a una sola lista. Un webhook puede traer varias
- * entries y cada una varios eventos.
+ * ¿Este objeto tiene forma de evento de mensajería?
+ *
+ * Se usa para decidir si un `changes[].value` se puede tratar como si hubiera
+ * venido por `messaging[]`. Pedimos que traiga al menos remitente/destinatario
+ * y algo accionable (mensaje, reacción o acuse de lectura).
+ */
+function looksLikeMessagingEvent(value: unknown): value is IgMessaging {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  const hasParty = "sender" in v || "recipient" in v;
+  const hasPayload = "message" in v || "reaction" in v || "read" in v;
+  return hasParty && hasPayload;
+}
+
+/**
+ * Aplana los eventos de un webhook a una sola lista.
+ *
+ * Meta entrega el campo `messages` en dos formas según cómo esté configurada la
+ * app: el formato de la plataforma de Messenger (`entry[].messaging[]`) y el
+ * formato genérico de webhooks (`entry[].changes[]` con `field: "messages"`).
+ * Leemos las dos — asumir una sola significaba descartar todo en silencio.
+ *
+ * Los `changes` de otros campos (comentarios, menciones) se ignoran: no los
+ * consumimos todavía y no tienen forma de evento de mensajería.
  */
 export function flattenMessagingEvents(body: IgWebhookBody): IgMessaging[] {
-  return (body.entry ?? []).flatMap((entry) => entry.messaging ?? []);
+  return (body.entry ?? []).flatMap((entry) => {
+    const fromMessaging = entry.messaging ?? [];
+
+    const fromChanges = (entry.changes ?? [])
+      .filter((change) => change.field === "messages")
+      .map((change) => change.value)
+      .filter(looksLikeMessagingEvent);
+
+    return [...fromMessaging, ...fromChanges];
+  });
 }
 
 /**

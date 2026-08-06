@@ -21,8 +21,10 @@
 -- coalesce en varios lugares y trata 0 como "sin seña".
 -- `deposit_method` es nullable a propósito: solo tiene sentido cuando hay
 -- seña, y usa el mismo enum que `payments.method`.
+-- numeric(12,2) es el tipo que usa toda la plata del esquema
+-- (payments.amount, expenses.amount, services.price, price_at_booking).
 alter table public.appointments
-  add column if not exists deposit_amount numeric not null default 0,
+  add column if not exists deposit_amount numeric(12,2) not null default 0,
   add column if not exists deposit_method public.payment_method;
 
 -- Espejo de la validación de lib/validations/appointments.ts: la seña no
