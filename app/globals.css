@@ -8,125 +8,138 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Zenna CRM — design tokens (v4: cream & ink)
+ * Zenna CRM — design tokens (v5: "papel tibio & camel")
  *
- * Anchored to the wordmark logo (black serif "ZENNA" on cream background).
- *  - Background: cream (matches the logo card)
- *  - Surfaces:    pure white cards on cream → soft contrast
- *  - Primary:     ink black (not wine — the logo has no wine)
- *  - Accent:      champagne gold, used SPARINGLY (focus, active, decorative
- *                 hairlines only — never as a full card border)
- *  - Borders:     almost invisible warm gray, hairline (1px) — gives the
- *                 "premium minimal" feel instead of the "Excel grid" feel
- *  - Radius:      generous (1rem base, 1.25rem for cards/dialogs)
+ * Sistema calcado del referente que pasó el cliente (peluquerOS):
+ *  - Fondo:      blanco cálido casi puro, sin degradés ni brillos.
+ *  - Superficie: blanco puro, borde hairline gris cálido, sombra mínima.
+ *  - Primario:   camel / tostado (el botón "Nuevo turno").
+ *  - Activo:     durazno muy suave con el ícono en tostado oscuro.
+ *  - Radio:      10px en controles, 12px en tarjetas/paneles.
+ *  - WhatsApp:   verde propio para la bandeja (chips, badges, barra).
  *
- * Calendar status colors remain semantic (sky/amber/emerald/rose) for clarity.
+ * Regla de oro de este rediseño: NADA de gradientes decorativos, gleams,
+ * lifts en hover ni animaciones de entrada. El referente es plano y quieto;
+ * la jerarquía la dan el espacio y el peso tipográfico, no los efectos.
  */
 :root {
-  --radius: 1rem;
+  --radius: 0.625rem;
 
-  --background: oklch(0.965 0.012 85);
-  --foreground: oklch(0.16 0.005 50);
+  --background: #fbfaf9;
+  --foreground: #211d19;
 
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.16 0.005 50);
+  --card: #ffffff;
+  --card-foreground: #211d19;
 
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.16 0.005 50);
+  --popover: #ffffff;
+  --popover-foreground: #211d19;
 
-  /* Primary = ink black. Reads premium and matches the wordmark. */
-  --primary: oklch(0.16 0.005 50);
-  --primary-foreground: oklch(0.98 0.008 85);
+  /* Primario = camel. Es el único color "fuerte" de la interfaz. */
+  --primary: #c1975c;
+  --primary-foreground: #ffffff;
 
-  --secondary: oklch(0.955 0.008 80);
-  --secondary-foreground: oklch(0.22 0.006 50);
+  --secondary: #f4f2ef;
+  --secondary-foreground: #3d372f;
 
-  --muted: oklch(0.95 0.008 82);
-  --muted-foreground: oklch(0.48 0.008 60);
+  --muted: #f4f2ef;
+  --muted-foreground: #8b837a;
 
-  --accent: oklch(0.95 0.008 80);
-  --accent-foreground: oklch(0.22 0.006 50);
+  --accent: #f6f4f1;
+  --accent-foreground: #3d372f;
 
-  --destructive: oklch(0.555 0.20 25);
-  --destructive-foreground: oklch(0.98 0.008 85);
+  --destructive: #d4483b;
+  --destructive-foreground: #ffffff;
 
-  /* Hairline borders — nearly invisible warm gray */
-  --border: oklch(0.92 0.008 80);
-  --input: oklch(0.92 0.008 80);
-  --ring: oklch(0.74 0.07 80);
+  --border: #eae6e1;
+  --input: #e6e1db;
+  --ring: #c1975c;
 
-  --chart-1: oklch(0.55 0.10 30);
-  --chart-2: oklch(0.74 0.07 80);
-  --chart-3: oklch(0.42 0.05 50);
-  --chart-4: oklch(0.65 0.10 40);
-  --chart-5: oklch(0.32 0.03 50);
+  --chart-1: #c1975c;
+  --chart-2: #7b6a55;
+  --chart-3: #d8b98a;
+  --chart-4: #a3856a;
+  --chart-5: #3d372f;
 
-  --sidebar: oklch(0.952 0.014 85);
-  --sidebar-foreground: oklch(0.22 0.006 50);
-  --sidebar-primary: oklch(0.16 0.005 50);
-  --sidebar-primary-foreground: oklch(0.98 0.008 85);
-  --sidebar-accent: oklch(0.93 0.012 82);
-  --sidebar-accent-foreground: oklch(0.22 0.006 50);
-  --sidebar-border: oklch(0.92 0.008 80);
-  --sidebar-ring: oklch(0.74 0.07 80);
+  /* Rail lateral de íconos */
+  --sidebar: #fcfbfa;
+  --sidebar-foreground: #6f665d;
+  --sidebar-primary: #b0762c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #fbeedf;
+  --sidebar-accent-foreground: #b0762c;
+  --sidebar-border: #efebe5;
+  --sidebar-ring: #c1975c;
 
-  /* Champagne gold (more refined than the bright gold we had) */
-  --gold: oklch(0.74 0.07 80);
-  --gold-soft: oklch(0.88 0.04 80);
-  --bone: oklch(0.965 0.012 85);
-  --ink: oklch(0.16 0.005 50);
+  /*
+   * Alias heredados. Media app los usa (`text-gold`, `bg-bone`, …), así que
+   * en vez de tocar 30 archivos los reapuntamos al camel nuevo y el resto
+   * de la interfaz se alinea sola.
+   */
+  --gold: #c1975c;
+  --gold-soft: #e6d3b4;
+  --bone: #ffffff;
+  --ink: #211d19;
+
+  /* Bandeja de WhatsApp */
+  --wa: #25d366;
+  --wa-soft: #dcf3e4;
+  --wa-ink: #128c4a;
 }
 
 .dark {
-  --background: oklch(0.14 0.005 50);
-  --foreground: oklch(0.96 0.008 85);
+  --background: #17140f;
+  --foreground: #f3efe9;
 
-  --card: oklch(0.18 0.008 50);
-  --card-foreground: oklch(0.96 0.008 85);
+  --card: #1e1a15;
+  --card-foreground: #f3efe9;
 
-  --popover: oklch(0.18 0.008 50);
-  --popover-foreground: oklch(0.96 0.008 85);
+  --popover: #1e1a15;
+  --popover-foreground: #f3efe9;
 
-  --primary: oklch(0.94 0.008 80);
-  --primary-foreground: oklch(0.18 0.008 50);
+  --primary: #d0a76c;
+  --primary-foreground: #17140f;
 
-  --secondary: oklch(0.25 0.012 55);
-  --secondary-foreground: oklch(0.96 0.008 85);
+  --secondary: #2a251f;
+  --secondary-foreground: #f3efe9;
 
-  --muted: oklch(0.25 0.012 55);
-  --muted-foreground: oklch(0.72 0.012 70);
+  --muted: #2a251f;
+  --muted-foreground: #a49a8e;
 
-  --accent: oklch(0.25 0.012 55);
-  --accent-foreground: oklch(0.96 0.008 85);
+  --accent: #2a251f;
+  --accent-foreground: #f3efe9;
 
-  --destructive: oklch(0.65 0.18 25);
-  --destructive-foreground: oklch(0.96 0.008 85);
+  --destructive: #e05a4c;
+  --destructive-foreground: #17140f;
 
-  --border: oklch(1 0 0 / 9%);
-  --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.78 0.08 80);
+  --border: #302a23;
+  --input: #38312a;
+  --ring: #c1975c;
 
-  --sidebar: oklch(0.18 0.008 50);
-  --sidebar-foreground: oklch(0.96 0.008 85);
-  --sidebar-primary: oklch(0.94 0.008 80);
-  --sidebar-primary-foreground: oklch(0.18 0.008 50);
-  --sidebar-accent: oklch(0.25 0.012 55);
-  --sidebar-accent-foreground: oklch(0.96 0.008 85);
-  --sidebar-border: oklch(1 0 0 / 9%);
-  --sidebar-ring: oklch(0.78 0.08 80);
+  --sidebar: #1b1712;
+  --sidebar-foreground: #a49a8e;
+  --sidebar-primary: #d0a76c;
+  --sidebar-primary-foreground: #17140f;
+  --sidebar-accent: #33281a;
+  --sidebar-accent-foreground: #e0b87c;
+  --sidebar-border: #2b251e;
+  --sidebar-ring: #c1975c;
 
-  --gold: oklch(0.78 0.08 80);
-  --gold-soft: oklch(0.5 0.06 80);
-  --bone: oklch(0.96 0.008 85);
-  --ink: oklch(0.16 0.005 50);
+  --gold: #d0a76c;
+  --gold-soft: #5c4a30;
+  --bone: #f3efe9;
+  --ink: #f3efe9;
+
+  --wa: #25d366;
+  --wa-soft: #1d3a28;
+  --wa-ink: #6ee7a0;
 }
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 8px);
-  --radius-md: calc(var(--radius) - 4px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-xl: calc(var(--radius) + 2px);
+  --radius-2xl: calc(var(--radius) + 6px);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -168,26 +181,23 @@
   --color-bone: var(--bone);
   --color-ink: var(--ink);
 
+  --color-wa: var(--wa);
+  --color-wa-soft: var(--wa-soft);
+  --color-wa-ink: var(--wa-ink);
+
+  /*
+   * Ojo: `--font-display` (Fraunces) lo inyecta next/font en el <html> y solo
+   * lo usa el wordmark de la marca. NO lo re-declaramos acá porque taparía
+   * el valor real y el logo perdería la serif.
+   */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-display: var(--font-display);
 
-  --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.04);
-  --shadow-sm:
-    0 1px 3px oklch(0 0 0 / 0.05),
-    0 1px 2px oklch(0 0 0 / 0.03),
-    0 0 0 1px oklch(0.74 0.07 80 / 0.04);
-  --shadow-md:
-    0 4px 12px -2px oklch(0 0 0 / 0.06),
-    0 2px 4px -2px oklch(0 0 0 / 0.03),
-    0 0 0 1px oklch(0.74 0.07 80 / 0.06);
-  --shadow-lg:
-    0 18px 30px -8px oklch(0 0 0 / 0.07),
-    0 6px 12px -4px oklch(0 0 0 / 0.04),
-    0 0 0 1px oklch(0.74 0.07 80 / 0.08);
-  --shadow-gold:
-    0 8px 24px -6px oklch(0.74 0.07 80 / 0.22),
-    0 0 0 1px oklch(0.74 0.07 80 / 0.18);
+  /* Sombras casi imperceptibles: el referente separa con borde, no con sombra. */
+  --shadow-xs: 0 1px 1px rgb(0 0 0 / 0.03);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-md: 0 2px 8px -2px rgb(0 0 0 / 0.06);
+  --shadow-lg: 0 12px 28px -12px rgb(0 0 0 / 0.14);
 }
 
 @layer base {
@@ -196,144 +206,52 @@
   }
 
   body {
-    @apply text-foreground;
-    background: var(--background);
-    /* Layered luminous bloom — a bright crown at the top and a soft
-     * champagne wash near the bottom. Gives the cream a "lit-from-within"
-     * feel instead of looking like flat paper. */
-    background-image:
-      radial-gradient(70% 55% at 50% -5%, oklch(1 0 0 / 0.85) 0%, transparent 55%),
-      radial-gradient(45% 35% at 12% 8%, oklch(0.74 0.07 80 / 0.10) 0%, transparent 60%),
-      radial-gradient(50% 40% at 92% 95%, oklch(0.74 0.07 80 / 0.08) 0%, transparent 65%);
-    background-attachment: fixed;
-    font-feature-settings: "cv11", "ss01", "ss03";
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
   }
 
-  .dark body {
-    background-image:
-      radial-gradient(70% 55% at 50% -5%, oklch(0.30 0.012 60 / 0.6) 0%, transparent 55%),
-      radial-gradient(45% 35% at 12% 8%, oklch(0.78 0.08 80 / 0.10) 0%, transparent 60%),
-      radial-gradient(50% 40% at 92% 95%, oklch(0.78 0.08 80 / 0.08) 0%, transparent 65%);
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.015em;
   }
 
-  h1, h2, h3 {
-    letter-spacing: -0.02em;
-  }
-
-  /* Micro-interactions */
   button,
   a,
   [role="combobox"],
   [role="checkbox"],
-  [data-slot="card"],
   [data-slot="dropdown-menu-item"],
   [data-slot="select-trigger"],
   [data-slot="input"] {
     transition-property: background-color, border-color, color, fill, stroke,
-      box-shadow, transform, opacity;
-    transition-duration: 180ms;
+      box-shadow, opacity;
+    transition-duration: 140ms;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  /* Cards: white surface on cream + soft shadow + generous radius +
-   * a hairline champagne gleam along the top edge. The gleam is drawn
-   * via a pseudo-element so it doesn't fight with the existing border. */
+  /* Tarjetas: blanco liso, borde hairline, sin sombra ni brillos. */
   [data-slot="card"] {
-    position: relative;
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-sm);
-    background-image: linear-gradient(
-      180deg,
-      oklch(1 0 0) 0%,
-      oklch(0.985 0.006 85) 100%
-    );
-  }
-
-  [data-slot="card"]::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 12%;
-    right: 12%;
-    height: 1px;
-    background: linear-gradient(
-      to right,
-      transparent,
-      oklch(0.74 0.07 80 / 0.55) 50%,
-      transparent
-    );
-    border-radius: 1px;
-    pointer-events: none;
-  }
-
-  main [data-slot="card"]:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md), 0 0 24px -8px oklch(0.74 0.07 80 / 0.25);
-  }
-
-  main [data-slot="card"]:hover::before {
-    left: 8%;
-    right: 8%;
-    background: linear-gradient(
-      to right,
-      transparent,
-      oklch(0.74 0.07 80 / 0.85) 50%,
-      transparent
-    );
-  }
-
-  [data-slot="card"]::before {
-    transition:
-      left 280ms cubic-bezier(0.4, 0, 0.2, 1),
-      right 280ms cubic-bezier(0.4, 0, 0.2, 1),
-      background 280ms ease;
+    border-radius: var(--radius-2xl);
+    box-shadow: none;
   }
 
   [data-slot="dialog-content"] {
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-lg);
-    background-image: linear-gradient(
-      180deg,
-      oklch(1 0 0) 0%,
-      oklch(0.985 0.006 85) 100%
-    );
-    position: relative;
   }
 
-  [data-slot="dialog-content"]::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(
-      135deg,
-      oklch(0.74 0.07 80 / 0.45),
-      oklch(0.74 0.07 80 / 0.05) 35%,
-      oklch(0.74 0.07 80 / 0.05) 65%,
-      oklch(0.74 0.07 80 / 0.4)
-    );
-    -webkit-mask:
-      linear-gradient(#000 0 0) content-box,
-      linear-gradient(#000 0 0);
-            mask:
-      linear-gradient(#000 0 0) content-box,
-      linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-            mask-composite: exclude;
-    pointer-events: none;
-  }
-
-  [data-slot="popover-content"] {
-    border-radius: var(--radius-lg);
+  [data-slot="popover-content"],
+  [data-slot="dropdown-menu-content"] {
+    border-radius: var(--radius-xl);
     box-shadow: var(--shadow-md);
   }
 
-  /* Inputs / selects: rounded with subtle border, champagne gold on focus */
   [data-slot="input"],
   [data-slot="textarea"],
   [data-slot="select-trigger"] {
     border-radius: var(--radius-md);
+    background-color: var(--card);
   }
 
   [data-slot="input"]:focus,
@@ -342,12 +260,12 @@
   [data-slot="textarea"]:focus-visible,
   [data-slot="select-trigger"]:focus,
   [data-slot="select-trigger"]:focus-visible {
-    border-color: var(--gold);
-    box-shadow: 0 0 0 3px oklch(0.74 0.07 80 / 0.18);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgb(193 151 92 / 0.16);
   }
 
   *:focus-visible {
-    outline: 2px solid var(--gold);
+    outline: 2px solid var(--primary);
     outline-offset: 2px;
   }
 }
@@ -358,360 +276,201 @@
     letter-spacing: -0.015em;
   }
 
-  .sidebar-nav-active::before {
-    content: "";
-    position: absolute;
-    left: -3px;
-    top: 22%;
-    bottom: 22%;
-    width: 3px;
-    border-radius: 0 3px 3px 0;
-    background: linear-gradient(
-      to bottom,
-      transparent,
-      var(--gold) 25%,
-      var(--gold) 75%,
-      transparent
-    );
-    box-shadow: 0 0 12px oklch(0.74 0.07 80 / 0.65);
-    animation: zenna-gold-rise 360ms cubic-bezier(0.4, 0, 0.2, 1) both;
-  }
-
   .text-gold {
     color: var(--gold);
   }
 
-  .text-gold-gradient {
-    background: linear-gradient(
-      135deg,
-      oklch(0.62 0.10 75) 0%,
-      oklch(0.82 0.08 85) 45%,
-      oklch(0.68 0.10 75) 100%
-    );
-    -webkit-background-clip: text;
-            background-clip: text;
-    -webkit-text-fill-color: transparent;
-            color: transparent;
+  /*
+   * Etiqueta de sección tipo "TIPO DE SERVICIO": versalita muy espaciada,
+   * en gris cálido. Es la firma tipográfica del referente.
+   */
+  .section-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
   }
 
-  /* Decorative hairline divider with a champagne gleam in the middle */
-  .gold-hairline {
-    height: 1px;
-    background: linear-gradient(
-      to right,
-      transparent,
-      var(--gold-soft) 30%,
-      var(--gold) 50%,
-      var(--gold-soft) 70%,
-      transparent
-    );
+  /* Chip de tecla para las ayudas "N nuevo · T hoy · ← → días" */
+  .kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    padding: 0 0.3rem;
+    border: 1px solid var(--border);
+    border-radius: 0.3rem;
+    background: var(--card);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--muted-foreground);
   }
 
-  /* Glassy chrome surface for sidebar / sticky headers */
-  .surface-glass {
-    background: oklch(0.97 0.012 85 / 0.72);
-    backdrop-filter: saturate(140%) blur(14px);
-    -webkit-backdrop-filter: saturate(140%) blur(14px);
+  /* Contenedor del control segmentado (Día | Semana) */
+  .segmented {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+    padding: 0.1875rem;
+    border-radius: var(--radius);
+    background: var(--muted);
   }
-}
 
-/* ── Page entrance (subtle, fast) ──────────────────────────────────── */
+  .segmented-item {
+    padding: 0.3125rem 0.875rem;
+    border-radius: calc(var(--radius) - 3px);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--muted-foreground);
+    transition: background-color 140ms ease, color 140ms ease;
+  }
 
-@keyframes zenna-page-in {
-  from { opacity: 0; transform: translateY(6px) scale(0.995); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
+  .segmented-item:hover {
+    color: var(--foreground);
+  }
 
-@keyframes zenna-gold-rise {
-  from { opacity: 0; transform: scaleY(0.3); }
-  to   { opacity: 1; transform: scaleY(1); }
-}
+  .segmented-item[data-active="true"] {
+    background: var(--card);
+    color: var(--foreground);
+    box-shadow: var(--shadow-xs);
+  }
 
-@keyframes zenna-shine {
-  0%   { transform: translateX(-120%) skewX(-18deg); }
-  100% { transform: translateX(260%) skewX(-18deg); }
-}
+  /* Ítem del rail de íconos */
+  .rail-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 1px solid transparent;
+    border-radius: 0.625rem;
+    color: var(--sidebar-foreground);
+    transition: background-color 140ms ease, color 140ms ease,
+      border-color 140ms ease;
+  }
 
-@keyframes zenna-gold-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 oklch(0.74 0.07 80 / 0); }
-  50%      { box-shadow: 0 0 24px 2px oklch(0.74 0.07 80 / 0.18); }
-}
+  .rail-item:hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
 
-main > * {
-  animation: zenna-page-in 280ms cubic-bezier(0.4, 0, 0.2, 1) both;
-}
+  .rail-item[data-active="true"] {
+    background: var(--sidebar-accent);
+    border-color: rgb(193 151 92 / 0.35);
+    color: var(--sidebar-accent-foreground);
+  }
 
-main > * > *:nth-child(1) { animation: zenna-page-in 320ms cubic-bezier(0.4, 0, 0.2, 1) 30ms both; }
-main > * > *:nth-child(2) { animation: zenna-page-in 320ms cubic-bezier(0.4, 0, 0.2, 1) 80ms both; }
-main > * > *:nth-child(3) { animation: zenna-page-in 320ms cubic-bezier(0.4, 0, 0.2, 1) 130ms both; }
-main > * > *:nth-child(4) { animation: zenna-page-in 320ms cubic-bezier(0.4, 0, 0.2, 1) 180ms both; }
-
-/* ── Premium primary button: gradient + gold sheen sweep on hover ──── */
-
-[data-slot="button"][data-variant="default"] {
-  background-image: linear-gradient(
-    180deg,
-    oklch(0.22 0.006 50) 0%,
-    oklch(0.13 0.005 50) 100%
-  );
-  box-shadow:
-    0 1px 0 oklch(1 0 0 / 0.08) inset,
-    0 1px 2px oklch(0 0 0 / 0.12),
-    0 0 0 1px oklch(0.74 0.07 80 / 0.15);
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-}
-
-[data-slot="button"][data-variant="default"]:hover {
-  box-shadow:
-    0 1px 0 oklch(1 0 0 / 0.10) inset,
-    0 4px 14px -4px oklch(0 0 0 / 0.25),
-    0 0 0 1px oklch(0.74 0.07 80 / 0.35),
-    0 0 18px -6px oklch(0.74 0.07 80 / 0.45);
-  transform: translateY(-1px);
-}
-
-[data-slot="button"][data-variant="default"]:active {
-  transform: translateY(0);
-}
-
-[data-slot="button"][data-variant="default"]::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    oklch(0.74 0.07 80 / 0) 35%,
-    oklch(0.96 0.06 85 / 0.45) 50%,
-    oklch(0.74 0.07 80 / 0) 65%,
-    transparent 100%
-  );
-  transform: translateX(-120%) skewX(-18deg);
-  pointer-events: none;
-  z-index: -1;
-}
-
-[data-slot="button"][data-variant="default"]:hover::after {
-  animation: zenna-shine 720ms cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
-}
-
-/* Outline button: subtle gold lift on hover */
-[data-slot="button"][data-variant="outline"]:hover {
-  border-color: oklch(0.74 0.07 80 / 0.55);
-  box-shadow: 0 0 0 3px oklch(0.74 0.07 80 / 0.08);
-}
-
-/* ── Sidebar: warm cream column, gold seam against content ─────────── */
-
-aside.surface-glass {
-  background:
-    linear-gradient(
-      180deg,
-      oklch(0.97 0.014 85) 0%,
-      oklch(0.952 0.014 85) 60%,
-      oklch(0.94 0.012 82) 100%
-    );
-  border-right: 1px solid transparent;
-  background-clip: padding-box;
-  position: relative;
-}
-
-aside.surface-glass::after {
-  content: "";
-  position: absolute;
-  top: 8%;
-  bottom: 8%;
-  right: -1px;
-  width: 1px;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    oklch(0.74 0.07 80 / 0.35) 18%,
-    oklch(0.74 0.07 80 / 0.55) 50%,
-    oklch(0.74 0.07 80 / 0.35) 82%,
-    transparent
-  );
-  pointer-events: none;
-}
-
-/* ── Sidebar nav items: hover gleam + buttery active state ─────────── */
-
-aside nav a {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-}
-
-aside nav a:hover:not(.sidebar-nav-active) {
-  background: linear-gradient(
-    90deg,
-    oklch(0.74 0.07 80 / 0.08),
-    oklch(0.74 0.07 80 / 0.02)
-  );
-  color: var(--foreground);
-}
-
-aside nav a.sidebar-nav-active {
-  background-image: linear-gradient(
-    180deg,
-    oklch(0.22 0.006 50) 0%,
-    oklch(0.12 0.005 50) 100%
-  );
-  box-shadow:
-    0 1px 0 oklch(1 0 0 / 0.06) inset,
-    0 4px 12px -6px oklch(0 0 0 / 0.25),
-    0 0 0 1px oklch(0.74 0.07 80 / 0.25);
-}
-
-/* ── Avatar inside user menu: gold ring ────────────────────────────── */
-
-[data-slot="dropdown-menu-trigger"] [data-slot="avatar"] {
-  box-shadow:
-    0 0 0 1px oklch(1 0 0),
-    0 0 0 2px oklch(0.74 0.07 80 / 0.45);
-}
-
-/* ── Inputs: lift on focus instead of feeling stamped ──────────────── */
-
-[data-slot="input"]:focus,
-[data-slot="input"]:focus-visible,
-[data-slot="textarea"]:focus,
-[data-slot="textarea"]:focus-visible,
-[data-slot="select-trigger"]:focus,
-[data-slot="select-trigger"]:focus-visible {
-  box-shadow:
-    0 0 0 3px oklch(0.74 0.07 80 / 0.18),
-    0 4px 10px -6px oklch(0.74 0.07 80 / 0.25);
-}
-
-/* Respect reduced motion: kill shine sweeps + entrance animations */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+  /* Variante expandida del rail: mismo pill pero con etiqueta al costado */
+  .rail-item-wide {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 0.625rem;
+    padding: 0 0.625rem;
   }
 }
 
-/* ── FullCalendar — de-Excel-ified ─────────────────────────────────── */
+/* ── FullCalendar — calcado de la agenda del referente ────────────────── */
 
 .zenna-calendar .fc {
   --fc-border-color: transparent;
   --fc-page-bg-color: transparent;
   --fc-neutral-bg-color: transparent;
   --fc-list-event-hover-bg-color: var(--muted);
-  --fc-today-bg-color: oklch(from var(--gold) l c h / 0.05);
-  --fc-now-indicator-color: var(--ink);
+  --fc-today-bg-color: transparent;
+  --fc-now-indicator-color: var(--primary);
   font-family: inherit;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
 }
 
-/* Hide the harsh grid lines that make it look like a spreadsheet */
+/* Sin grilla dura: la agenda del referente respira. */
 .zenna-calendar .fc-theme-standard td,
 .zenna-calendar .fc-theme-standard th {
   border-color: transparent;
 }
 
-/* Bring back ONLY the horizontal hour separators — very faint */
-.zenna-calendar .fc-timegrid-slot {
-  border-top: 1px solid var(--border) !important;
-}
-
-/* Light vertical column dividers only between resources, very subtle */
-.zenna-calendar .fc-timegrid-col {
-  border-left: 1px solid oklch(0.94 0.006 80) !important;
-}
-
-.zenna-calendar .fc-timegrid-col:first-child {
-  border-left: none !important;
-}
-
-/* Header row: no boxy background, just space + bottom hairline */
-.zenna-calendar .fc-col-header-cell {
-  background: transparent;
-  border: none !important;
-  padding: 0.75rem 0.5rem;
-  font-weight: 600;
-  font-size: 0.8125rem;
-  color: var(--foreground);
-}
-
-.zenna-calendar .fc-col-header-cell-cushion {
-  text-decoration: none;
-  color: inherit;
-  padding: 0;
-}
-
-.zenna-calendar .fc-scrollgrid {
-  border: none !important;
-}
-
+.zenna-calendar .fc-scrollgrid,
 .zenna-calendar .fc-scrollgrid-section > * {
   border: none !important;
 }
 
-/* Hour labels: muted, no harsh background */
-.zenna-calendar .fc-timegrid-axis,
-.zenna-calendar .fc-timegrid-slot-label {
-  color: var(--muted-foreground);
-  font-size: 0.75rem;
+/*
+ * Renglones horarios: la hora en punto lleva una línea punteada apenas
+ * visible y la media hora ni siquiera eso. Es lo que hace que la grilla
+ * se lea como una hoja rayada y no como una planilla de cálculo.
+ */
+.zenna-calendar .fc-timegrid-slot {
+  height: 3rem;
   border: none !important;
 }
 
-/* Toolbar */
-.zenna-calendar .fc-toolbar {
-  padding: 0.25rem 0 0.75rem;
+.zenna-calendar .fc-timegrid-slot-lane {
+  border-top: 1px dotted #e8e3dc !important;
 }
 
-.zenna-calendar .fc-toolbar-title {
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: 1.25rem;
-  letter-spacing: -0.01em;
-  color: var(--foreground);
+.zenna-calendar .fc-timegrid-slot-lane.fc-timegrid-slot-minor {
+  border-top-color: transparent !important;
 }
 
-.zenna-calendar .fc-button {
-  background-color: transparent !important;
-  border: 1px solid var(--border) !important;
-  color: var(--foreground) !important;
-  font-weight: 500;
-  font-size: 0.8125rem;
-  text-transform: capitalize;
-  border-radius: 0.625rem !important;
-  padding: 0.4rem 0.85rem !important;
-  box-shadow: none !important;
-  transition: all 160ms ease;
+.zenna-calendar .fc-timegrid-col {
+  border: none !important;
 }
 
-.zenna-calendar .fc-button:hover {
-  background-color: var(--muted) !important;
+/* Etiquetas de hora: gris cálido, alineadas arriba del renglón */
+.zenna-calendar .fc-timegrid-axis,
+.zenna-calendar .fc-timegrid-slot-label {
+  border: none !important;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  vertical-align: top;
 }
 
-.zenna-calendar .fc-button-primary:not(:disabled).fc-button-active,
-.zenna-calendar .fc-button-primary:not(:disabled):active {
-  background-color: var(--primary) !important;
-  border-color: var(--primary) !important;
-  color: var(--primary-foreground) !important;
+.zenna-calendar .fc-timegrid-slot-label-cushion {
+  padding: 0 0.75rem 0 0;
+  position: relative;
+  top: -0.45rem;
 }
 
-/* Events: pill-style with thicker left accent, rounded, with padding */
+/* Cabecera de columna (profesional): sin caja, solo aire */
+.zenna-calendar .fc-col-header-cell {
+  background: transparent;
+  border: none !important;
+  padding: 0.5rem 0.25rem 0.75rem;
+  vertical-align: top;
+}
+
+.zenna-calendar .fc-col-header-cell-cushion {
+  display: block;
+  padding: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.zenna-calendar .fc-timegrid-axis-frame {
+  justify-content: flex-start;
+}
+
+/*
+ * Turnos: rectángulo gris claro, esquina redondeada y una barra de color
+ * del profesional pegada al borde izquierdo. Hora arriba en gris, nombre
+ * abajo en tinta.
+ */
 .zenna-calendar .fc-event {
-  border-radius: 0.625rem;
-  border-width: 0 0 0 3px;
-  padding: 0.25rem 0.5rem;
-  box-shadow: var(--shadow-xs);
+  position: relative;
+  border: none;
+  border-left: 3px solid var(--primary);
+  border-radius: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  box-shadow: none;
+  overflow: hidden;
   cursor: pointer;
-  font-weight: 500;
-  transition: transform 160ms ease, box-shadow 160ms ease;
 }
 
 .zenna-calendar .fc-event:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
+  filter: brightness(0.985);
 }
 
 .zenna-calendar .fc-event-main {
@@ -719,30 +478,50 @@ aside nav a.sidebar-nav-active {
 }
 
 .zenna-calendar .fc-event-time {
-  font-weight: 600;
-  font-size: 0.7rem;
-  opacity: 0.85;
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  margin-bottom: 0.05rem;
 }
 
 .zenna-calendar .fc-event-title {
+  font-size: 0.8125rem;
   font-weight: 500;
-  font-size: 0.75rem;
+  line-height: 1.2;
 }
 
-/* Now indicator: thin ink line */
+/* Indicador de "ahora": línea camel con el punto a la izquierda */
 .zenna-calendar .fc-timegrid-now-indicator-line {
   border-top-width: 1.5px;
-  border-color: var(--ink);
+  border-color: var(--primary);
 }
 
 .zenna-calendar .fc-timegrid-now-indicator-arrow {
-  display: none;
+  border: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--primary);
+  margin-top: -4px;
+  margin-left: -2px;
 }
 
-/* Event status states */
+/* Selección arrastrada: recuadro punteado camel, como el "+ Crear turno" */
+.zenna-calendar .fc-highlight {
+  background: rgb(193 151 92 / 0.06);
+  border: 1px dashed rgb(193 151 92 / 0.55);
+  border-radius: 0.625rem;
+}
+
+.zenna-calendar .fc-timegrid-col.fc-day-today {
+  background: transparent;
+}
+
+/* Estados del turno */
 .zenna-calendar .fc-event.zenna-event-cancelled,
 .zenna-calendar .fc-event.zenna-event-noshow {
-  opacity: 0.55;
+  opacity: 0.5;
 }
 
 .zenna-calendar .fc-event.zenna-event-cancelled .fc-event-title,
@@ -751,28 +530,25 @@ aside nav a.sidebar-nav-active {
 }
 
 .zenna-calendar .fc-event.zenna-event-completed::after {
-  content: "✓";
+  content: "";
   position: absolute;
-  top: 2px;
-  right: 4px;
-  font-size: 0.7rem;
-  color: var(--foreground);
-  opacity: 0.6;
-}
-
-.zenna-calendar .fc-event {
-  position: relative;
+  top: 0.45rem;
+  right: 0.45rem;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--muted-foreground);
+  opacity: 0.5;
 }
 
 /*
- * "+" affordance to add a second turno at the same time/pro. Hidden until the
- * turno is hovered/focused so the agenda stays clean, then sits in the
- * bottom-right corner (top-right is reserved for the completed ✓ mark).
+ * "+" para agregar un segundo turno en el mismo horario. Oculto hasta que
+ * el turno recibe hover/foco, así la agenda queda limpia.
  */
 .zenna-calendar .fc-event .zenna-event-add {
   position: absolute;
-  bottom: 2px;
-  right: 3px;
+  bottom: 3px;
+  right: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -782,35 +558,34 @@ aside nav a.sidebar-nav-active {
   border: none;
   border-radius: 9999px;
   background: var(--foreground);
-  color: var(--background);
+  color: var(--card);
   font-size: 0.8rem;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 120ms ease, transform 120ms ease;
+  transition: opacity 120ms ease;
   z-index: 3;
 }
 
 .zenna-calendar .fc-event:hover .zenna-event-add,
 .zenna-calendar .fc-event:focus-within .zenna-event-add {
-  opacity: 0.9;
+  opacity: 0.85;
 }
 
 .zenna-calendar .fc-event .zenna-event-add:hover {
   opacity: 1;
-  transform: scale(1.1);
 }
 
 .zenna-calendar .fc-license-message {
   display: none !important;
 }
 
-/*
- * Mini-agenda inside the CRM "new turno" dialog. Tighter typography +
- * the synthetic "pick" event uses a solid ink color so it stands out from
- * the soft pro-color tints around it.
- */
+/* Mini agenda dentro del diálogo "nuevo turno" del CRM */
+.zenna-mini-calendar .fc-timegrid-slot {
+  height: 2rem;
+}
+
 .zenna-mini-calendar .fc-toolbar {
   flex-wrap: nowrap;
   gap: 0.5rem;
@@ -820,12 +595,23 @@ aside nav a.sidebar-nav-active {
 .zenna-mini-calendar .fc-toolbar-title {
   font-size: 0.85rem;
   white-space: nowrap;
-  font-family: inherit;
 }
 
 .zenna-mini-calendar .fc-button {
-  padding: 0.15rem 0.45rem;
+  background-color: transparent !important;
+  border: 1px solid var(--border) !important;
+  color: var(--foreground) !important;
+  border-radius: 0.5rem !important;
+  padding: 0.15rem 0.45rem !important;
   font-size: 0.7rem;
+  box-shadow: none !important;
+}
+
+.zenna-mini-calendar .fc-button-primary:not(:disabled).fc-button-active,
+.zenna-mini-calendar .fc-button-primary:not(:disabled):active {
+  background-color: var(--foreground) !important;
+  border-color: var(--foreground) !important;
+  color: var(--card) !important;
 }
 
 .zenna-mini-calendar .fc-col-header-cell-cushion {
@@ -833,26 +619,23 @@ aside nav a.sidebar-nav-active {
   padding: 0.25rem 0.15rem;
 }
 
-.zenna-mini-calendar .fc-timegrid-slot-label-cushion {
-  font-size: 0.65rem;
-}
-
+.zenna-mini-calendar .fc-timegrid-slot-label-cushion,
 .zenna-mini-calendar .fc-timegrid-axis-cushion {
   font-size: 0.65rem;
 }
 
 .zenna-calendar .fc-event.zenna-pick-event {
   font-weight: 600;
-  box-shadow: 0 0 0 2px var(--brand-gold, #b89968);
+  box-shadow: 0 0 0 2px var(--primary);
 }
 
-/* List view (mobile): clean rows, touch-friendly heights */
+/* Vista lista (mobile): filas limpias, alto cómodo para el dedo */
 .zenna-calendar .fc-list {
   border: none !important;
 }
 
 .zenna-calendar .fc-list-day-cushion {
-  background: oklch(from var(--gold) l c h / 0.05) !important;
+  background: var(--muted) !important;
   font-weight: 600;
   font-size: 0.8125rem;
   padding: 0.5rem 0.75rem;
@@ -890,32 +673,92 @@ aside nav a.sidebar-nav-active {
   text-align: center;
 }
 
-/* Mobile: stack toolbar, shrink title, larger buttons for touch */
 @media (max-width: 639px) {
-  .zenna-calendar .fc-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.5rem;
-  }
-  .zenna-calendar .fc-toolbar-chunk {
-    display: flex;
-    justify-content: center;
-  }
-  .zenna-calendar .fc-toolbar-title {
-    font-size: 1rem;
-    text-align: center;
-  }
-  .zenna-calendar .fc-button {
-    padding: 0.5rem 0.75rem !important;
-    font-size: 0.8rem;
-    min-height: 36px;
-  }
-  /* Events: taller hit area on touch */
   .zenna-calendar .fc-event {
     padding: 0.35rem 0.5rem;
     min-height: 32px;
   }
-  .zenna-calendar .fc-event-title {
-    font-size: 0.8rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Impresión / "Guardar como PDF" ───────────────────────────────────────
+ * Pensado para los reportes de Finanzas. Marcá el contenedor del reporte con
+ * .print-report y todo lo que no sea reporte (rail, header, tabs, botones)
+ * desaparece. Los <details> se abren solos para que el PDF salga completo.
+ */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 10mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  aside,
+  header,
+  .print-hide {
+    display: none !important;
+  }
+
+  main {
+    overflow: visible !important;
+    padding: 0 !important;
+    height: auto !important;
+  }
+
+  body:has(.print-report) .print-hide-when-report {
+    display: none !important;
+  }
+
+  .print-report [class*="shadow"] {
+    box-shadow: none !important;
+  }
+  .print-report [class*="rounded-xl"] {
+    border-radius: 4px !important;
+  }
+
+  .print-report details > *:not(summary) {
+    display: block !important;
+    content-visibility: visible !important;
+  }
+  .print-report summary {
+    list-style: none;
+  }
+  .print-report summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .print-report .print-break {
+    break-before: page;
+  }
+  .print-report details,
+  .print-report table {
+    break-inside: auto;
+  }
+  .print-report tr,
+  .print-report li {
+    break-inside: avoid;
+  }
+  .print-report thead {
+    display: table-header-group;
+  }
+
+  .print-report * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }

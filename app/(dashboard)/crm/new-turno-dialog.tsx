@@ -36,6 +36,10 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency, formatDuration } from "@/lib/format";
+import {
+  PAYMENT_METHODS,
+  type PaymentMethod,
+} from "@/lib/validations/payments";
 import { CATEGORY_LABEL } from "@/lib/validations/services";
 import {
   createClientQuickAction,
@@ -247,6 +251,8 @@ export function NewTurnoDialog({
   const [startsAt, setStartsAt] = useState<string>(""); // ISO
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
+  const [depositAmount, setDepositAmount] = useState<number>(0);
+  const [depositMethod, setDepositMethod] = useState<PaymentMethod>("cash");
   const [isPending, startTransition] = useTransition();
 
   // Mobile detection — the embedded FullCalendar is unusable on phones
@@ -282,6 +288,8 @@ export function NewTurnoDialog({
     setStartsAt("");
     setSelectedServiceIds([]);
     setNotes("");
+    setDepositAmount(0);
+    setDepositMethod("cash");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, conversationId]);
 
@@ -426,6 +434,8 @@ export function NewTurnoDialog({
     formData.set("status", "scheduled");
     formData.set("notes", notes);
     formData.set("serviceIds", selectedServiceIds.join(","));
+    formData.set("depositAmount", String(depositAmount > 0 ? depositAmount : 0));
+    formData.set("depositMethod", depositAmount > 0 ? depositMethod : "");
 
     startTransition(async () => {
       const result = await createAppointmentAction(formData);
@@ -714,6 +724,52 @@ export function NewTurnoDialog({
                 placeholder="Detalles, fórmula, alergias…"
                 className="text-sm"
               />
+            </div>
+
+            {/* Seña / adelanto (opcional) */}
+            <div className="space-y-1">
+              <Label htmlFor="new-turno-deposit" className="text-xs">
+                Seña / adelanto (opcional)
+              </Label>
+              <div className="grid grid-cols-[120px_1fr] gap-2">
+                <Input
+                  id="new-turno-deposit"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step={500}
+                  value={depositAmount || ""}
+                  placeholder="0"
+                  onChange={(e) =>
+                    setDepositAmount(Number(e.target.value) || 0)
+                  }
+                  className="text-right tabular-nums text-sm"
+                />
+                <Select
+                  value={depositMethod}
+                  onValueChange={(v) => setDepositMethod(v as PaymentMethod)}
+                  disabled={depositAmount <= 0}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Método" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_METHODS.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {depositAmount > 0 && totalPrice > 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Saldo a cobrar:{" "}
+                  <strong className="text-foreground">
+                    {formatCurrency(Math.max(0, totalPrice - depositAmount))}
+                  </strong>
+                </p>
+              ) : null}
             </div>
           </div>
         </div>

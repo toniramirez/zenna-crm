@@ -1,7 +1,7 @@
 "use client";
 
-import { Maximize2, MessageSquare, Minimize2, Settings2 } from "lucide-react";
-import { useFocusMode } from "@/components/dashboard/focus-mode-context";
+import { ArrowLeft } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Tabs,
@@ -63,48 +63,24 @@ export function CrmShell({
   paymentMethods: PaymentMethod[];
   outreachSuggestions: OutreachSuggestionWithRelations[];
 }) {
-  const { focused, toggle } = useFocusMode();
+  const [tab, setTab] = useState<"chat" | "config">(initialTab);
 
   return (
-    <Tabs defaultValue={initialTab} className="flex-1 min-h-0">
-      <div className="flex items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
-          <h1 className="text-lg font-semibold tracking-tight shrink-0">
-            CRM
-          </h1>
-          <TabsList>
-          <TabsTrigger value="chat">
-            <MessageSquare className="size-3.5" />
-            Chat
-            <span className="ml-1 inline-flex items-center justify-center rounded-full bg-muted px-1.5 text-[10px] tabular-nums">
-              {conversations.length}
-            </span>
-          </TabsTrigger>
-          <TabsTrigger value="config">
-            <Settings2 className="size-3.5" />
-            Configuración
-          </TabsTrigger>
-          </TabsList>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={toggle}
-          className="h-8 px-2 text-xs gap-1.5"
-          aria-pressed={focused}
-          title={focused ? "Salir del modo foco" : "Modo foco"}
-        >
-          {focused ? (
-            <Minimize2 className="size-3.5" />
-          ) : (
-            <Maximize2 className="size-3.5" />
-          )}
-          <span className="hidden sm:inline">
-            {focused ? "Salir de foco" : "Foco"}
-          </span>
-        </Button>
-      </div>
+    <Tabs
+      value={tab}
+      onValueChange={(value) => setTab(value as "chat" | "config")}
+      className="flex-1 min-h-0 gap-0"
+    >
+      {/*
+        El referente no tiene barra de solapas: la bandeja ocupa la pantalla
+        entera y la configuración se abre desde el "⋮" del panel izquierdo.
+        Mantenemos <Tabs> porque conserva montado el chat (scroll y
+        conversación seleccionada) al ir y volver de configuración.
+      */}
+      <TabsList className="sr-only">
+        <TabsTrigger value="chat">Chat</TabsTrigger>
+        <TabsTrigger value="config">Configuración</TabsTrigger>
+      </TabsList>
 
       <TabsContent value="chat" className="m-0 flex-1 min-h-0">
         <CrmView
@@ -117,18 +93,43 @@ export function CrmShell({
           clients={clients}
           appointments={appointments}
           paymentMethods={paymentMethods.filter((m) => m.active)}
+          onOpenConfig={() => setTab("config")}
         />
       </TabsContent>
 
-      <TabsContent value="config" className="m-0 flex-1 min-h-0 overflow-y-auto">
-        <CrmConfig
-          tags={tags}
-          quickReplies={quickReplies}
-          flows={flows}
-          services={services}
-          paymentMethods={paymentMethods}
-          outreachSuggestions={outreachSuggestions}
-        />
+      <TabsContent
+        value="config"
+        className="m-0 flex-1 min-h-0 overflow-y-auto"
+      >
+        <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 sm:px-6">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setTab("chat")}
+            aria-label="Volver a la bandeja"
+            title="Volver a la bandeja"
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
+          <h1 className="text-[1.0625rem] font-medium">
+            Configuración del CRM
+          </h1>
+          <span className="ml-auto text-[0.8125rem] text-muted-foreground tabular-nums">
+            {conversations.length}{" "}
+            {conversations.length === 1 ? "conversación" : "conversaciones"}
+          </span>
+        </div>
+        <div className="p-4 sm:p-6">
+          <CrmConfig
+            tags={tags}
+            quickReplies={quickReplies}
+            flows={flows}
+            services={services}
+            paymentMethods={paymentMethods}
+            outreachSuggestions={outreachSuggestions}
+          />
+        </div>
       </TabsContent>
     </Tabs>
   );

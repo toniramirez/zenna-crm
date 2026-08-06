@@ -76,7 +76,7 @@ export default async function CajaPage({ searchParams }: Props) {
     .from("appointments")
     .select(
       `
-      id, starts_at, ends_at, status,
+      id, starts_at, ends_at, status, deposit_amount, deposit_method,
       professionals!inner ( id, full_name, color ),
       clients ( id, full_name, phone ),
       appointment_services ( id, professional_id, price_at_booking, duration_at_booking, services ( name ) ),
@@ -97,6 +97,8 @@ export default async function CajaPage({ searchParams }: Props) {
     starts_at: string;
     ends_at: string;
     status: UnpaidAppointment["status"];
+    deposit_amount: number;
+    deposit_method: UnpaidAppointment["deposit_method"];
     professionals: { id: string; full_name: string; color: string } | null;
     clients: { id: string; full_name: string; phone: string | null } | null;
     appointment_services: {
@@ -131,6 +133,8 @@ export default async function CajaPage({ searchParams }: Props) {
         (acc, s) => acc + Number(s.price_at_booking),
         0,
       ),
+      deposit_amount: Number(a.deposit_amount ?? 0),
+      deposit_method: a.deposit_method,
     }));
 
   // ── Totals

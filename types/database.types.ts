@@ -71,6 +71,8 @@ export type Database = {
           client_id: string
           created_at: string
           created_by: string | null
+          deposit_amount: number
+          deposit_method: Database["public"]["Enums"]["payment_method"] | null
           ends_at: string
           id: string
           notes: string | null
@@ -83,6 +85,8 @@ export type Database = {
           client_id: string
           created_at?: string
           created_by?: string | null
+          deposit_amount?: number
+          deposit_method?: Database["public"]["Enums"]["payment_method"] | null
           ends_at: string
           id?: string
           notes?: string | null
@@ -95,6 +99,8 @@ export type Database = {
           client_id?: string
           created_at?: string
           created_by?: string | null
+          deposit_amount?: number
+          deposit_method?: Database["public"]["Enums"]["payment_method"] | null
           ends_at?: string
           id?: string
           notes?: string | null

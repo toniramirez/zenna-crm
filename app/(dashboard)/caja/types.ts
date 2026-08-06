@@ -31,4 +31,6 @@ export type UnpaidAppointment = {
     professional_id: string;
   }[];
   total_price: number;
+  deposit_amount: number;
+  deposit_method: Database["public"]["Enums"]["payment_method"] | null;
 };

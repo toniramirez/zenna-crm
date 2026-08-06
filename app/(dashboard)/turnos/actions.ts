@@ -59,6 +59,8 @@ export async function createAppointmentAction(
     status: formData.get("status") || "scheduled",
     notes: formData.get("notes") || undefined,
     serviceIds,
+    depositAmount: Number(formData.get("depositAmount")) || 0,
+    depositMethod: formData.get("depositMethod") || undefined,
   });
 
   if (!parsed.success) return { fieldErrors: fieldErrorsFromZod(parsed) };
@@ -84,6 +86,10 @@ export async function createAppointmentAction(
       ends_at: parsed.data.endsAt,
       status: parsed.data.status,
       notes: parsed.data.notes || null,
+      deposit_amount: parsed.data.depositAmount,
+      deposit_method: parsed.data.depositAmount > 0
+        ? parsed.data.depositMethod ?? null
+        : null,
       created_by: ctx.userId,
     })
     .select("id")
@@ -138,6 +144,8 @@ export async function updateAppointmentAction(
     status: formData.get("status") || "scheduled",
     notes: formData.get("notes") || undefined,
     serviceIds,
+    depositAmount: Number(formData.get("depositAmount")) || 0,
+    depositMethod: formData.get("depositMethod") || undefined,
   });
 
   if (!parsed.success) return { fieldErrors: fieldErrorsFromZod(parsed) };
@@ -153,6 +161,10 @@ export async function updateAppointmentAction(
       ends_at: parsed.data.endsAt,
       status: parsed.data.status,
       notes: parsed.data.notes || null,
+      deposit_amount: parsed.data.depositAmount,
+      deposit_method: parsed.data.depositAmount > 0
+        ? parsed.data.depositMethod ?? null
+        : null,
     })
     .eq("id", id);
 

@@ -12,6 +12,8 @@ import {
 } from "@/lib/validations/expense-templates";
 import { EstadisticasPanel } from "./estadisticas-panel";
 import { GastosFijosPanel } from "./gastos-fijos-panel";
+import { loadMonthIncome, safeBasis } from "./income-by-method";
+import { IngresosPanel } from "./ingresos-panel";
 import { PinGate } from "./pin-gate";
 import { hasFinanzasPinAccess } from "./pin-config";
 import { ProfesionalesPanel } from "./profesionales-panel";
@@ -22,11 +24,12 @@ import type { ExpenseRow, ExpenseTemplateRow } from "./types";
 export const dynamic = "force-dynamic";
 
 type Props = {
-  searchParams: Promise<{ tab?: string; month?: string }>;
+  searchParams: Promise<{ tab?: string; month?: string; base?: string }>;
 };
 
 const VALID_TABS = [
   "estadisticas",
+  "ingresos",
   "gastos-fijos",
   "profesionales",
 ] as const;
@@ -44,7 +47,7 @@ export default async function FinanzasPage({ searchParams }: Props) {
     );
   }
 
-  const { tab, month } = await searchParams;
+  const { tab, month, base } = await searchParams;
 
   const initialTab: ValidTab = (VALID_TABS as readonly string[]).includes(
     tab ?? "",
@@ -53,6 +56,7 @@ export default async function FinanzasPage({ searchParams }: Props) {
     : "gastos-fijos";
   const selectedMonth = safeMonth(month);
   const period = monthToPeriod(selectedMonth);
+  const incomeBasis = safeBasis(base);
 
   const supabase = await createClient();
   const statsMonth = new Date(
@@ -61,21 +65,27 @@ export default async function FinanzasPage({ searchParams }: Props) {
     1,
   );
 
-  const [stats, templatesResult, paymentsResult, professionalPayouts] =
-    await Promise.all([
-      loadMonthStats(statsMonth),
-      supabase
-        .from("expense_templates")
-        .select("*")
-        .order("active", { ascending: false })
-        .order("name"),
-      supabase
-        .from("expenses")
-        .select("*")
-        .eq("period", period)
-        .not("template_id", "is", null),
-      loadProfessionalPayouts(period),
-    ]);
+  const [
+    stats,
+    templatesResult,
+    paymentsResult,
+    professionalPayouts,
+    incomeReport,
+  ] = await Promise.all([
+    loadMonthStats(statsMonth),
+    supabase
+      .from("expense_templates")
+      .select("*")
+      .order("active", { ascending: false })
+      .order("name"),
+    supabase
+      .from("expenses")
+      .select("*")
+      .eq("period", period)
+      .not("template_id", "is", null),
+    loadProfessionalPayouts(period),
+    loadMonthIncome(selectedMonth, incomeBasis),
+  ]);
 
   const templates =
     (templatesResult.data as ExpenseTemplateRow[] | null) ?? [];
@@ -84,17 +94,24 @@ export default async function FinanzasPage({ searchParams }: Props) {
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Finanzas</h1>
+      <h1 className="print-hide text-2xl font-semibold tracking-tight">
+        Finanzas
+      </h1>
 
       <Tabs defaultValue={initialTab} className="space-y-4">
-        <TabsList>
+        <TabsList className="print-hide">
           <TabsTrigger value="estadisticas">Estadísticas</TabsTrigger>
+          <TabsTrigger value="ingresos">Ingresos</TabsTrigger>
           <TabsTrigger value="gastos-fijos">Gastos fijos</TabsTrigger>
           <TabsTrigger value="profesionales">Profesionales</TabsTrigger>
         </TabsList>
 
         <TabsContent value="estadisticas" className="space-y-4">
           <EstadisticasPanel month={selectedMonth} stats={stats} />
+        </TabsContent>
+
+        <TabsContent value="ingresos" className="space-y-4">
+          <IngresosPanel month={selectedMonth} report={incomeReport} />
         </TabsContent>
 
         <TabsContent value="gastos-fijos" className="space-y-4">

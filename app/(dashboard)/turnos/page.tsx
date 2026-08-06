@@ -62,16 +62,14 @@ export default async function TurnosPage() {
   const appointments =
     (appointmentsResult.data as AppointmentWithRelations[] | null) ?? [];
 
+  // Sin <h1>: la agenda va a sangre y su propio toolbar hace de encabezado,
+  // igual que en el diseño de referencia.
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-semibold tracking-tight">Turnos</h1>
-
-      <CalendarView
-        professionals={professionals}
-        services={services}
-        clients={clients}
-        appointments={appointments}
-      />
-    </div>
+    <CalendarView
+      professionals={professionals}
+      services={services}
+      clients={clients}
+      appointments={appointments}
+    />
   );
 }

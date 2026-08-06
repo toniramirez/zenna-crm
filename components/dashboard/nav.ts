@@ -1,15 +1,16 @@
 import {
-  Building2,
+  BarChart3,
   CalendarDays,
+  ContactRound,
+  CreditCard,
+  GraduationCap,
+  LayoutGrid,
   type LucideIcon,
-  MessageSquare,
+  MessageCircle,
   Scissors,
   Settings,
   Sparkles,
-  TrendingUp,
   Users,
-  UserSquare2,
-  Wallet,
 } from "lucide-react";
 import type { AppRole } from "@/lib/auth";
 
@@ -18,16 +19,17 @@ import type { AppRole } from "@/lib/auth";
 // plain objects. Server components cannot pass function/component references
 // to client components in Next.js App Router.
 const ICONS = {
+  home: LayoutGrid,
   calendar: CalendarDays,
   users: Users,
+  chat: MessageCircle,
   scissors: Scissors,
-  professional: UserSquare2,
-  trending: TrendingUp,
-  message: MessageSquare,
+  wallet: CreditCard,
+  professional: ContactRound,
+  trending: BarChart3,
+  academy: GraduationCap,
   sparkles: Sparkles,
   settings: Settings,
-  brand: Building2,
-  wallet: Wallet,
 } as const;
 
 export type IconName = keyof typeof ICONS;
@@ -43,6 +45,11 @@ export type NavItem = {
   roles: AppRole[];
 };
 
+/**
+ * Orden del rail, calcado del referente: agenda → gente → chat → plata →
+ * configuración. Los íconos son de trazo fino y todos del mismo peso visual,
+ * porque el rail no tiene etiquetas: la silueta es lo único que distingue.
+ */
 export const NAV_ITEMS: NavItem[] = [
   {
     href: "/turnos",
@@ -51,15 +58,21 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["owner", "receptionist", "professional"],
   },
   {
-    href: "/caja",
-    label: "Caja",
-    iconName: "wallet",
-    roles: ["owner", "receptionist"],
-  },
-  {
     href: "/clientas",
     label: "Clientas y servicios",
     iconName: "users",
+    roles: ["owner", "receptionist"],
+  },
+  {
+    href: "/crm",
+    label: "WhatsApp",
+    iconName: "chat",
+    roles: ["owner", "receptionist"],
+  },
+  {
+    href: "/caja",
+    label: "Caja",
+    iconName: "wallet",
     roles: ["owner", "receptionist"],
   },
   {
@@ -79,12 +92,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Mis comisiones",
     iconName: "trending",
     roles: ["professional"],
-  },
-  {
-    href: "/crm",
-    label: "CRM",
-    iconName: "message",
-    roles: ["owner", "receptionist"],
   },
   {
     href: "/configuracion",

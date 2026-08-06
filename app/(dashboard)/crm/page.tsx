@@ -114,8 +114,10 @@ export default async function CrmPage({ searchParams }: Props) {
       .order("generated_at", { ascending: false }),
   ]);
 
+  // La bandeja va a sangre, como en el diseño de referencia: sin padding del
+  // <main> y sin encabezado de página propio.
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div data-bleed className="flex h-full min-h-0 flex-col">
       <CrmShell
         initialTab={initialTab}
         conversations={

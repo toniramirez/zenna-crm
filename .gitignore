@@ -40,6 +40,9 @@ yarn-error.log*
 worker/auth_info_baileys/
 worker/auth_info*/
 
+# exports de datos (contienen datos personales de clientes — nunca commitear)
+/export/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

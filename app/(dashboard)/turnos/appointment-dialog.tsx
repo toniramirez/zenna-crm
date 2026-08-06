@@ -53,6 +53,10 @@ import {
   STATUS_LABEL,
   type AppointmentStatus,
 } from "@/lib/validations/appointments";
+import {
+  PAYMENT_METHODS,
+  type PaymentMethod,
+} from "@/lib/validations/payments";
 import { CATEGORY_LABEL } from "@/lib/validations/services";
 import {
   createClientQuickAction,
@@ -200,6 +204,8 @@ export function AppointmentDialog({
   const [startsAt, setStartsAt] = useState<string>("");
   const [status, setStatus] = useState<AppointmentStatus>("scheduled");
   const [notes, setNotes] = useState("");
+  const [depositAmount, setDepositAmount] = useState<number>(0);
+  const [depositMethod, setDepositMethod] = useState<PaymentMethod>("cash");
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [clientPickerOpen, setClientPickerOpen] = useState(false);
   const [servicesPickerOpen, setServicesPickerOpen] = useState(false);
@@ -229,6 +235,8 @@ export function AppointmentDialog({
       setPickedDate(localDatePart(local));
       setStatus("scheduled");
       setNotes("");
+      setDepositAmount(0);
+      setDepositMethod("cash");
       setSelectedServiceIds([]);
     } else {
       const a = mode.appointment;
@@ -239,6 +247,8 @@ export function AppointmentDialog({
       setPickedDate(localDatePart(local));
       setStatus(a.status);
       setNotes(a.notes ?? "");
+      setDepositAmount(Number(a.deposit_amount ?? 0));
+      setDepositMethod((a.deposit_method as PaymentMethod) ?? "cash");
       setSelectedServiceIds(
         a.appointment_services
           .map((s) => s.services?.id)
@@ -366,6 +376,8 @@ export function AppointmentDialog({
     formData.set("status", status);
     formData.set("notes", notes);
     formData.set("serviceIds", selectedServiceIds.join(","));
+    formData.set("depositAmount", String(depositAmount > 0 ? depositAmount : 0));
+    formData.set("depositMethod", depositAmount > 0 ? depositMethod : "");
 
     startTransition(async () => {
       const result =
@@ -819,6 +831,51 @@ export function AppointmentDialog({
               ) : null}
             </div>
           )}
+
+          {/* Seña / adelanto (opcional) */}
+          <div className="space-y-2">
+            <Label htmlFor="deposit-amount">Seña / adelanto (opcional)</Label>
+            <div className="grid grid-cols-[140px_1fr] gap-2">
+              <Input
+                id="deposit-amount"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step={500}
+                value={depositAmount || ""}
+                placeholder="0"
+                onChange={(e) =>
+                  setDepositAmount(Number(e.target.value) || 0)
+                }
+                className="text-right tabular-nums"
+              />
+              <Select
+                value={depositMethod}
+                onValueChange={(v) => setDepositMethod(v as PaymentMethod)}
+                disabled={depositAmount <= 0}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Método" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {depositAmount > 0 && totalPrice > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Saldo a cobrar en el turno:{" "}
+                <strong className="text-foreground">
+                  {formatCurrency(Math.max(0, totalPrice - depositAmount))}
+                </strong>{" "}
+                · la seña se registra como ingreso al cobrar.
+              </p>
+            ) : null}
+          </div>
 
           {/* Notas */}
           <div className="space-y-2">

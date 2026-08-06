@@ -12,7 +12,10 @@ import {
   CornerDownRight,
   FileText,
   Hourglass,
-  MessageSquare,
+  Lock,
+  MessageCircle,
+  MoreVertical,
+  Search,
   Send,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -44,7 +47,7 @@ import { QuickReplyPicker } from "./quick-reply-picker";
 import { ReactionPicker, ReactionsPill } from "./reaction-picker";
 import type { ConversationWithClient, MessageRow } from "./types";
 
-type StatusFilter = "all" | "awaiting" | "answered";
+type StatusFilter = "all" | "unread" | "awaiting" | "answered";
 
 function isLidJid(jid: string): boolean {
   return jid.endsWith("@lid");
@@ -114,6 +117,7 @@ export function CrmView({
   clients = [],
   appointments = [],
   paymentMethods = [],
+  onOpenConfig,
 }: {
   initialConversations: ConversationWithClient[];
   initialSelectedId: string | null;
@@ -124,6 +128,8 @@ export function CrmView({
   clients?: Pick<ClientRow, "id" | "full_name" | "phone">[];
   appointments?: AppointmentWithRelations[];
   paymentMethods?: PaymentMethod[];
+  /** Abre la solapa de configuración desde el menú "⋮" de la bandeja. */
+  onOpenConfig?: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [conversations, setConversations] = useState(initialConversations);
@@ -136,6 +142,7 @@ export function CrmView({
   const [isPending, startTransition] = useTransition();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [query, setQuery] = useState("");
   const [newTurnoOpen, setNewTurnoOpen] = useState(false);
   const [presupuestoOpen, setPresupuestoOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -276,19 +283,38 @@ export function CrmView({
   const selected = conversations.find((c) => c.id === selectedId) ?? null;
 
   const filteredConversations = useMemo(() => {
+    const needle = query.trim().toLowerCase();
     return conversations.filter((c) => {
+      if (statusFilter === "unread" && c.unread_count <= 0) return false;
       if (statusFilter === "awaiting" && !c.awaiting_reply) return false;
       if (statusFilter === "answered" && c.awaiting_reply) return false;
       if (tagFilter.length > 0) {
         const tags = c.clients?.tags ?? [];
         if (!tagFilter.some((t) => tags.includes(t))) return false;
       }
+      if (needle) {
+        // Buscamos por nombre y por teléfono: es como la gente encuentra a
+        // una clienta cuando el contacto todavía no está vinculado.
+        const haystack = [
+          conversationTitle(c),
+          conversationPhone(c) ?? "",
+          c.last_message_preview ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(needle)) return false;
+      }
       return true;
     });
-  }, [conversations, statusFilter, tagFilter]);
+  }, [conversations, statusFilter, tagFilter, query]);
 
   const awaitingCount = useMemo(
     () => conversations.filter((c) => c.awaiting_reply).length,
+    [conversations],
+  );
+
+  const unreadCount = useMemo(
+    () => conversations.filter((c) => c.unread_count > 0).length,
     [conversations],
   );
 
@@ -304,7 +330,8 @@ export function CrmView({
     );
   }
 
-  const filtersActive = statusFilter !== "all" || tagFilter.length > 0;
+  const filtersActive =
+    statusFilter !== "all" || tagFilter.length > 0 || query.trim().length > 0;
 
   function handleSend(e: React.FormEvent) {
     e.preventDefault();
@@ -323,96 +350,135 @@ export function CrmView({
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-4 h-full min-h-0">
+    <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[400px_1fr]">
       {/* Conversation list */}
       <aside
         className={cn(
-          "rounded-xl border bg-card overflow-hidden flex flex-col",
+          "flex flex-col overflow-hidden border-r border-border bg-card",
           selectedId && "hidden md:flex",
         )}
       >
-        <div className="px-4 py-3 border-b space-y-2">
-          <div className="flex items-baseline justify-between gap-2 min-w-0">
-            <div className="flex items-baseline gap-2 min-w-0">
-              <h2 className="font-medium">Conversaciones</h2>
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {filteredConversations.length}
-                {filtersActive ? ` / ${conversations.length}` : ""}
-              </span>
+        {/* Identidad de la cuenta conectada — el bloque superior del referente */}
+        <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-wa-soft text-wa-ink">
+            <MessageCircle className="size-5" strokeWidth={1.75} />
+          </span>
+          <div className="min-w-0 flex-1 leading-tight">
+            <div className="text-[1.0625rem] font-semibold">WhatsApp</div>
+            <div className="truncate text-[0.8125rem] text-muted-foreground tabular-nums">
+              {filteredConversations.length}
+              {filtersActive ? ` de ${conversations.length}` : ""}{" "}
+              {conversations.length === 1 ? "conversación" : "conversaciones"}
             </div>
-            {filtersActive ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setStatusFilter("all");
-                  setTagFilter([]);
-                }}
-                className="text-[11px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline shrink-0"
-              >
-                Limpiar
-              </button>
-            ) : null}
           </div>
-          <div className="flex flex-wrap gap-1">
-            <FilterChip
-              active={statusFilter === "all"}
-              onClick={() => setStatusFilter("all")}
+          {filtersActive ? (
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter("all");
+                setTagFilter([]);
+                setQuery("");
+              }}
+              title="Limpiar filtros"
+              aria-label="Limpiar filtros"
+              className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
             >
-              Todas
-            </FilterChip>
-            <FilterChip
-              active={statusFilter === "awaiting"}
-              onClick={() => setStatusFilter("awaiting")}
-              tone="gold"
+              <Check className="size-4" />
+            </button>
+          ) : null}
+          {onOpenConfig ? (
+            <button
+              type="button"
+              onClick={onOpenConfig}
+              title="Configuración del CRM"
+              aria-label="Configuración del CRM"
+              className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
             >
-              <Hourglass className="size-3" />
-              Esperando
-              {awaitingCount > 0 ? (
-                <span className="tabular-nums">· {awaitingCount}</span>
-              ) : null}
-            </FilterChip>
-            <FilterChip
-              active={statusFilter === "answered"}
-              onClick={() => setStatusFilter("answered")}
-            >
-              Respondidas
-            </FilterChip>
-          </div>
-          {allTags.some((t) => t.active) ? (
-            <div className="flex flex-wrap gap-1">
-              {allTags
-                .filter((t) => t.active)
-                .map((t) => {
-                  const checked = tagFilter.includes(t.name);
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => toggleTagFilter(t.name)}
-                      className={cn(
-                        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors",
-                        checked
-                          ? "bg-foreground/5 font-medium"
-                          : "text-muted-foreground hover:bg-muted border-transparent",
-                      )}
-                      style={
-                        checked ? { borderColor: t.color } : undefined
-                      }
-                    >
-                      <span
-                        className="size-1.5 rounded-full"
-                        style={{ backgroundColor: t.color }}
-                      />
-                      {t.name}
-                      {checked ? (
-                        <Check className="size-3 opacity-60" />
-                      ) : null}
-                    </button>
-                  );
-                })}
-            </div>
+              <MoreVertical className="size-4" />
+            </button>
           ) : null}
         </div>
+
+        {/* Buscador */}
+        <div className="px-4 pb-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscá un chat o un contacto"
+              aria-label="Buscá un chat o un contacto"
+              className="h-10 w-full rounded-full border border-transparent bg-muted pl-10 pr-4 text-sm outline-none placeholder:text-muted-foreground focus:border-primary/40 focus:bg-card"
+            />
+          </div>
+        </div>
+
+        {/* Filtros rápidos */}
+        <div className="flex flex-wrap gap-2 px-4 pb-3">
+          <FilterChip
+            active={statusFilter === "all"}
+            onClick={() => setStatusFilter("all")}
+          >
+            Todos
+          </FilterChip>
+          <FilterChip
+            active={statusFilter === "unread"}
+            onClick={() => setStatusFilter("unread")}
+          >
+            No leídos
+            {unreadCount > 0 ? (
+              <span className="tabular-nums">{unreadCount}</span>
+            ) : null}
+          </FilterChip>
+          <FilterChip
+            active={statusFilter === "awaiting"}
+            onClick={() => setStatusFilter("awaiting")}
+          >
+            <Hourglass className="size-3" />
+            Esperando
+            {awaitingCount > 0 ? (
+              <span className="tabular-nums">{awaitingCount}</span>
+            ) : null}
+          </FilterChip>
+          <FilterChip
+            active={statusFilter === "answered"}
+            onClick={() => setStatusFilter("answered")}
+          >
+            Respondidos
+          </FilterChip>
+        </div>
+
+        {allTags.some((t) => t.active) ? (
+          <div className="flex flex-wrap gap-1.5 px-4 pb-3">
+            {allTags
+              .filter((t) => t.active)
+              .map((t) => {
+                const checked = tagFilter.includes(t.name);
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => toggleTagFilter(t.name)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.75rem] transition-colors",
+                      checked
+                        ? "bg-foreground/5 font-medium"
+                        : "border-transparent bg-muted text-muted-foreground hover:text-foreground",
+                    )}
+                    style={checked ? { borderColor: t.color } : undefined}
+                  >
+                    <span
+                      className="size-1.5 rounded-full"
+                      style={{ backgroundColor: t.color }}
+                    />
+                    {t.name}
+                    {checked ? <Check className="size-3 opacity-60" /> : null}
+                  </button>
+                );
+              })}
+          </div>
+        ) : null}
         <ScrollArea className="flex-1 min-h-0">
           {filteredConversations.length === 0 ? (
             <div className="p-6 text-center text-sm text-muted-foreground">
@@ -421,11 +487,12 @@ export function CrmView({
                 : "Ninguna conversación coincide con el filtro."}
             </div>
           ) : (
-            <ul className="divide-y">
+            <ul>
               {filteredConversations.map((c) => {
                 const isSel = c.id === selectedId;
                 const title = conversationTitle(c);
                 const phone = conversationPhone(c);
+                const unread = c.unread_count > 0;
                 // Surface the phone in the list when we have one AND the
                 // title isn't already the phone itself. We show it especially
                 // when the contact is not linked to a clienta — that's the
@@ -438,44 +505,60 @@ export function CrmView({
                       type="button"
                       onClick={() => setSelectedId(c.id)}
                       className={cn(
-                        "w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-muted/30 transition-colors",
-                        isSel && "bg-muted/40",
+                        "flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-muted/60",
+                        isSel && "bg-muted",
                       )}
                     >
                       <ChatAvatar
                         name={title}
                         avatarPath={c.avatar_path}
-                        size={40}
+                        size={48}
                       />
-                      <div className="flex-1 min-w-0">
+                      {/*
+                        La separación entre filas va acá y no en el <li>: así
+                        la línea arranca después del avatar, como en WhatsApp.
+                      */}
+                      <div className="min-w-0 flex-1 border-b border-border pb-2.5 [li:last-child_&]:border-b-0">
                         <div className="flex items-baseline justify-between gap-2">
-                          <span className="font-medium text-sm truncate">
+                          <span
+                            className={cn(
+                              "truncate text-[0.9375rem]",
+                              unread ? "font-semibold" : "font-medium",
+                            )}
+                          >
                             {title}
                           </span>
-                          <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">
+                          <span
+                            className={cn(
+                              "shrink-0 text-[0.6875rem] tabular-nums",
+                              unread
+                                ? "font-semibold text-wa-ink"
+                                : "text-muted-foreground",
+                            )}
+                          >
                             {relativeTime(c.last_message_at)}
                           </span>
                         </div>
                         {showPhoneInList && !c.clients ? (
-                          <div className="text-[11px] text-muted-foreground tabular-nums truncate">
+                          <div className="truncate text-[0.6875rem] text-muted-foreground tabular-nums">
                             {phone}
                           </div>
                         ) : null}
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs text-muted-foreground truncate">
+                        <div className="mt-0.5 flex items-center justify-between gap-2">
+                          <span className="truncate text-[0.8125rem] text-muted-foreground">
                             {c.last_message_preview ?? "Sin mensajes"}
                           </span>
-                          {c.unread_count > 0 ? (
-                            <span className="inline-flex items-center justify-center rounded-full bg-gold text-bone size-5 text-[10px] tabular-nums font-semibold shrink-0">
-                              {c.unread_count}
+                          {unread ? (
+                            <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-wa px-1.5 text-[0.6875rem] font-semibold tabular-nums text-white">
+                              {c.unread_count > 99 ? "99+" : c.unread_count}
                             </span>
                           ) : null}
                         </div>
                         {(c.awaiting_reply ||
                           (c.clients?.tags?.length ?? 0) > 0) && (
-                          <div className="flex items-center gap-1.5 mt-1 min-w-0">
+                          <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
                             {c.awaiting_reply ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-1.5 py-0.5 text-[10px] text-gold font-medium">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[0.6875rem] font-medium text-primary">
                                 <Hourglass className="size-2.5" />
                                 Esperando
                               </span>
@@ -487,14 +570,14 @@ export function CrmView({
                                 return (
                                   <span
                                     key={name}
-                                    className="inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] truncate max-w-[80px]"
+                                    className="inline-flex max-w-[90px] items-center gap-1 truncate rounded-full border px-2 py-0.5 text-[0.6875rem]"
                                     style={{
                                       borderColor: meta?.color ?? "#94a3b8",
                                     }}
                                     title={name}
                                   >
                                     <span
-                                      className="size-1.5 rounded-full shrink-0"
+                                      className="size-1.5 shrink-0 rounded-full"
                                       style={{
                                         backgroundColor:
                                           meta?.color ?? "#94a3b8",
@@ -505,7 +588,7 @@ export function CrmView({
                                 );
                               })}
                             {(c.clients?.tags?.length ?? 0) > 3 ? (
-                              <span className="text-[10px] text-muted-foreground">
+                              <span className="text-[0.6875rem] text-muted-foreground">
                                 +{(c.clients?.tags?.length ?? 0) - 3}
                               </span>
                             ) : null}
@@ -524,16 +607,29 @@ export function CrmView({
       {/* Thread */}
       <section
         className={cn(
-          "rounded-xl border bg-card overflow-hidden flex flex-col",
+          "relative flex flex-col overflow-hidden bg-background",
           !selectedId && "hidden md:flex",
         )}
       >
+        {/* Cinta verde superior: la firma de la bandeja en el referente */}
+        <span aria-hidden className="h-1 shrink-0 bg-wa" />
+
         {!selected ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center gap-2 p-6">
-            <MessageSquare className="size-10 text-muted-foreground/40" />
-            <p className="font-medium">Elegí una conversación</p>
-            <p className="text-sm text-muted-foreground max-w-xs">
-              Tocá una conversación de la izquierda para ver el chat completo.
+          <div className="flex flex-1 flex-col items-center justify-center gap-5 p-6 text-center">
+            <EmptyInboxArt />
+            <div className="space-y-2">
+              <h2 className="text-[1.75rem] font-normal tracking-tight">
+                Zenna en tu WhatsApp
+              </h2>
+              <p className="mx-auto max-w-md text-[0.9375rem] leading-relaxed text-muted-foreground">
+                Atendé a tus clientas, agendá turnos y mandá presupuestos sin
+                salir del chat. Elegí una conversación de la izquierda para
+                empezar.
+              </p>
+            </div>
+            <p className="flex items-center gap-2 text-[0.8125rem] text-muted-foreground">
+              <Lock className="size-3.5" />
+              Tus conversaciones quedan guardadas y protegidas en tu cuenta
             </p>
           </div>
         ) : (
@@ -933,31 +1029,97 @@ function Bubble({
   );
 }
 
+/**
+ * Chip de filtro de la bandeja. Activo = verde WhatsApp suave; inactivo =
+ * gris cálido. Sin bordes: el color de fondo es todo el estado.
+ */
 function FilterChip({
   active,
   onClick,
-  tone = "default",
   children,
 }: {
   active: boolean;
   onClick: () => void;
-  tone?: "default" | "gold";
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors",
+        "inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-[0.8125rem] font-medium transition-colors",
         active
-          ? tone === "gold"
-            ? "border-gold/60 bg-gold/15 text-gold font-medium"
-            : "border-foreground/40 bg-foreground/5 font-medium"
-          : "border-transparent text-muted-foreground hover:bg-muted",
+          ? "bg-wa-soft text-wa-ink"
+          : "bg-muted text-secondary-foreground hover:bg-secondary",
       )}
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * Ilustración del estado vacío: un monitor y un teléfono de trazo fino, en
+ * gris muy claro. Es puramente decorativa — de ahí el aria-hidden.
+ */
+function EmptyInboxArt() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 240 150"
+      className="h-[150px] w-[240px] text-border"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {/* Monitor */}
+      <rect x="6" y="10" width="160" height="106" rx="10" />
+      <line x1="70" y1="128" x2="102" y2="128" />
+      <line x1="86" y1="116" x2="86" y2="128" />
+      {/* Líneas de contenido */}
+      <rect
+        x="30"
+        y="36"
+        width="86"
+        height="12"
+        rx="6"
+        fill="currentColor"
+        stroke="none"
+        opacity="0.55"
+      />
+      <rect
+        x="30"
+        y="60"
+        width="58"
+        height="12"
+        rx="6"
+        fill="currentColor"
+        stroke="none"
+        opacity="0.35"
+      />
+      {/* Teléfono */}
+      <rect
+        x="164"
+        y="40"
+        width="70"
+        height="104"
+        rx="12"
+        fill="var(--card)"
+      />
+      <rect
+        x="186"
+        y="68"
+        width="42"
+        height="10"
+        rx="5"
+        fill="currentColor"
+        stroke="none"
+        opacity="0.45"
+      />
+      <circle cx="199" cy="130" r="5" fill="currentColor" stroke="none" opacity="0.45" />
+    </svg>
   );
 }

@@ -3,7 +3,6 @@
 import { KeyRound, LogOut } from "lucide-react";
 import Link from "next/link";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,29 +31,30 @@ export function UserMenu({
   role: AppRole;
   compact?: boolean;
 }) {
+  // En el rail colapsado la cuenta es solamente el círculo con las iniciales
+  // al pie de la columna — sin botón, sin fondo, sin etiqueta.
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={compact ? email : undefined}
-          title={compact ? email : undefined}
+        <button
+          type="button"
+          aria-label={email}
+          title={email}
           className={cn(
-            "h-auto w-full",
+            "flex items-center rounded-full outline-none",
             compact
-              ? "justify-center px-1 py-1.5"
-              : "justify-start gap-3 px-2 py-2",
+              ? "justify-center p-0"
+              : "w-full gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-muted",
           )}
         >
           <Avatar className="size-8">
-            <AvatarFallback className="text-xs">
+            <AvatarFallback className="bg-secondary text-secondary-foreground text-[11px] font-semibold">
               {initialsFromEmail(email)}
             </AvatarFallback>
           </Avatar>
           {compact ? null : (
             <div className="flex flex-col items-start leading-tight overflow-hidden">
-              <span className="text-sm font-medium truncate max-w-[160px]">
+              <span className="text-sm font-medium truncate max-w-[150px]">
                 {email}
               </span>
               <span className="text-xs text-muted-foreground">
@@ -62,9 +62,9 @@ export function UserMenu({
               </span>
             </div>
           )}
-        </Button>
+        </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent side="right" align="end" className="w-56">
         <DropdownMenuLabel className="flex flex-col">
           <span className="text-sm font-medium truncate">{email}</span>
           <span className="text-xs font-normal text-muted-foreground">

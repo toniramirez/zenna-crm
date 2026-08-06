@@ -4,6 +4,15 @@ import type { Database } from "@/types/database.types";
 export type AppointmentStatus =
   Database["public"]["Enums"]["appointment_status"];
 
+const PAYMENT_METHOD_VALUES = [
+  "cash",
+  "transfer",
+  "credit_card",
+  "debit_card",
+  "mp",
+  "other",
+] as const;
+
 export const APPOINTMENT_STATUSES: {
   value: AppointmentStatus;
   label: string;
@@ -84,10 +93,22 @@ export const appointmentSchema = z
     serviceIds: z
       .array(z.string().uuid())
       .min(1, "Elegí al menos un servicio."),
+    // Seña / adelanto cobrado al agendar. Se guarda en el turno y se descuenta
+    // al momento de cobrar. 0 = sin seña.
+    depositAmount: z
+      .number()
+      .min(0, "La seña no puede ser negativa.")
+      .max(99999999, "Seña fuera de rango.")
+      .default(0),
+    depositMethod: z.enum(PAYMENT_METHOD_VALUES).optional(),
   })
   .refine((d) => new Date(d.endsAt) > new Date(d.startsAt), {
     message: "El fin tiene que ser posterior al inicio.",
     path: ["endsAt"],
+  })
+  .refine((d) => d.depositAmount === 0 || !!d.depositMethod, {
+    message: "Elegí con qué método se pagó la seña.",
+    path: ["depositMethod"],
   });
 
 export type AppointmentInput = z.infer<typeof appointmentSchema>;

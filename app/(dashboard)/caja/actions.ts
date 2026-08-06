@@ -30,15 +30,37 @@ export async function recordPaymentAction(
     }
   }
 
+  const appointmentId = formData.get("appointmentId");
+
+  const supabase = await createClient();
+
+  // Seña / adelanto: si el turno tiene una seña cargada, la registramos como
+  // una línea de pago más (con su método original) además del saldo que cobra
+  // la recepción. Así el ingreso queda registrado completo el día del turno.
+  if (typeof appointmentId === "string" && Array.isArray(lines)) {
+    const { data: appt } = await supabase
+      .from("appointments")
+      .select("deposit_amount, deposit_method")
+      .eq("id", appointmentId)
+      .single();
+
+    const depositAmount = Number(appt?.deposit_amount ?? 0);
+    if (depositAmount > 0 && appt?.deposit_method) {
+      lines = [
+        ...lines,
+        { method: appt.deposit_method, amount: depositAmount },
+      ];
+    }
+  }
+
   const parsed = recordPaymentSchema.safeParse({
-    appointmentId: formData.get("appointmentId"),
+    appointmentId,
     lines,
     notes: formData.get("notes") || undefined,
   });
 
   if (!parsed.success) return { fieldErrors: fieldErrorsFromZod(parsed) };
 
-  const supabase = await createClient();
   const { error } = await supabase.rpc("record_appointment_payment", {
     p_appointment_id: parsed.data.appointmentId,
     p_lines: parsed.data.lines.filter((l) => l.amount > 0),

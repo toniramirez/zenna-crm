@@ -24,6 +24,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency } from "@/lib/format";
 import {
+  PAYMENT_METHOD_LABEL,
   PAYMENT_METHODS,
   type PaymentMethod,
 } from "@/lib/validations/payments";
@@ -47,10 +48,18 @@ export function CobrarDialog({
   const [notes, setNotes] = useState("");
   const [isPending, startTransition] = useTransition();
 
-  // Reset when opened with a new appointment: prefill total as efectivo
+  // Seña / adelanto ya cobrado al agendar. El saldo a cobrar hoy es el total
+  // menos la seña; la seña se registra aparte (con su método) en el server.
+  const deposit = appointment?.deposit_amount ?? 0;
+  const balanceDue = appointment
+    ? Math.max(0, appointment.total_price - deposit)
+    : 0;
+
+  // Reset when opened with a new appointment: prefill the balance as efectivo
   useEffect(() => {
     if (open && appointment) {
-      setLines([{ method: "cash", amount: appointment.total_price }]);
+      const due = Math.max(0, appointment.total_price - (appointment.deposit_amount ?? 0));
+      setLines([{ method: "cash", amount: due }]);
       setNotes("");
     }
   }, [open, appointment]);
@@ -60,7 +69,8 @@ export function CobrarDialog({
     [lines],
   );
 
-  const diff = appointment ? total - appointment.total_price : 0;
+  // Diferencia contra el saldo (lo que falta cobrar hoy), no contra el total.
+  const diff = appointment ? total - balanceDue : 0;
 
   function addLine() {
     setLines((prev) => [...prev, { method: "transfer", amount: 0 }]);
@@ -76,17 +86,11 @@ export function CobrarDialog({
 
   function onSubmit() {
     if (!appointment) return;
-    if (lines.length === 0) {
-      toast.error("Cargá al menos una línea de pago.");
-      return;
-    }
-    if (total <= 0) {
-      toast.error("El total cobrado tiene que ser mayor a cero.");
-      return;
-    }
     const validLines = lines.filter((l) => l.amount > 0);
-    if (validLines.length === 0) {
-      toast.error("Al menos una línea tiene que tener importe.");
+    // Con seña, el saldo puede ser cero (la seña cubre todo): en ese caso se
+    // registra sólo la seña en el server. Sin seña, hace falta al menos una línea.
+    if (validLines.length === 0 && deposit <= 0) {
+      toast.error("El total cobrado tiene que ser mayor a cero.");
       return;
     }
 
@@ -142,6 +146,30 @@ export function CobrarDialog({
                 {formatCurrency(appointment.total_price)}
               </span>
             </div>
+            {deposit > 0 ? (
+              <>
+                <div className="flex items-center justify-between text-sm text-emerald-700">
+                  <span>
+                    Seña recibida
+                    {appointment.deposit_method ? (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {PAYMENT_METHOD_LABEL[appointment.deposit_method]}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="tabular-nums">
+                    −{formatCurrency(deposit)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm font-semibold border-t pt-1.5 mt-1.5">
+                  <span>Saldo a cobrar</span>
+                  <span className="tabular-nums">
+                    {formatCurrency(balanceDue)}
+                  </span>
+                </div>
+              </>
+            ) : null}
           </div>
 
           {/* Payment lines */}
@@ -209,19 +237,37 @@ export function CobrarDialog({
           {/* Total + diff */}
           <div className="rounded-md border p-3 bg-muted/20 space-y-1">
             <div className="flex items-center justify-between text-sm">
-              <span>Total cobrado</span>
+              <span>{deposit > 0 ? "Cobrado ahora (saldo)" : "Total cobrado"}</span>
               <span className="tabular-nums font-medium">
                 {formatCurrency(total)}
               </span>
             </div>
+            {deposit > 0 ? (
+              <>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>+ Seña ya recibida</span>
+                  <span className="tabular-nums">{formatCurrency(deposit)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm border-t pt-1.5 mt-1.5">
+                  <span>Total registrado</span>
+                  <span className="tabular-nums font-medium">
+                    {formatCurrency(total + deposit)}
+                  </span>
+                </div>
+              </>
+            ) : null}
             {diff !== 0 ? (
               <div
                 className={`flex items-center justify-between text-xs ${diff > 0 ? "text-amber-700" : "text-rose-700"}`}
               >
                 <span>
                   {diff > 0
-                    ? "Cobraste más del precio del turno"
-                    : "Falta para cubrir el precio"}
+                    ? deposit > 0
+                      ? "Cobraste más que el saldo"
+                      : "Cobraste más del precio del turno"
+                    : deposit > 0
+                      ? "Falta para cubrir el saldo"
+                      : "Falta para cubrir el precio"}
                 </span>
                 <span className="tabular-nums">
                   {diff > 0 ? "+" : ""}

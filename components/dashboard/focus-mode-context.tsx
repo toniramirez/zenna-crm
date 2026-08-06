@@ -20,14 +20,16 @@ const FocusModeContext = createContext<FocusModeValue | null>(null);
 const STORAGE_KEY = "zenna.dashboard.focus";
 
 export function FocusModeProvider({ children }: { children: ReactNode }) {
-  const [focused, setFocusedState] = useState(false);
+  // `focused` = rail colapsado. Arranca en true porque el rail de íconos es
+  // el estado por defecto del diseño; expandirlo es la excepción.
+  const [focused, setFocusedState] = useState(true);
 
   // Hydrate from localStorage on mount. We accept a one-frame flash on the
   // very first load — the alternative (cookie + SSR) would couple this to
   // every server request.
   useEffect(() => {
     try {
-      if (localStorage.getItem(STORAGE_KEY) === "1") setFocusedState(true);
+      if (localStorage.getItem(STORAGE_KEY) === "0") setFocusedState(false);
     } catch {
       /* SSR / privacy mode — ignore */
     }

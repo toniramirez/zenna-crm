@@ -83,6 +83,14 @@ export function UnpaidList({
                 </TableCell>
                 <TableCell className="text-right tabular-nums font-medium">
                   {formatCurrency(a.total_price)}
+                  {a.deposit_amount > 0 ? (
+                    <span className="block text-xs font-normal text-emerald-700">
+                      seña −{formatCurrency(a.deposit_amount)} · saldo{" "}
+                      {formatCurrency(
+                        Math.max(0, a.total_price - a.deposit_amount),
+                      )}
+                    </span>
+                  ) : null}
                 </TableCell>
                 <TableCell>
                   <Button size="sm" onClick={() => openCobrar(a)}>
