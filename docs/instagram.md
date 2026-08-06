@@ -64,7 +64,7 @@ En Railway (y en `.env.local` para desarrollo):
 
 | Variable | Para qué sirve |
 | --- | --- |
-| `INSTAGRAM_APP_SECRET` | Valida la firma `X-Hub-Signature-256`. **Sin esto el webhook rechaza todo.** |
+| `INSTAGRAM_APP_SECRET` | Valida la firma `X-Hub-Signature-256`. **Sin esto el webhook rechaza todo.** Es el de **Configuración de la app → Básica**, no el de Instagram → Configuración de la API: son dos secrets distintos y el que firma los webhooks es el primero. |
 | `INSTAGRAM_VERIFY_TOKEN` | String inventado por vos. Tiene que coincidir con el que se carga en el App Dashboard. |
 | `NEXT_PUBLIC_APP_URL` | URL pública del deploy, ej. `https://zenna.up.railway.app`. Se usa para mostrar la Callback URL. |
 | `INSTAGRAM_API_VERSION` | Opcional. Default `v25.0`. |
@@ -137,8 +137,8 @@ recordatorios de turno caen casi siempre fuera de la ventana de 24 h y rebotarí
 | Síntoma | Dónde mirar |
 | --- | --- |
 | Meta no verifica el webhook | ¿`INSTAGRAM_VERIFY_TOKEN` coincide? ¿El deploy responde en esa URL? |
-| Llegan 401 al webhook | `INSTAGRAM_APP_SECRET` no coincide con el de la app de Meta. |
-| No entra ningún mensaje | ¿Está suscripto el campo `messages`? ¿La cuenta es tester de la app? |
+| `firma inválida` en los logs | `INSTAGRAM_APP_SECRET` no es el secret con el que Meta firma. Ojo: es el de Configuración → Básica, no el de Instagram → Configuración de la API. El log trae `secret=<largo>ch/<hash>` para comparar entornos sin exponer el valor. |
+| No entra ningún mensaje | ¿Está suscripto el campo `messages`? ¿La cuenta hizo `POST /me/subscribed_apps?subscribed_fields=messages`? ¿Es tester de la app? |
 | Los mensajes quedan en `queued` | El worker `zenna-instagram` no está corriendo. |
 | Los mensajes quedan en `failed` | El motivo está en `messages.error` y en el panel de Configuración. |
 | "El token venció" | Configuración → Instagram → Conectar de nuevo. |

@@ -46,12 +46,15 @@ export function graphUrl(loginType: string, path: string): string {
  * `X-Hub-Signature-256` de los webhooks; nunca sale del servidor.
  */
 export function appSecret(): string | null {
-  return process.env.INSTAGRAM_APP_SECRET || null;
+  // El trim no es cosmético: un salto de línea pegado al valor al copiarlo en
+  // el panel de Railway cambia el HMAC y hace que *todos* los webhooks fallen
+  // con "firma inválida", sin ninguna pista de por qué.
+  return process.env.INSTAGRAM_APP_SECRET?.trim() || null;
 }
 
 /** Token acordado con Meta para el handshake de verificación del webhook. */
 export function verifyToken(): string | null {
-  return process.env.INSTAGRAM_VERIFY_TOKEN || null;
+  return process.env.INSTAGRAM_VERIFY_TOKEN?.trim() || null;
 }
 
 export async function loadAccount(

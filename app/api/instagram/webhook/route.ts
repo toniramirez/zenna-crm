@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { appSecret, loadAccount, verifyToken } from "@/lib/instagram/config";
 import { ingestMessagingEvents } from "@/lib/instagram/ingest";
 import {
+  describeSignatureMismatch,
   flattenMessagingEvents,
   parseWebhookBody,
   verifySignature,
@@ -65,13 +66,13 @@ export async function POST(request: NextRequest) {
   // El cuerpo crudo, sin re-serializar: la firma se calcula sobre estos bytes.
   const rawBody = await request.text();
 
-  const valid = verifySignature({
-    rawBody,
-    header: request.headers.get("x-hub-signature-256"),
-    appSecret: secret,
-  });
+  const signature = request.headers.get("x-hub-signature-256");
+  const valid = verifySignature({ rawBody, header: signature, appSecret: secret });
   if (!valid) {
-    console.warn("[instagram/webhook] firma inválida — request descartado");
+    console.warn(
+      "[instagram/webhook] firma inválida — request descartado:",
+      describeSignatureMismatch({ rawBody, header: signature, appSecret: secret }),
+    );
     return new Response("Firma inválida", { status: 401 });
   }
 

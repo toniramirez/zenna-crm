@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 /**
  * Valida la firma `X-Hub-Signature-256` que Meta manda en cada webhook.
@@ -27,6 +27,38 @@ export function verifySignature(args: {
   // timingSafeEqual explota si los largos difieren, así que se chequea antes.
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
+}
+
+/**
+ * Detalle para el log cuando la firma no cierra.
+ *
+ * "Firma inválida" a secas no distingue las dos causas reales, que se arreglan
+ * de forma muy distinta: que `INSTAGRAM_APP_SECRET` no sea el secret con el que
+ * Meta firma (el de Configuración → Básica, no el de Instagram → API), o que el
+ * cuerpo haya llegado alterado. El secret nunca se loguea: sale un hash corto,
+ * suficiente para comparar dos entornos entre sí sin exponer el valor.
+ */
+export function describeSignatureMismatch(args: {
+  rawBody: string;
+  header: string | null;
+  appSecret: string;
+}): string {
+  const [algo, received] = (args.header ?? "").split("=");
+  const expected = createHmac("sha256", args.appSecret)
+    .update(args.rawBody, "utf8")
+    .digest("hex");
+  const secretFingerprint = createHash("sha256")
+    .update(args.appSecret)
+    .digest("hex")
+    .slice(0, 8);
+
+  return [
+    `algo=${algo || "(sin header)"}`,
+    `recibida=${received ? received.slice(0, 12) : "(vacía)"}`,
+    `calculada=${expected.slice(0, 12)}`,
+    `body=${args.rawBody.length}b`,
+    `secret=${args.appSecret.length}ch/${secretFingerprint}`,
+  ].join(" ");
 }
 
 // ─────────────────────────────────────────── Forma del payload
