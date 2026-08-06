@@ -40,9 +40,9 @@ const METHOD_STYLE: Record<
   },
   mp: {
     icon: Smartphone,
-    text: "text-cyan-700",
-    bar: "bg-cyan-500",
-    dot: "bg-cyan-500",
+    text: "text-champagne-700",
+    bar: "bg-champagne-500",
+    dot: "bg-champagne-500",
   },
   debit_card: {
     icon: CreditCard,
@@ -58,9 +58,9 @@ const METHOD_STYLE: Record<
   },
   other: {
     icon: Wallet,
-    text: "text-slate-700",
-    bar: "bg-slate-400",
-    dot: "bg-slate-400",
+    text: "text-stone-700",
+    bar: "bg-stone-400",
+    dot: "bg-stone-400",
   },
 };
 

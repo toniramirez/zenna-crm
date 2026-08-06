@@ -2,7 +2,11 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/database.types";
 
-const PUBLIC_PATHS = ["/login", "/register", "/auth"];
+// `/api/instagram/webhook` entra sin cookies: lo llama Meta, no un navegador.
+// Si no estuviera acá, el proxy le devolvería un redirect a /login y Meta
+// interpretaría el webhook como caído. Se autentica por firma HMAC, no por
+// sesión (ver app/api/instagram/webhook/route.ts).
+const PUBLIC_PATHS = ["/login", "/register", "/auth", "/api/instagram/webhook", "/preview"];
 
 function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

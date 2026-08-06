@@ -19,13 +19,15 @@ import { cn } from "@/lib/utils";
 import type { MessageRow } from "./types";
 import { useSignedUrl } from "./use-signed-url";
 
-export function MessageContent({
-  message,
-  isOutbound,
-}: {
-  message: MessageRow;
-  isOutbound: boolean;
-}) {
+/**
+ * Contenido de una burbuja.
+ *
+ * Ojo: ya no recibe `isOutbound`. En WhatsApp las dos burbujas son claras
+ * (blanca la entrante, verde agua la saliente) y la tinta es la misma
+ * `--wa-text` en ambas, así que no hay nada que invertir. Lo que necesita
+ * contraste propio (botones, barras) se resuelve con `currentColor`.
+ */
+export function MessageContent({ message }: { message: MessageRow }) {
   if (message.type === "text" || !message.media_url) {
     if (!message.body) return null;
     return (
@@ -41,7 +43,7 @@ export function MessageContent({
     return <VideoContent message={message} />;
   }
   if (message.type === "audio") {
-    return <AudioContent message={message} isOutbound={isOutbound} />;
+    return <AudioContent message={message} />;
   }
   if (message.type === "document") {
     return <DocumentContent message={message} />;
@@ -63,7 +65,7 @@ function ImageContent({ message }: { message: MessageRow }) {
           "overflow-hidden cursor-zoom-in -mx-2 -mt-1",
           isSticker
             ? "max-w-[140px]"
-            : "rounded-lg max-w-[280px] bg-muted/40",
+            : "rounded-lg max-w-[280px] bg-black/5 dark:bg-white/5",
         )}
         onClick={() => url && setOpen(true)}
       >
@@ -78,7 +80,7 @@ function ImageContent({ message }: { message: MessageRow }) {
             )}
           />
         ) : (
-          <div className="aspect-video grid place-items-center text-muted-foreground">
+          <div className="aspect-video grid place-items-center text-[var(--wa-text-3)]">
             <ImageIcon className="size-6" />
           </div>
         )}
@@ -121,7 +123,7 @@ function VideoContent({ message }: { message: MessageRow }) {
             preload="metadata"
           />
         ) : (
-          <div className="aspect-video grid place-items-center text-muted-foreground bg-muted/40">
+          <div className="aspect-video grid place-items-center bg-black/5 text-[var(--wa-text-3)] dark:bg-white/5">
             <Video className="size-6" />
           </div>
         )}
@@ -144,13 +146,7 @@ function formatAudioTime(secs: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function AudioContent({
-  message,
-  isOutbound,
-}: {
-  message: MessageRow;
-  isOutbound: boolean;
-}) {
+function AudioContent({ message }: { message: MessageRow }) {
   const url = useSignedUrl(message.media_url);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -185,21 +181,15 @@ function AudioContent({
   const showTime = playing || currentTime > 0 ? currentTime : remaining;
 
   return (
-    <div
-      className={cn(
-        "flex items-center gap-2 min-w-[180px] max-w-[260px] py-0.5",
-        isOutbound ? "text-background" : "text-foreground",
-      )}
-    >
+    <div className="flex min-w-[180px] max-w-[260px] items-center gap-2 py-0.5 text-[var(--wa-text)]">
       <button
         type="button"
         onClick={togglePlay}
         disabled={!url}
         className={cn(
-          "size-7 rounded-full grid place-items-center shrink-0 transition-colors",
-          isOutbound
-            ? "bg-background/15 hover:bg-background/25 active:bg-background/30"
-            : "bg-foreground/10 hover:bg-foreground/15 active:bg-foreground/20",
+          "grid size-7 shrink-0 place-items-center rounded-full text-[var(--wa-icon)] transition-colors",
+          "bg-black/5 hover:bg-black/10 active:bg-black/15",
+          "dark:bg-white/10 dark:hover:bg-white/15 dark:active:bg-white/20",
           !url && "opacity-50 cursor-wait",
         )}
         aria-label={playing ? "Pausar" : "Reproducir"}
@@ -216,26 +206,15 @@ function AudioContent({
       <div className="flex-1 min-w-0 flex flex-col gap-1">
         <div
           onClick={seek}
-          className={cn(
-            "h-[3px] rounded-full cursor-pointer relative",
-            isOutbound ? "bg-background/20" : "bg-foreground/15",
-          )}
+          className="relative h-[3px] cursor-pointer rounded-full bg-black/15 dark:bg-white/20"
         >
           <div
-            className={cn(
-              "absolute inset-y-0 left-0 rounded-full",
-              isOutbound ? "bg-background" : "bg-foreground",
-            )}
+            className="absolute inset-y-0 left-0 rounded-full bg-[var(--wa-accent)]"
             style={{ width: `${progress}%` }}
           />
         </div>
         <div className="flex items-center justify-between gap-2">
-          <span
-            className={cn(
-              "text-[10px] tabular-nums leading-none",
-              isOutbound ? "text-background/70" : "text-muted-foreground",
-            )}
-          >
+          <span className="text-[0.6875rem] leading-none tabular-nums text-[var(--wa-meta)]">
             {formatAudioTime(showTime)}
           </span>
         </div>

@@ -9,6 +9,8 @@
     "lint": "eslint",
     "worker": "tsx watch worker/baileys.ts",
     "worker:start": "tsx worker/baileys.ts",
+    "worker:instagram": "tsx watch worker/instagram.ts",
+    "worker:instagram:start": "tsx worker/instagram.ts",
     "export": "tsx scripts/export-data.ts"
   },
   "dependencies": {

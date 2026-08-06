@@ -1,28 +1,49 @@
 import type { Metadata } from "next";
-import { Fraunces, Geist, Geist_Mono } from "next/font/google";
+import {
+  Cormorant_Garamond,
+  Inter,
+  JetBrains_Mono,
+  Sora,
+} from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { Providers } from "./providers";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-// Fraunces is a high-contrast variable serif that matches the Zenna wordmark.
-// Used for the brand wordmark and a few decorative headings — NOT for body or
-// every h1, to avoid that "wedding invitation" look that dates a SaaS UI fast.
-const fraunces = Fraunces({
-  variable: "--font-display",
+/*
+ * Las cuatro familias del referente (peluquerOS), con los mismos pesos y
+ * estilos que sirve su bundle. Los nombres de las variables CSS también son
+ * los suyos, así los stacks de app/globals.css quedan calcados:
+ *
+ *   --font-inter          → texto de la interfaz
+ *   --font-sora           → títulos de pantalla (font-display)
+ *   --font-cormorant      → serif editorial / wordmark (font-editorial)
+ *   --font-jetbrains-mono → números tabulares, códigos, teclas
+ */
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
   display: "swap",
-  weight: ["400", "500", "600", "700"],
+});
+
+const sora = Sora({
+  variable: "--font-sora",
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["400", "500", "600", "700", "800"],
+});
+
+const cormorant = Cormorant_Garamond({
+  variable: "--font-cormorant",
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["300", "400", "500", "600", "700"],
   style: ["normal", "italic"],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
+  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -45,7 +66,7 @@ export default function RootLayout({
   return (
     <html
       lang="es-AR"
-      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
+      className={`${inter.variable} ${sora.variable} ${cormorant.variable} ${jetbrainsMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">

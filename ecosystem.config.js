@@ -34,5 +34,18 @@ module.exports = {
       restart_delay: 5000,
       env: { NODE_ENV: "production" },
     },
+    {
+      // Cola de salida de Instagram. Proceso aparte del de Baileys a propósito:
+      // no comparten estado y un WhatsApp caído no tiene por qué frenar los DMs.
+      // Los mensajes ENTRANTES no pasan por acá — llegan al webhook de Next.
+      name: "zenna-instagram",
+      script: "node_modules/tsx/dist/cli.mjs",
+      args: "worker/instagram.ts",
+      cwd: __dirname,
+      autorestart: true,
+      max_memory_restart: "300M",
+      restart_delay: 5000,
+      env: { NODE_ENV: "production" },
+    },
   ],
 };

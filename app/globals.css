@@ -8,139 +8,276 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Zenna CRM — design tokens (v5: "papel tibio & camel")
+ * Zenna CRM — sistema de marca (v6: calcado 1:1 de peluquerOS)
  *
- * Sistema calcado del referente que pasó el cliente (peluquerOS):
- *  - Fondo:      blanco cálido casi puro, sin degradés ni brillos.
- *  - Superficie: blanco puro, borde hairline gris cálido, sombra mínima.
- *  - Primario:   camel / tostado (el botón "Nuevo turno").
- *  - Activo:     durazno muy suave con el ícono en tostado oscuro.
- *  - Radio:      10px en controles, 12px en tarjetas/paneles.
- *  - WhatsApp:   verde propio para la bandeja (chips, badges, barra).
+ * Los valores de este archivo NO son una interpretación: salen del CSS
+ * compilado que sirve https://peluqueros.vercel.app (chunks
+ * 0ar9cv447h8r0.css y 0rcom-z-7m7ek.css). Cada token semántico, cada rampa
+ * de color y cada familia tipográfica está copiada tal cual.
  *
- * Regla de oro de este rediseño: NADA de gradientes decorativos, gleams,
- * lifts en hover ni animaciones de entrada. El referente es plano y quieto;
- * la jerarquía la dan el espacio y el peso tipográfico, no los efectos.
+ * Lo que define la marca del referente:
+ *  - Tipografía:  Inter (texto), Sora (títulos), Cormorant Garamond
+ *                 (editorial / wordmark), JetBrains Mono (números y código).
+ *  - Fondo:       #fbfaf9, un blanco apenas tibio. Superficies en blanco puro.
+ *  - Primario:    #270d07 (mocha-800) — marrón casi negro, no dorado.
+ *  - Dorado:      #f0aa63 (amber-400) — es acento, nunca el color de acción.
+ *  - Acento:      #f6dfd7 (mocha-100) rosado, con texto #502419.
+ *  - Radio:       0.5rem en controles; el resto usa la escala nativa de
+ *                 Tailwind (el referente no la pisa).
+ *
+ * Regla de oro: plano y quieto. Sin gradientes decorativos, sin lifts en
+ * hover, sin animaciones de entrada. La jerarquía la dan el espacio y el
+ * peso tipográfico.
  */
-:root {
-  --radius: 0.625rem;
 
-  --background: #fbfaf9;
-  --foreground: #211d19;
+@theme {
+  /* ── Tipografías ──────────────────────────────────────────────────────
+   * next/font inyecta --font-inter / --font-sora / --font-cormorant /
+   * --font-jetbrains-mono en el <html>; acá sólo armamos los stacks.
+   */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+  --font-display: var(--font-sora), var(--font-inter), ui-sans-serif,
+    system-ui, sans-serif;
+  --font-editorial: var(--font-cormorant), "Cormorant Garamond", Georgia,
+    "Times New Roman", serif;
 
-  --card: #ffffff;
-  --card-foreground: #211d19;
+  /* El referente sólo agrega este escalón al radio nativo de Tailwind. */
+  --radius-3xl: 1.5rem;
 
-  --popover: #ffffff;
-  --popover-foreground: #211d19;
+  /* Capas: el referente las expone como variables y las usa con z-[var(…)]. */
+  --z-sticky: 40;
+  --z-overlay: 50;
+  --z-toast: 60;
+  --z-tooltip: 70;
 
-  /* Primario = camel. Es el único color "fuerte" de la interfaz. */
-  --primary: #c1975c;
-  --primary-foreground: #ffffff;
+  /* ── Rampas de marca ────────────────────────────────────────────────── */
+  --color-ink-950: #040303;
 
-  --secondary: #f4f2ef;
-  --secondary-foreground: #3d372f;
+  --color-champagne-50: #fdfaf4;
+  --color-champagne-100: #f8f3e8;
+  --color-champagne-200: #f2e6d3;
+  --color-champagne-300: #e9d4b7;
+  --color-champagne-400: #dbbb97;
+  --color-champagne-500: #c49c76;
+  --color-champagne-600: #9f7655;
+  --color-champagne-700: #78553c;
 
-  --muted: #f4f2ef;
-  --muted-foreground: #8b837a;
+  --color-mocha-50: #fdeee8;
+  --color-mocha-100: #f6dfd7;
+  --color-mocha-200: #e5bdb0;
+  --color-mocha-300: #c68f80;
+  --color-mocha-400: #986253;
+  --color-mocha-500: #6c3629;
+  --color-mocha-600: #502419;
+  --color-mocha-700: #38170e;
+  --color-mocha-800: #270d07;
+  --color-mocha-900: #170503;
+  --color-mocha-950: #090101;
 
-  --accent: #f6f4f1;
-  --accent-foreground: #3d372f;
+  /* ── Rampas nativas de Tailwind, pisadas por el referente ─────────────
+   * Son más cálidas y más apagadas que las de fábrica. Ojo: el CSS del
+   * referente sólo publica los escalones que su UI usa, así que los que
+   * faltaban quedaron interpolados sobre los valores reales (van marcados).
+   */
+  --color-amber-50: #fef9f1;
+  --color-amber-100: #fcf0dd;
+  --color-amber-200: #f9dcba;
+  --color-amber-300: #f5c38d;
+  --color-amber-400: #f0aa63;
+  --color-amber-500: #e18e43;
+  --color-amber-600: #c16e21;
+  --color-amber-700: #9c5313;
+  --color-amber-800: #763a0d;
+  --color-amber-900: #522406;
+  --color-amber-950: #461901;
 
-  --destructive: #d4483b;
-  --destructive-foreground: #ffffff;
+  --color-emerald-50: #ecfdf5;
+  --color-emerald-100: #d0fae5;
+  --color-emerald-200: #a4f4cf;
+  --color-emerald-300: #5ee9b5;
+  --color-emerald-400: #00d294;
+  --color-emerald-500: #00bb7f;
+  --color-emerald-600: #009767;
+  --color-emerald-700: #007956;
+  --color-emerald-800: #005f46;
+  --color-emerald-900: #004e3b;
+  --color-emerald-950: #002c22;
 
-  --border: #eae6e1;
-  --input: #e6e1db;
-  --ring: #c1975c;
-
-  --chart-1: #c1975c;
-  --chart-2: #7b6a55;
-  --chart-3: #d8b98a;
-  --chart-4: #a3856a;
-  --chart-5: #3d372f;
-
-  /* Rail lateral de íconos */
-  --sidebar: #fcfbfa;
-  --sidebar-foreground: #6f665d;
-  --sidebar-primary: #b0762c;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #fbeedf;
-  --sidebar-accent-foreground: #b0762c;
-  --sidebar-border: #efebe5;
-  --sidebar-ring: #c1975c;
+  --color-red-50: #fff1f1; /* interpolado */
+  --color-red-100: #ffe0e0; /* interpolado */
+  --color-red-200: #ffcaca;
+  --color-red-300: #ffa3a3;
+  --color-red-400: #ff6568;
+  --color-red-500: #ed403f; /* = --chart-5 del referente */
+  --color-red-600: #d41824; /* = --destructive del referente */
+  --color-red-700: #b00d1c; /* interpolado */
+  --color-red-800: #8f1119; /* interpolado */
+  --color-red-900: #76141b; /* interpolado */
+  --color-red-950: #40050a; /* interpolado */
 
   /*
-   * Alias heredados. Media app los usa (`text-gold`, `bg-bone`, …), así que
-   * en vez de tocar 30 archivos los reapuntamos al camel nuevo y el resto
-   * de la interfaz se alinea sola.
+   * El referente no tiene rosa: sus negativos son este rojo. La app venía
+   * usando `rose-*` en errores y saldos, así que lo apuntamos a la misma
+   * rampa en vez de tocar 40 llamadas — y el frío desaparece de la interfaz.
    */
-  --gold: #c1975c;
-  --gold-soft: #e6d3b4;
-  --bone: #ffffff;
-  --ink: #211d19;
+  --color-rose-50: #fff1f1;
+  --color-rose-100: #ffe0e0;
+  --color-rose-200: #ffcaca;
+  --color-rose-300: #ffa3a3;
+  --color-rose-400: #ff6568;
+  --color-rose-500: #ed403f;
+  --color-rose-600: #d41824;
+  --color-rose-700: #b00d1c;
+  --color-rose-800: #8f1119;
+  --color-rose-900: #76141b;
+  --color-rose-950: #40050a;
 
-  /* Bandeja de WhatsApp */
+  --color-stone-50: #fbfaf9; /* interpolado */
+  --color-stone-100: #f5f3f1; /* interpolado */
+  --color-stone-200: #e3e1df; /* interpolado */
+  --color-stone-300: #c9c5c3; /* interpolado */
+  --color-stone-400: #a19d9c;
+  --color-stone-500: #75706f;
+  --color-stone-600: #504c4b;
+  --color-stone-700: #353231;
+  --color-stone-800: #1c1a19;
+  --color-stone-900: #0f0d0d;
+  --color-stone-950: #070606; /* interpolado */
+
+  --color-sky-100: #dff2fe;
+  --color-sky-500: #00a5ef;
+  --color-sky-600: #0086c7; /* interpolado */
+  --color-sky-700: #026a9c; /* interpolado */
+  --color-sky-900: #024a70;
+
+  --color-violet-500: #8d54ff;
+  --color-violet-700: #6a2ad4; /* interpolado */
+}
+
+:root {
+  --radius: 0.5rem;
+
+  --background: #fbfaf9;
+  --foreground: #040303;
+
+  --card: #ffffff;
+  --card-foreground: #040303;
+
+  --popover: #fffefe;
+  --popover-foreground: #040303;
+
+  /* Primario = mocha-800. Marrón casi negro: es el color de acción. */
+  --primary: #270d07;
+  --primary-foreground: #fbfaf9;
+
+  --secondary: #f8f3e8;
+  --secondary-foreground: #1d1a18;
+
+  --muted: #f5f1ec;
+  --muted-foreground: #595452;
+
+  --accent: #f6dfd7;
+  --accent-foreground: #502419;
+
+  --destructive: #d41824;
+  --destructive-foreground: #fbfaf9;
+
+  --border: #e3e1df;
+  --input: #e7e4e2;
+  --ring: #270d07;
+
+  --chart-1: #270d07;
+  --chart-2: #f0aa63;
+  --chart-3: #c49c76;
+  --chart-4: #76706d;
+  --chart-5: #ed403f;
+
+  /* Rail lateral de íconos */
+  --sidebar: #fbfaf9;
+  --sidebar-foreground: #040303;
+  --sidebar-primary: #f0aa63;
+  --sidebar-primary-foreground: #270d07;
+  --sidebar-accent: #f5f3f1;
+  --sidebar-accent-foreground: #040303;
+  --sidebar-border: #e3e1df;
+  --sidebar-ring: #f0aa63;
+
+  /* Intensidad del tinte de los bloques de turno en la agenda. */
+  --appt-tint: 88%;
+
+  /*
+   * Alias heredados (`text-gold`, `bg-bone`, …). En vez de tocar 20 archivos
+   * los reapuntamos a la paleta nueva: el dorado del referente es amber-400.
+   */
+  --gold: #f0aa63;
+  --gold-soft: #f9dcba;
+  --bone: #ffffff;
+  --ink: #040303;
+
+  /* Alias de la bandeja: verde WhatsApp real, no un verde inventado. */
   --wa: #25d366;
-  --wa-soft: #dcf3e4;
-  --wa-ink: #128c4a;
+  --wa-soft: #d9fdd3;
+  --wa-ink: #008069;
 }
 
 .dark {
-  --background: #17140f;
-  --foreground: #f3efe9;
+  --background: #170503;
+  --foreground: #fcf4eb;
 
-  --card: #1e1a15;
-  --card-foreground: #f3efe9;
+  --card: #270d07;
+  --card-foreground: #fcf4eb;
 
-  --popover: #1e1a15;
-  --popover-foreground: #f3efe9;
+  --popover: #270d07;
+  --popover-foreground: #fcf4eb;
 
-  --primary: #d0a76c;
-  --primary-foreground: #17140f;
+  --primary: #f0aa63;
+  --primary-foreground: #170503;
 
-  --secondary: #2a251f;
-  --secondary-foreground: #f3efe9;
+  --secondary: #38170e;
+  --secondary-foreground: #fcf4eb;
 
-  --muted: #2a251f;
-  --muted-foreground: #a49a8e;
+  --muted: #2e110a;
+  --muted-foreground: #ab9b8f;
 
-  --accent: #2a251f;
-  --accent-foreground: #f3efe9;
+  --accent: #431c03;
+  --accent-foreground: #f5c38d;
 
-  --destructive: #e05a4c;
-  --destructive-foreground: #17140f;
+  --destructive: #ed403f;
+  --destructive-foreground: #fbfaf9;
 
-  --border: #302a23;
-  --input: #38312a;
-  --ring: #c1975c;
+  --border: #421d13;
+  --input: #35140c;
+  --ring: #f0aa63;
 
-  --sidebar: #1b1712;
-  --sidebar-foreground: #a49a8e;
-  --sidebar-primary: #d0a76c;
-  --sidebar-primary-foreground: #17140f;
-  --sidebar-accent: #33281a;
-  --sidebar-accent-foreground: #e0b87c;
-  --sidebar-border: #2b251e;
-  --sidebar-ring: #c1975c;
+  --chart-1: #f0aa63;
+  --chart-2: #ff7e74;
+  --chart-3: #c49c76;
+  --chart-4: #928e8c;
+  --chart-5: #d41824;
 
-  --gold: #d0a76c;
-  --gold-soft: #5c4a30;
-  --bone: #f3efe9;
-  --ink: #f3efe9;
+  --sidebar: #110402;
+  --sidebar-foreground: #fcf4eb;
+  --sidebar-primary: #f0aa63;
+  --sidebar-primary-foreground: #170503;
+  --sidebar-accent: #2e110a;
+  --sidebar-accent-foreground: #fcf4eb;
+  --sidebar-border: #38170e;
+  --sidebar-ring: #f0aa63;
 
-  --wa: #25d366;
-  --wa-soft: #1d3a28;
-  --wa-ink: #6ee7a0;
+  --appt-tint: 80%;
+
+  --gold: #f0aa63;
+  --gold-soft: #431c03;
+  --bone: #270d07;
+  --ink: #fcf4eb;
+
+  --wa: #00a884;
+  --wa-soft: #0b3a30;
+  --wa-ink: #7ae3c3;
 }
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 2px);
-  --radius-2xl: calc(var(--radius) + 6px);
-
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -185,14 +322,6 @@
   --color-wa-soft: var(--wa-soft);
   --color-wa-ink: var(--wa-ink);
 
-  /*
-   * Ojo: `--font-display` (Fraunces) lo inyecta next/font en el <html> y solo
-   * lo usa el wordmark de la marca. NO lo re-declaramos acá porque taparía
-   * el valor real y el logo perdería la serif.
-   */
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-
   /* Sombras casi imperceptibles: el referente separa con borde, no con sombra. */
   --shadow-xs: 0 1px 1px rgb(0 0 0 / 0.03);
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.04);
@@ -207,14 +336,7 @@
 
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "cv11", "ss01";
     -webkit-font-smoothing: antialiased;
-  }
-
-  h1,
-  h2,
-  h3 {
-    letter-spacing: -0.015em;
   }
 
   button,
@@ -226,31 +348,28 @@
   [data-slot="input"] {
     transition-property: background-color, border-color, color, fill, stroke,
       box-shadow, opacity;
-    transition-duration: 140ms;
+    transition-duration: 150ms;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   /* Tarjetas: blanco liso, borde hairline, sin sombra ni brillos. */
   [data-slot="card"] {
-    border-radius: var(--radius-2xl);
     box-shadow: none;
   }
 
   [data-slot="dialog-content"] {
-    border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-lg);
   }
 
   [data-slot="popover-content"],
   [data-slot="dropdown-menu-content"] {
-    border-radius: var(--radius-xl);
     box-shadow: var(--shadow-md);
   }
 
   [data-slot="input"],
   [data-slot="textarea"],
   [data-slot="select-trigger"] {
-    border-radius: var(--radius-md);
+    border-radius: var(--radius);
     background-color: var(--card);
   }
 
@@ -260,22 +379,18 @@
   [data-slot="textarea"]:focus-visible,
   [data-slot="select-trigger"]:focus,
   [data-slot="select-trigger"]:focus-visible {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgb(193 151 92 / 0.16);
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 16%, transparent);
   }
 
   *:focus-visible {
-    outline: 2px solid var(--primary);
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
 }
 
 @layer utilities {
-  .font-display {
-    font-family: var(--font-display);
-    letter-spacing: -0.015em;
-  }
-
+  /* Alias heredado: el dorado del referente es amber-400. */
   .text-gold {
     color: var(--gold);
   }
@@ -303,6 +418,7 @@
     border: 1px solid var(--border);
     border-radius: 0.3rem;
     background: var(--card);
+    font-family: var(--font-mono);
     font-size: 0.6875rem;
     font-weight: 600;
     line-height: 1;
@@ -325,7 +441,7 @@
     font-size: 0.8125rem;
     font-weight: 500;
     color: var(--muted-foreground);
-    transition: background-color 140ms ease, color 140ms ease;
+    transition: background-color 150ms ease, color 150ms ease;
   }
 
   .segmented-item:hover {
@@ -338,7 +454,10 @@
     box-shadow: var(--shadow-xs);
   }
 
-  /* Ítem del rail de íconos */
+  /*
+   * Ítem del rail de íconos. Activo = pastilla durazno con el ícono en
+   * tostado oscuro (amber-100 sobre amber-700), tal cual el referente.
+   */
   .rail-item {
     position: relative;
     display: flex;
@@ -347,21 +466,27 @@
     width: 2.25rem;
     height: 2.25rem;
     border: 1px solid transparent;
-    border-radius: 0.625rem;
-    color: var(--sidebar-foreground);
-    transition: background-color 140ms ease, color 140ms ease,
-      border-color 140ms ease;
+    border-radius: var(--radius);
+    color: var(--muted-foreground);
+    transition: background-color 150ms ease, color 150ms ease,
+      border-color 150ms ease;
   }
 
   .rail-item:hover {
-    background: var(--muted);
-    color: var(--foreground);
+    background: var(--sidebar-accent);
+    color: var(--sidebar-accent-foreground);
   }
 
   .rail-item[data-active="true"] {
-    background: var(--sidebar-accent);
-    border-color: rgb(193 151 92 / 0.35);
-    color: var(--sidebar-accent-foreground);
+    background: var(--color-amber-100);
+    border-color: var(--color-amber-200);
+    color: var(--color-amber-700);
+  }
+
+  .dark .rail-item[data-active="true"] {
+    background: var(--accent);
+    border-color: var(--color-amber-900);
+    color: var(--accent-foreground);
   }
 
   /* Variante expandida del rail: mismo pill pero con etiqueta al costado */
@@ -373,7 +498,194 @@
   }
 }
 
-/* ── FullCalendar — calcado de la agenda del referente ────────────────── */
+/* ── Bandeja de WhatsApp — tokens calcados del referente ──────────────────
+ * Este bloque es literal: son los mismos nombres y los mismos valores que
+ * usa peluquerOS en su módulo de chat. Cualquier subárbol marcado con
+ * `.wa-scope` deja de responder al tema de la app y pasa a verse como
+ * WhatsApp Web.
+ */
+.wa-scope {
+  --wa-list-w: 30%;
+  --wa-header-h: 60px;
+  --wa-app: #ffffff;
+  --wa-panel: #ffffff;
+  --wa-panel-header: #f0f2f5;
+  --wa-search-bg: #f0f2f5;
+  --wa-search-field: #ffffff;
+  --wa-hover: #f5f6f6;
+  --wa-active: #f0f2f5;
+  --wa-divider: #e9edef;
+  --wa-border: #d1d7db;
+  --wa-conv: #fef8ec;
+  --wa-bubble-in: #ffffff;
+  --wa-bubble-out: #d9fdd3;
+  --wa-text: #111b21;
+  --wa-text-2: #667781;
+  --wa-text-3: #8696a0;
+  --wa-meta: #667781;
+  --wa-meta-out: #667781;
+  --wa-accent: #00a884;
+  --wa-accent-strong: #008069;
+  --wa-badge: #25d366;
+  --wa-badge-text: #ffffff;
+  --wa-tick: #8696a0;
+  --wa-tick-read: #53bdeb;
+  --wa-link: #027eb5;
+  --wa-composer: #f0f2f5;
+  --wa-composer-field: #ffffff;
+  --wa-icon: #54656f;
+  --wa-system-bubble: #ffeecd;
+  --wa-system-text: #54656f;
+  --wa-avatar-bg: #dfe5e7;
+  --wa-avatar-fg: #ffffff;
+  --wa-bubble-shadow: 0 1px 0.5px #0b141a21;
+  --wa-overlay: #0b141a66;
+}
+
+.dark .wa-scope {
+  --wa-app: #111b21;
+  --wa-panel: #111b21;
+  --wa-panel-header: #202c33;
+  --wa-search-bg: #111b21;
+  --wa-search-field: #202c33;
+  --wa-hover: #202c33;
+  --wa-active: #2a3942;
+  --wa-divider: #222d34;
+  --wa-border: #2f3b43;
+  --wa-conv: #0b141a;
+  --wa-bubble-in: #202c33;
+  --wa-bubble-out: #005c4b;
+  --wa-text: #e9edef;
+  --wa-text-2: #8696a0;
+  --wa-text-3: #8696a0;
+  --wa-meta: #8696a0;
+  --wa-meta-out: #e9edef99;
+  --wa-accent: #00a884;
+  --wa-accent-strong: #00a884;
+  --wa-badge: #00a884;
+  --wa-badge-text: #111b21;
+  --wa-tick: #8696a0;
+  --wa-tick-read: #53bdeb;
+  --wa-link: #53bdeb;
+  --wa-composer: #202c33;
+  --wa-composer-field: #2a3942;
+  --wa-icon: #8696a0;
+  --wa-system-bubble: #182229;
+  --wa-system-text: #8696a0;
+  --wa-avatar-bg: #6a7175;
+  --wa-avatar-fg: #cfd5d9;
+  --wa-bubble-shadow: 0 1px 0.5px #0b141a61;
+  --wa-overlay: #0b141a8c;
+}
+
+/*
+ * Papel de la conversación: crema con el muro de garabatos encima. El
+ * referente sirve un .webp propio; acá el patrón es un SVG nuestro
+ * (public/wa-doodle.svg) para no depender de un asset de terceros.
+ */
+.wa-conv-bg {
+  position: relative;
+  background-color: var(--wa-conv);
+}
+
+.wa-conv-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url("/wa-doodle.svg");
+  background-repeat: repeat;
+  background-size: 400px 400px;
+  opacity: 0.055;
+}
+
+.dark .wa-conv-bg::before {
+  opacity: 0.045;
+  filter: invert(1);
+}
+
+.wa-conv-scroll {
+  position: relative;
+  z-index: 1;
+}
+
+/* Piquito de la burbuja, recortado con clip-path como en WhatsApp Web. */
+.wa-tail-out::after,
+.wa-tail-in::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 13px;
+}
+
+.wa-tail-out::after {
+  right: -8px;
+  background: var(--wa-bubble-out);
+  clip-path: path("M5.188 0H0v11.193l6.467-8.625C7.526 1.156 6.958 0 5.188 0z");
+}
+
+.wa-tail-in::after {
+  left: -8px;
+  background: var(--wa-bubble-in);
+  clip-path: path("M2.812 0H8v11.193L1.533 2.568C.474 1.156 1.042 0 2.812 0z");
+}
+
+.wa-row-active {
+  background: var(--wa-active);
+}
+
+.wa-scope ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.wa-scope ::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--wa-text-3) 45%, transparent);
+  border-radius: 3px;
+}
+
+.wa-scope ::-webkit-scrollbar-thumb:hover {
+  background: var(--wa-text-3);
+}
+
+.wa-scope :focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--wa-panel), 0 0 0 4px var(--wa-accent);
+}
+
+/*
+ * Barra de escritura. Los controles de adjuntar / respuestas rápidas son
+ * <Button variant="ghost"> compartidos con el resto de la app, así que en vez
+ * de forkearlos los reteñimos acá con los tokens de la bandeja.
+ */
+.wa-composer [data-slot="button"][data-variant="ghost"] {
+  color: var(--wa-icon);
+  border-radius: 9999px;
+}
+
+.wa-composer [data-slot="button"][data-variant="ghost"]:hover {
+  background: var(--wa-hover);
+  color: var(--wa-icon);
+}
+
+.wa-composer [data-slot="input"] {
+  background-color: var(--wa-composer-field);
+  border-radius: var(--radius);
+}
+
+.wa-composer [data-slot="input"]:focus,
+.wa-composer [data-slot="input"]:focus-visible {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* ── FullCalendar — agenda ────────────────────────────────────────────────
+ * Este bloque quedó como estaba: la agenda ya se rediseñó aparte. Lo único
+ * que se tocó son los literales camel de la paleta vieja, que ahora salen
+ * de los tokens para que no desentonen con la marca nueva.
+ */
 
 .zenna-calendar .fc {
   --fc-border-color: transparent;
@@ -408,7 +720,7 @@
 }
 
 .zenna-calendar .fc-timegrid-slot-lane {
-  border-top: 1px dotted #e8e3dc !important;
+  border-top: 1px dotted var(--border) !important;
 }
 
 .zenna-calendar .fc-timegrid-slot-lane.fc-timegrid-slot-minor {
@@ -491,7 +803,7 @@
   line-height: 1.2;
 }
 
-/* Indicador de "ahora": línea camel con el punto a la izquierda */
+/* Indicador de "ahora": línea del primario con el punto a la izquierda */
 .zenna-calendar .fc-timegrid-now-indicator-line {
   border-top-width: 1.5px;
   border-color: var(--primary);
@@ -507,11 +819,11 @@
   margin-left: -2px;
 }
 
-/* Selección arrastrada: recuadro punteado camel, como el "+ Crear turno" */
+/* Selección arrastrada: recuadro punteado dorado, como el "+ Crear turno" */
 .zenna-calendar .fc-highlight {
-  background: rgb(193 151 92 / 0.06);
-  border: 1px dashed rgb(193 151 92 / 0.55);
-  border-radius: 0.625rem;
+  background: color-mix(in oklab, var(--color-amber-400) 8%, transparent);
+  border: 1px dashed color-mix(in oklab, var(--color-amber-400) 60%, transparent);
+  border-radius: var(--radius);
 }
 
 .zenna-calendar .fc-timegrid-col.fc-day-today {
@@ -609,9 +921,9 @@
 
 .zenna-mini-calendar .fc-button-primary:not(:disabled).fc-button-active,
 .zenna-mini-calendar .fc-button-primary:not(:disabled):active {
-  background-color: var(--foreground) !important;
-  border-color: var(--foreground) !important;
-  color: var(--card) !important;
+  background-color: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
 }
 
 .zenna-mini-calendar .fc-col-header-cell-cushion {

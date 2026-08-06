@@ -275,6 +275,10 @@ async function fireForAppointment(
   // Find the conversation for this client. Without a conversation we can't
   // deliver the message — skip and record as a "skipped" execution so we
   // don't keep retrying forever (the unique constraint blocks future attempts).
+  // El filtro por canal no es decorativo: una clienta puede tener conversación
+  // de WhatsApp y de Instagram a la vez, y sin él `maybeSingle()` fallaría.
+  // Las automatizaciones son deliberadamente solo-WhatsApp por ahora — Instagram
+  // tiene ventana de 24 h y mandar recordatorios fuera de ella los rebota.
   const { data: conv } = await supabase
     .from("conversations")
     .select("id, external_id")

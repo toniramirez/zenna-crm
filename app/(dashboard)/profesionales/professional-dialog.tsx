@@ -54,7 +54,7 @@ export function ProfessionalDialog({
     defaultValues: {
       fullName: "",
       phone: "",
-      color: "#ec4899",
+      color: "#c49c76",
       commissionRate: 50,
       commissionRateNet: 0,
       active: true,
@@ -66,7 +66,7 @@ export function ProfessionalDialog({
       form.reset({
         fullName: professional?.full_name ?? "",
         phone: professional?.phone ?? "",
-        color: professional?.color ?? "#ec4899",
+        color: professional?.color ?? "#c49c76",
         commissionRate: professional ? Number(professional.commission_rate) : 50,
         commissionRateNet: professional
           ? Number(professional.commission_rate_net)

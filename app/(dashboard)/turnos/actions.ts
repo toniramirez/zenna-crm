@@ -170,16 +170,12 @@ export async function updateAppointmentAction(
 
   if (updError) return { error: mapAppointmentError(updError) };
 
-  // Replace service lines
-  const { error: delLinesError } = await supabase
-    .from("appointment_services")
-    .delete()
-    .eq("appointment_id", id);
-
-  if (delLinesError) {
-    return { error: "No pudimos actualizar los servicios del turno." };
-  }
-
+  // Replace service lines.
+  //
+  // El orden importa: primero validamos los servicios nuevos y recién después
+  // borramos los viejos. Al revés, un id inválido dejaba el turno con CERO
+  // servicios (total $0 en la caja, imposible de cobrar bien) porque el borrado
+  // ya se había ejecutado cuando la validación cortaba.
   const { data: services, error: svcError } = await supabase
     .from("services")
     .select("id, price, duration_minutes")
@@ -187,6 +183,22 @@ export async function updateAppointmentAction(
 
   if (svcError || !services || services.length !== parsed.data.serviceIds.length) {
     return { error: "Algunos servicios elegidos no son válidos." };
+  }
+
+  // Snapshot de las líneas actuales para poder restaurarlas si el insert falla:
+  // sin transacción, es la única forma de no dejar el turno vacío.
+  const { data: previousLines } = await supabase
+    .from("appointment_services")
+    .select("*")
+    .eq("appointment_id", id);
+
+  const { error: delLinesError } = await supabase
+    .from("appointment_services")
+    .delete()
+    .eq("appointment_id", id);
+
+  if (delLinesError) {
+    return { error: "No pudimos actualizar los servicios del turno." };
   }
 
   const { error: insLinesError } = await supabase
@@ -202,6 +214,9 @@ export async function updateAppointmentAction(
     );
 
   if (insLinesError) {
+    if (previousLines?.length) {
+      await supabase.from("appointment_services").insert(previousLines);
+    }
     return { error: "No pudimos guardar los servicios del turno." };
   }
 

@@ -64,8 +64,13 @@ function digitsToPretty(digits: string | null | undefined): string | null {
  * Best-effort phone string for a conversation. For legacy `@s.whatsapp.net`
  * JIDs the digits are in the JID itself. For `@lid` JIDs we rely on
  * `wa_phone`, which the worker backfills from `msg.key.senderPn`.
+ *
+ * En Instagram no hay teléfono: el `external_id` es el IGSID, que es numérico
+ * y se leería como un número larguísimo si lo dejáramos pasar por acá. Salvo
+ * que alguien haya cargado el teléfono en la ficha de la clienta, no hay dato.
  */
 function conversationPhone(c: ConversationWithClient): string | null {
+  if (c.channel === "instagram") return digitsToPretty(c.clients?.phone);
   if (isLidJid(c.external_id)) return digitsToPretty(c.wa_phone);
   const digits = c.external_id.split("@")[0]?.replace(/\D/g, "") ?? "";
   return digitsToPretty(digits) ?? digitsToPretty(c.wa_phone);
@@ -76,7 +81,7 @@ function conversationTitle(c: ConversationWithClient): string {
     c.clients?.full_name ||
     c.display_name ||
     conversationPhone(c) ||
-    "Contacto sin nombre"
+    (c.channel === "instagram" ? "Contacto de Instagram" : "Contacto sin nombre")
   );
 }
 
@@ -95,16 +100,20 @@ function messageDayLabel(iso: string): string {
   return format(d, "EEEE d 'de' MMMM", { locale: es });
 }
 
+/**
+ * Tildes de estado. El azul del "leído" y el gris de los demás salen de los
+ * tokens de la bandeja (`--wa-tick-read` / `--wa-tick`), no del tema de la app.
+ */
 function StatusIcon({ status }: { status: MessageRow["status"] }) {
   if (status === "failed")
-    return <CircleAlert className="size-3 text-rose-500" />;
+    return <CircleAlert className="size-3 text-destructive" />;
   if (status === "queued" || status === "sending")
-    return <Clock className="size-3 opacity-50" />;
+    return <Clock className="size-3 text-[var(--wa-tick)] opacity-70" />;
   if (status === "read")
-    return <CheckCheck className="size-3 text-sky-500" />;
+    return <CheckCheck className="size-3 text-[var(--wa-tick-read)]" />;
   if (status === "delivered")
-    return <CheckCheck className="size-3 opacity-60" />;
-  return <Check className="size-3 opacity-60" />;
+    return <CheckCheck className="size-3 text-[var(--wa-tick)]" />;
+  return <Check className="size-3 text-[var(--wa-tick)]" />;
 }
 
 export function CrmView({
@@ -350,22 +359,24 @@ export function CrmView({
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[400px_1fr]">
+    <div className="wa-scope grid h-full min-h-0 grid-cols-1 bg-[var(--wa-app)] text-[var(--wa-text)] md:grid-cols-[400px_1fr]">
       {/* Conversation list */}
       <aside
         className={cn(
-          "flex flex-col overflow-hidden border-r border-border bg-card",
+          "flex flex-col overflow-hidden border-r border-[var(--wa-border)] bg-[var(--wa-panel)]",
           selectedId && "hidden md:flex",
         )}
       >
         {/* Identidad de la cuenta conectada — el bloque superior del referente */}
-        <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-wa-soft text-wa-ink">
+        <div className="flex h-[var(--wa-header-h)] shrink-0 items-center gap-3 bg-[var(--wa-panel-header)] px-4">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--wa-avatar-bg)] text-[var(--wa-icon)]">
             <MessageCircle className="size-5" strokeWidth={1.75} />
           </span>
           <div className="min-w-0 flex-1 leading-tight">
-            <div className="text-[1.0625rem] font-semibold">WhatsApp</div>
-            <div className="truncate text-[0.8125rem] text-muted-foreground tabular-nums">
+            <div className="text-[1.0625rem] font-medium text-[var(--wa-text)]">
+              WhatsApp
+            </div>
+            <div className="truncate text-[0.8125rem] text-[var(--wa-text-2)] tabular-nums">
               {filteredConversations.length}
               {filtersActive ? ` de ${conversations.length}` : ""}{" "}
               {conversations.length === 1 ? "conversación" : "conversaciones"}
@@ -381,9 +392,9 @@ export function CrmView({
               }}
               title="Limpiar filtros"
               aria-label="Limpiar filtros"
-              className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="flex size-9 shrink-0 items-center justify-center rounded-full text-[var(--wa-icon)] hover:bg-[var(--wa-hover)]"
             >
-              <Check className="size-4" />
+              <Check className="size-5" strokeWidth={1.75} />
             </button>
           ) : null}
           {onOpenConfig ? (
@@ -392,30 +403,30 @@ export function CrmView({
               onClick={onOpenConfig}
               title="Configuración del CRM"
               aria-label="Configuración del CRM"
-              className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="flex size-9 shrink-0 items-center justify-center rounded-full text-[var(--wa-icon)] hover:bg-[var(--wa-hover)]"
             >
-              <MoreVertical className="size-4" />
+              <MoreVertical className="size-5" strokeWidth={1.75} />
             </button>
           ) : null}
         </div>
 
         {/* Buscador */}
-        <div className="px-4 pb-3">
+        <div className="shrink-0 px-3 py-2">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[var(--wa-text-3)]" />
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Buscá un chat o un contacto"
               aria-label="Buscá un chat o un contacto"
-              className="h-10 w-full rounded-full border border-transparent bg-muted pl-10 pr-4 text-sm outline-none placeholder:text-muted-foreground focus:border-primary/40 focus:bg-card"
+              className="h-9 w-full rounded-lg border border-transparent bg-[var(--wa-search-bg)] pl-11 pr-4 text-[0.8125rem] text-[var(--wa-text)] outline-none placeholder:text-[var(--wa-text-2)] focus:bg-[var(--wa-search-field)] focus:border-[var(--wa-divider)]"
             />
           </div>
         </div>
 
         {/* Filtros rápidos */}
-        <div className="flex flex-wrap gap-2 px-4 pb-3">
+        <div className="flex shrink-0 flex-wrap gap-2 px-3 pb-2">
           <FilterChip
             active={statusFilter === "all"}
             onClick={() => setStatusFilter("all")}
@@ -450,7 +461,7 @@ export function CrmView({
         </div>
 
         {allTags.some((t) => t.active) ? (
-          <div className="flex flex-wrap gap-1.5 px-4 pb-3">
+          <div className="flex shrink-0 flex-wrap gap-1.5 px-3 pb-2">
             {allTags
               .filter((t) => t.active)
               .map((t) => {
@@ -463,8 +474,8 @@ export function CrmView({
                     className={cn(
                       "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.75rem] transition-colors",
                       checked
-                        ? "bg-foreground/5 font-medium"
-                        : "border-transparent bg-muted text-muted-foreground hover:text-foreground",
+                        ? "bg-[var(--wa-active)] font-medium text-[var(--wa-text)]"
+                        : "border-transparent bg-[var(--wa-search-bg)] text-[var(--wa-text-2)] hover:text-[var(--wa-text)]",
                     )}
                     style={checked ? { borderColor: t.color } : undefined}
                   >
@@ -481,7 +492,7 @@ export function CrmView({
         ) : null}
         <ScrollArea className="flex-1 min-h-0">
           {filteredConversations.length === 0 ? (
-            <div className="p-6 text-center text-sm text-muted-foreground">
+            <div className="p-6 text-center text-sm text-[var(--wa-text-2)]">
               {conversations.length === 0
                 ? "Cuando llegue un mensaje al WhatsApp del salón va a aparecer acá."
                 : "Ninguna conversación coincide con el filtro."}
@@ -505,25 +516,28 @@ export function CrmView({
                       type="button"
                       onClick={() => setSelectedId(c.id)}
                       className={cn(
-                        "flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-muted/60",
-                        isSel && "bg-muted",
+                        "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
+                        isSel
+                          ? "wa-row-active"
+                          : "hover:bg-[var(--wa-hover)]",
                       )}
                     >
                       <ChatAvatar
                         name={title}
                         avatarPath={c.avatar_path}
+                        channel={c.channel}
                         size={48}
                       />
                       {/*
                         La separación entre filas va acá y no en el <li>: así
                         la línea arranca después del avatar, como en WhatsApp.
                       */}
-                      <div className="min-w-0 flex-1 border-b border-border pb-2.5 [li:last-child_&]:border-b-0">
+                      <div className="min-w-0 flex-1 border-b border-[var(--wa-divider)] pb-2.5 [li:last-child_&]:border-b-0">
                         <div className="flex items-baseline justify-between gap-2">
                           <span
                             className={cn(
-                              "truncate text-[0.9375rem]",
-                              unread ? "font-semibold" : "font-medium",
+                              "truncate text-[0.9375rem] text-[var(--wa-text)]",
+                              unread ? "font-semibold" : "font-normal",
                             )}
                           >
                             {title}
@@ -532,24 +546,24 @@ export function CrmView({
                             className={cn(
                               "shrink-0 text-[0.6875rem] tabular-nums",
                               unread
-                                ? "font-semibold text-wa-ink"
-                                : "text-muted-foreground",
+                                ? "font-medium text-[var(--wa-accent-strong)]"
+                                : "text-[var(--wa-text-2)]",
                             )}
                           >
                             {relativeTime(c.last_message_at)}
                           </span>
                         </div>
                         {showPhoneInList && !c.clients ? (
-                          <div className="truncate text-[0.6875rem] text-muted-foreground tabular-nums">
+                          <div className="truncate text-[0.6875rem] text-[var(--wa-text-3)] tabular-nums">
                             {phone}
                           </div>
                         ) : null}
                         <div className="mt-0.5 flex items-center justify-between gap-2">
-                          <span className="truncate text-[0.8125rem] text-muted-foreground">
+                          <span className="truncate text-[0.8125rem] text-[var(--wa-text-2)]">
                             {c.last_message_preview ?? "Sin mensajes"}
                           </span>
                           {unread ? (
-                            <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-wa px-1.5 text-[0.6875rem] font-semibold tabular-nums text-white">
+                            <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[var(--wa-badge)] px-1.5 text-[0.6875rem] font-medium tabular-nums text-[var(--wa-badge-text)]">
                               {c.unread_count > 99 ? "99+" : c.unread_count}
                             </span>
                           ) : null}
@@ -558,7 +572,7 @@ export function CrmView({
                           (c.clients?.tags?.length ?? 0) > 0) && (
                           <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
                             {c.awaiting_reply ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[0.6875rem] font-medium text-primary">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--wa-system-bubble)] px-2 py-0.5 text-[0.6875rem] font-medium text-[var(--wa-system-text)]">
                                 <Hourglass className="size-2.5" />
                                 Esperando
                               </span>
@@ -570,9 +584,9 @@ export function CrmView({
                                 return (
                                   <span
                                     key={name}
-                                    className="inline-flex max-w-[90px] items-center gap-1 truncate rounded-full border px-2 py-0.5 text-[0.6875rem]"
+                                    className="inline-flex max-w-[90px] items-center gap-1 truncate rounded-full border px-2 py-0.5 text-[0.6875rem] text-[var(--wa-text-2)]"
                                     style={{
-                                      borderColor: meta?.color ?? "#94a3b8",
+                                      borderColor: meta?.color ?? "#a19d9c",
                                     }}
                                     title={name}
                                   >
@@ -580,7 +594,7 @@ export function CrmView({
                                       className="size-1.5 shrink-0 rounded-full"
                                       style={{
                                         backgroundColor:
-                                          meta?.color ?? "#94a3b8",
+                                          meta?.color ?? "#a19d9c",
                                       }}
                                     />
                                     <span className="truncate">{name}</span>
@@ -588,7 +602,7 @@ export function CrmView({
                                 );
                               })}
                             {(c.clients?.tags?.length ?? 0) > 3 ? (
-                              <span className="text-[0.6875rem] text-muted-foreground">
+                              <span className="text-[0.6875rem] text-[var(--wa-text-3)]">
                                 +{(c.clients?.tags?.length ?? 0) - 3}
                               </span>
                             ) : null}
@@ -607,49 +621,50 @@ export function CrmView({
       {/* Thread */}
       <section
         className={cn(
-          "relative flex flex-col overflow-hidden bg-background",
+          "relative flex flex-col overflow-hidden bg-[var(--wa-panel-header)]",
           !selectedId && "hidden md:flex",
         )}
       >
         {/* Cinta verde superior: la firma de la bandeja en el referente */}
-        <span aria-hidden className="h-1 shrink-0 bg-wa" />
+        <span aria-hidden className="h-1 shrink-0 bg-[var(--wa-accent)]" />
 
         {!selected ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-5 p-6 text-center">
             <EmptyInboxArt />
             <div className="space-y-2">
-              <h2 className="text-[1.75rem] font-normal tracking-tight">
+              <h2 className="font-display text-[1.75rem] font-normal tracking-tight text-[var(--wa-text)]">
                 Zenna en tu WhatsApp
               </h2>
-              <p className="mx-auto max-w-md text-[0.9375rem] leading-relaxed text-muted-foreground">
+              <p className="mx-auto max-w-md text-[0.9375rem] leading-relaxed text-[var(--wa-text-2)]">
                 Atendé a tus clientas, agendá turnos y mandá presupuestos sin
                 salir del chat. Elegí una conversación de la izquierda para
                 empezar.
               </p>
             </div>
-            <p className="flex items-center gap-2 text-[0.8125rem] text-muted-foreground">
+            <p className="flex items-center gap-2 text-[0.8125rem] text-[var(--wa-text-3)]">
               <Lock className="size-3.5" />
               Tus conversaciones quedan guardadas y protegidas en tu cuenta
             </p>
           </div>
         ) : (
           <>
-            <div className="px-4 py-3 border-b flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="md:hidden"
+            <div className="flex h-[var(--wa-header-h)] shrink-0 items-center gap-3 border-b border-[var(--wa-divider)] bg-[var(--wa-panel-header)] px-4">
+              <button
+                type="button"
+                aria-label="Volver a la lista"
+                className="-ml-1 flex size-9 shrink-0 items-center justify-center rounded-full text-[var(--wa-icon)] hover:bg-[var(--wa-hover)] md:hidden"
                 onClick={() => setSelectedId(null)}
               >
-                <ArrowLeft className="size-4" />
-              </Button>
+                <ArrowLeft className="size-5" strokeWidth={1.75} />
+              </button>
               <ChatAvatar
                 name={conversationTitle(selected)}
                 avatarPath={selected.avatar_path}
-                size={36}
+                channel={selected.channel}
+                size={40}
               />
               <div className="flex flex-col min-w-0 leading-tight flex-1">
-                <span className="font-medium truncate">
+                <span className="truncate text-[1rem] text-[var(--wa-text)]">
                   {conversationTitle(selected)}
                 </span>
                 {(() => {
@@ -660,7 +675,7 @@ export function CrmView({
                     !selected.clients?.full_name && !selected.display_name;
                   if (phone && !titleIsPhone) {
                     return (
-                      <span className="text-xs text-muted-foreground truncate tabular-nums">
+                      <span className="text-[0.8125rem] text-[var(--wa-text-2)] truncate tabular-nums">
                         {phone}
                         {!selected.clients ? (
                           <span className="not-tabular-nums">
@@ -673,7 +688,7 @@ export function CrmView({
                   }
                   if (!selected.clients) {
                     return (
-                      <span className="text-xs text-muted-foreground truncate">
+                      <span className="text-[0.8125rem] text-[var(--wa-text-2)] truncate">
                         {phone
                           ? "Sin clienta asociada"
                           : "Sin número visible · sin clienta"}
@@ -683,26 +698,32 @@ export function CrmView({
                   return null;
                 })()}
               </div>
-              <Button
+              {/*
+                Acciones del encabezado: en WhatsApp son íconos pelados sobre
+                la barra gris, sin caja. El texto aparece recién en desktop.
+              */}
+              <button
                 type="button"
-                variant="outline"
-                size="sm"
-                className="shrink-0"
+                title="Nuevo turno"
+                className="flex h-9 shrink-0 items-center gap-2 rounded-full px-2.5 text-[var(--wa-icon)] hover:bg-[var(--wa-hover)]"
                 onClick={() => setNewTurnoOpen(true)}
               >
-                <CalendarPlus className="size-4" />
-                <span className="hidden sm:inline">Nuevo turno</span>
-              </Button>
-              <Button
+                <CalendarPlus className="size-5" strokeWidth={1.75} />
+                <span className="hidden text-[0.8125rem] lg:inline">
+                  Nuevo turno
+                </span>
+              </button>
+              <button
                 type="button"
-                variant="outline"
-                size="sm"
-                className="shrink-0"
+                title="Presupuestar"
+                className="flex h-9 shrink-0 items-center gap-2 rounded-full px-2.5 text-[var(--wa-icon)] hover:bg-[var(--wa-hover)]"
                 onClick={() => setPresupuestoOpen(true)}
               >
-                <FileText className="size-4" />
-                <span className="hidden sm:inline">Presupuestar</span>
-              </Button>
+                <FileText className="size-5" strokeWidth={1.75} />
+                <span className="hidden text-[0.8125rem] lg:inline">
+                  Presupuestar
+                </span>
+              </button>
             </div>
 
             <ChatTagsBar
@@ -731,33 +752,40 @@ export function CrmView({
               }}
             />
 
-            <div
-              ref={scrollRef}
-              className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-1 bg-muted/10"
-            >
-              {loadingMessages ? (
-                <div className="space-y-2">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <Skeleton
-                      key={i}
-                      className={cn(
-                        "h-10",
-                        i % 2 === 0 ? "w-2/3" : "w-1/2 ml-auto",
-                      )}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <MessagesRender
-                  messages={messages}
-                  conversationId={selected.id}
-                />
-              )}
+            {/*
+              El papel de la conversación no scrollea: el muro de garabatos
+              vive en `.wa-conv-bg` (que queda quieto) y los mensajes van en
+              el hijo `.wa-conv-scroll`, exactamente como WhatsApp Web.
+            */}
+            <div className="wa-conv-bg flex min-h-0 flex-1 flex-col">
+              <div
+                ref={scrollRef}
+                className="wa-conv-scroll min-h-0 flex-1 space-y-0.5 overflow-y-auto px-4 py-4 sm:px-8"
+              >
+                {loadingMessages ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <Skeleton
+                        key={i}
+                        className={cn(
+                          "h-10",
+                          i % 2 === 0 ? "w-2/3" : "w-1/2 ml-auto",
+                        )}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <MessagesRender
+                    messages={messages}
+                    conversationId={selected.id}
+                  />
+                )}
+              </div>
             </div>
 
             <form
               onSubmit={handleSend}
-              className="border-t p-2 sm:p-3 flex items-center gap-1.5 sm:gap-2 bg-card"
+              className="wa-composer flex shrink-0 items-center gap-1.5 bg-[var(--wa-composer)] p-2 sm:gap-2 sm:px-4"
             >
               <MediaInput
                 conversationId={selected.id}
@@ -773,16 +801,16 @@ export function CrmView({
               <Input
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                placeholder="Escribí un mensaje…"
+                placeholder="Escribí un mensaje"
                 autoComplete="off"
                 disabled={isPending}
-                className="flex-1 min-w-0"
+                className="min-w-0 flex-1 border-transparent bg-[var(--wa-composer-field)] text-[var(--wa-text)] placeholder:text-[var(--wa-text-2)]"
               />
               <Button
                 type="submit"
                 disabled={isPending || draft.trim().length === 0}
                 size="icon"
-                className="shrink-0"
+                className="shrink-0 rounded-full bg-[var(--wa-accent)] text-white hover:bg-[var(--wa-accent-strong)]"
               >
                 <Send className="size-4" />
                 <span className="sr-only">Enviar</span>
@@ -854,32 +882,40 @@ function MessagesRender({
 
   if (visible.length === 0) {
     return (
-      <div className="text-center text-sm text-muted-foreground py-8">
+      <div className="py-8 text-center text-sm text-[var(--wa-text-2)]">
         Sin mensajes todavía. Mandá el primero ↓
       </div>
     );
   }
 
-  // Group by day for separators
+  // Group by day for separators.
+  //
+  // `tail` marca el primer mensaje de cada tanda del mismo lado: es el único
+  // que lleva el piquito, igual que WhatsApp. Un separador de día corta la
+  // tanda, así el mensaje que lo sigue vuelve a llevarlo.
   const items: Array<
-    { kind: "day"; label: string; key: string } | { kind: "msg"; m: MessageRow }
+    | { kind: "day"; label: string; key: string }
+    | { kind: "msg"; m: MessageRow; tail: boolean }
   > = [];
   let lastDay = "";
+  let lastDirection: MessageRow["direction"] | null = null;
   for (const m of visible) {
     const day = messageDayLabel(m.sent_at);
     if (day !== lastDay) {
       items.push({ kind: "day", label: day, key: `day-${m.id}` });
       lastDay = day;
+      lastDirection = null;
     }
-    items.push({ kind: "msg", m });
+    items.push({ kind: "msg", m, tail: m.direction !== lastDirection });
+    lastDirection = m.direction;
   }
 
   return (
     <>
       {items.map((it) =>
         it.kind === "day" ? (
-          <div key={it.key} className="flex justify-center my-3">
-            <span className="text-[10px] uppercase tracking-wider rounded-full bg-card px-2.5 py-1 text-muted-foreground border">
+          <div key={it.key} className="my-3 flex justify-center">
+            <span className="rounded-lg bg-[var(--wa-system-bubble)] px-3 py-1 text-[0.75rem] text-[var(--wa-system-text)] shadow-[var(--wa-bubble-shadow)]">
               {it.label}
             </span>
           </div>
@@ -888,6 +924,7 @@ function MessagesRender({
             key={it.m.id}
             message={it.m}
             conversationId={conversationId}
+            tail={it.tail}
             replyTo={
               it.m.reply_to_external_id
                 ? (byExternalId.get(it.m.reply_to_external_id) ?? null)
@@ -928,10 +965,11 @@ function ReplyPreview({
   return (
     <div
       className={cn(
-        "flex items-start gap-1.5 rounded-md px-2 py-1 mb-1 text-xs border-l-2 -mx-1",
+        "-mx-1 mb-1 flex items-start gap-1.5 rounded-md border-l-[3px] px-2 py-1 text-xs",
+        "bg-black/5 text-[var(--wa-text-2)] dark:bg-white/5",
         isOutbound
-          ? "bg-background/15 border-background/40 text-background/85"
-          : "bg-muted/60 border-muted-foreground/30 text-muted-foreground",
+          ? "border-[var(--wa-accent-strong)]"
+          : "border-[var(--wa-accent)]",
       )}
     >
       <CornerDownRight className="size-3 mt-0.5 shrink-0 opacity-70" />
@@ -945,11 +983,14 @@ function Bubble({
   conversationId,
   replyTo,
   reactions,
+  tail,
 }: {
   message: MessageRow;
   conversationId: string;
   replyTo: MessageRow | null;
   reactions: Record<string, number> | null;
+  /** Primer mensaje de la tanda: es el que lleva el piquito. */
+  tail: boolean;
 }) {
   const isOutbound = message.direction === "outbound";
   const isMedia = message.type !== "text" && !!message.media_url;
@@ -975,33 +1016,29 @@ function Bubble({
 
       <div
         className={cn(
-          "relative max-w-[78%] rounded-2xl px-3 py-1.5 shadow-xs",
+          "relative max-w-[78%] rounded-lg px-2 py-1.5 text-[var(--wa-text)] shadow-[var(--wa-bubble-shadow)]",
           isOutbound
-            ? "bg-foreground text-background rounded-br-sm"
-            : "bg-card border rounded-bl-sm",
-          message.status === "failed" &&
-            "border-rose-300 bg-rose-50 text-foreground",
+            ? "bg-[var(--wa-bubble-out)]"
+            : "bg-[var(--wa-bubble-in)]",
+          // El piquito recorta la esquina superior del lado que corresponde.
+          tail && (isOutbound ? "wa-tail-out rounded-tr-none" : "wa-tail-in rounded-tl-none"),
+          message.status === "failed" && "bg-red-50 ring-1 ring-red-200",
           isMedia && "px-2 pt-2 pb-1.5",
         )}
       >
         {replyTo ? (
           <ReplyPreview message={replyTo} isOutbound={isOutbound} />
         ) : null}
-        <MessageContent message={message} isOutbound={isOutbound} />
-        <div
-          className={cn(
-            "flex items-center justify-end gap-1 mt-0.5",
-            isOutbound ? "text-background/70" : "text-muted-foreground",
-          )}
-        >
-          <span className="text-[10px] tabular-nums">
+        <MessageContent message={message} />
+        <div className="mt-0.5 flex items-center justify-end gap-1 text-[var(--wa-meta)]">
+          <span className="text-[0.6875rem] tabular-nums">
             {format(new Date(message.sent_at), "HH:mm")}
           </span>
           {isOutbound ? <StatusIcon status={message.status} /> : null}
         </div>
         {message.status === "failed" && message.error ? (
           <div
-            className="text-[10px] text-rose-700 mt-0.5"
+            className="mt-0.5 text-[0.6875rem] text-destructive"
             title={message.error}
           >
             Error · {message.error.slice(0, 60)}
@@ -1048,10 +1085,10 @@ function FilterChip({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-[0.8125rem] font-medium transition-colors",
+        "inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-[0.8125rem] transition-colors",
         active
-          ? "bg-wa-soft text-wa-ink"
-          : "bg-muted text-secondary-foreground hover:bg-secondary",
+          ? "bg-[var(--wa-bubble-out)] text-[var(--wa-accent-strong)]"
+          : "bg-[var(--wa-search-bg)] text-[var(--wa-text-2)] hover:bg-[var(--wa-active)]",
       )}
     >
       {children}
@@ -1068,7 +1105,7 @@ function EmptyInboxArt() {
     <svg
       aria-hidden
       viewBox="0 0 240 150"
-      className="h-[150px] w-[240px] text-border"
+      className="h-[150px] w-[240px] text-[var(--wa-border)]"
       fill="none"
       stroke="currentColor"
       strokeWidth="3"
@@ -1107,7 +1144,7 @@ function EmptyInboxArt() {
         width="70"
         height="104"
         rx="12"
-        fill="var(--card)"
+        fill="var(--wa-panel)"
       />
       <rect
         x="186"

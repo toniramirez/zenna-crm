@@ -2,9 +2,9 @@ import { cn } from "@/lib/utils";
 
 /**
  * Brand wordmark rendered with CSS (not the logo PNG) so it sits flat on the
- * sidebar background without a cream rectangle around it. Uses the Fraunces
- * variable serif loaded in app/layout.tsx for the "ZENNA" mark and a small
- * tracked sans-serif tagline below.
+ * sidebar background without a cream rectangle around it. El "ZENNA" va en la
+ * serif editorial de la marca (Cormorant Garamond, `font-editorial`) y el
+ * bajada en la sans con tracking abierto.
  */
 type Size = "sm" | "md" | "lg";
 
@@ -44,10 +44,9 @@ export function BrandWordmark({
     <div className={cn("flex flex-col items-center select-none", className)}>
       <span
         className={cn(
-          "font-display font-medium text-foreground tracking-tight",
+          "font-editorial font-medium text-foreground tracking-tight",
           s.mark,
         )}
-        style={{ fontFeatureSettings: '"ss01"' }}
       >
         ZENNA
       </span>

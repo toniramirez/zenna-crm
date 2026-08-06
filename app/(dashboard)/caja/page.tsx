@@ -72,12 +72,17 @@ export default async function CajaPage({ searchParams }: Props) {
   // Pendientes de cobro del día seleccionado (no sólo hoy): la recepcionista
   // puede pararse en la caja de un día pasado para cobrar un servicio cargado
   // tarde a la agenda.
+  //
+  // `professionals` va como left join a propósito: con `!inner` cualquier turno
+  // cuya profesional no se pueda leer (baja, borrada, o filtrada por RLS)
+  // desaparecía de la lista y quedaba sin cobrar. Preferimos mostrarlo con la
+  // profesional en "—" antes que perder plata.
   const unpaidResult = await supabase
     .from("appointments")
     .select(
       `
       id, starts_at, ends_at, status, deposit_amount, deposit_method,
-      professionals!inner ( id, full_name, color ),
+      professionals ( id, full_name, color ),
       clients ( id, full_name, phone ),
       appointment_services ( id, professional_id, price_at_booking, duration_at_booking, services ( name ) ),
       payments ( id )

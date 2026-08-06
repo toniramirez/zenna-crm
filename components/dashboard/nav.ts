@@ -65,7 +65,8 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/crm",
-    label: "WhatsApp",
+    // La bandeja dejó de ser solo WhatsApp: también entran los DMs de Instagram.
+    label: "Mensajes",
     iconName: "chat",
     roles: ["owner", "receptionist"],
   },

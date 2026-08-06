@@ -37,15 +37,20 @@ import {
 } from "./config-actions";
 import type { ClientTag } from "./config-types";
 
+/**
+ * Swatches de la paleta de marca (rampas de app/globals.css). Antes eran los
+ * colores de fábrica de Tailwind, que al lado del sistema cálido se veían
+ * fluorescentes.
+ */
 const DEFAULT_COLORS = [
-  "#ef4444",
-  "#f59e0b",
-  "#10b981",
-  "#3b82f6",
-  "#8b5cf6",
-  "#ec4899",
-  "#a78bfa",
-  "#94a3b8",
+  "#ed403f", // red-500
+  "#f0aa63", // amber-400
+  "#00bb7f", // emerald-500
+  "#00a5ef", // sky-500
+  "#8d54ff", // violet-500
+  "#c49c76", // champagne-500
+  "#986253", // mocha-400
+  "#a19d9c", // stone-400
 ];
 
 export function TagsManager({ tags }: { tags: ClientTag[] }) {

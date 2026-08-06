@@ -46,7 +46,7 @@ export function ReactionPicker({
           variant="ghost"
           size="icon"
           className={cn(
-            "size-6 opacity-0 group-hover:opacity-100 transition-opacity",
+            "size-6 text-[var(--wa-icon)] opacity-0 transition-opacity group-hover:opacity-100",
             "data-[state=open]:opacity-100",
           )}
           aria-label="Reaccionar"
@@ -93,7 +93,7 @@ export function ReactionsPill({
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-full bg-card border px-1.5 py-0.5 text-xs shadow-xs",
+        "inline-flex items-center gap-0.5 rounded-full border border-[var(--wa-divider)] bg-[var(--wa-panel)] px-1.5 py-0.5 text-xs shadow-[var(--wa-bubble-shadow)]",
         className,
       )}
     >

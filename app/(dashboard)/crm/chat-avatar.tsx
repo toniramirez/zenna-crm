@@ -1,5 +1,6 @@
 "use client";
 
+import { InstagramIcon } from "@/components/icons/instagram";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useSignedUrl } from "./use-signed-url";
@@ -19,22 +20,43 @@ function initials(name: string | null | undefined, fallback = "??") {
 export function ChatAvatar({
   name,
   avatarPath,
+  channel,
   className,
   size = 40,
 }: {
   name: string | null | undefined;
   avatarPath: string | null | undefined;
+  /** Canal de la conversación. Solo se marca Instagram: WhatsApp es el default. */
+  channel?: string | null;
   className?: string;
   size?: number;
 }) {
   const url = useSignedUrl(avatarPath ?? null);
+  const isInstagram = channel === "instagram";
+
+  // El badge escala con el avatar para que se lea igual en la lista (48px)
+  // que en el encabezado del chat (36px).
+  const badgeSize = Math.max(14, Math.round(size * 0.36));
+
   return (
-    <Avatar
-      className={cn("shrink-0", className)}
-      style={{ width: size, height: size }}
-    >
-      {url ? <AvatarImage src={url} alt={name ?? "Avatar"} /> : null}
-      <AvatarFallback className="text-xs">{initials(name)}</AvatarFallback>
-    </Avatar>
+    <div className={cn("relative shrink-0", className)} style={{ width: size, height: size }}>
+      <Avatar className="size-full">
+        {url ? <AvatarImage src={url} alt={name ?? "Avatar"} /> : null}
+        <AvatarFallback className="text-xs">{initials(name)}</AvatarFallback>
+      </Avatar>
+
+      {isInstagram ? (
+        <span
+          className="absolute -bottom-0.5 -right-0.5 grid place-items-center rounded-full bg-gradient-to-br from-fuchsia-600 to-orange-500 ring-2 ring-background"
+          style={{ width: badgeSize, height: badgeSize }}
+          title="Instagram"
+        >
+          <InstagramIcon
+            className="text-white"
+            style={{ width: badgeSize * 0.6, height: badgeSize * 0.6 }}
+          />
+        </span>
+      ) : null}
+    </div>
   );
 }

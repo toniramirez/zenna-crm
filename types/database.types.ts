@@ -716,6 +716,48 @@ export type Database = {
           },
         ]
       }
+      instagram_accounts: {
+        Row: {
+          access_token: string | null
+          account_id: string
+          created_at: string
+          ig_user_id: string | null
+          last_connected_at: string | null
+          last_error: string | null
+          login_type: string
+          state: string
+          token_expires_at: string | null
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          account_id?: string
+          created_at?: string
+          ig_user_id?: string | null
+          last_connected_at?: string | null
+          last_error?: string | null
+          login_type?: string
+          state?: string
+          token_expires_at?: string | null
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          account_id?: string
+          created_at?: string
+          ig_user_id?: string | null
+          last_connected_at?: string | null
+          last_error?: string | null
+          login_type?: string
+          state?: string
+          token_expires_at?: string | null
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           body: string | null

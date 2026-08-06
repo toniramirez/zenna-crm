@@ -21,7 +21,8 @@ import { cn } from "@/lib/utils";
 import { setConversationTagsAction } from "./actions";
 import type { ClientTag } from "./config-types";
 
-const NEUTRAL_COLOR = "#94a3b8";
+/** stone-400 de la paleta de marca: el gris cálido, no el slate azulado. */
+const NEUTRAL_COLOR = "#a19d9c";
 
 export type LinkedClient = {
   id: string;
@@ -96,9 +97,9 @@ export function ChatTagsBar({
   const firstName = contactName.split(" ")[0] || contactName;
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 px-4 py-2 border-b bg-card/60">
+    <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--wa-divider)] bg-[var(--wa-panel-header)] px-4 py-2">
       {tags.length === 0 ? (
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-[var(--wa-text-2)]">
           Sin etiquetas para {firstName}
         </span>
       ) : (
@@ -109,7 +110,7 @@ export function ChatTagsBar({
             <span
               key={name}
               className={cn(
-                "inline-flex items-center gap-1 rounded-full border pl-2 pr-0.5 py-0.5 text-xs",
+                "inline-flex items-center gap-1 rounded-full border py-0.5 pl-2 pr-0.5 text-xs text-[var(--wa-text)]",
                 isPending && "opacity-70",
               )}
               style={{ borderColor: color }}
@@ -123,7 +124,7 @@ export function ChatTagsBar({
                 type="button"
                 onClick={() => remove(name)}
                 disabled={isPending}
-                className="size-4 inline-flex items-center justify-center rounded-full hover:bg-muted"
+                className="size-4 inline-flex items-center justify-center rounded-full hover:bg-[var(--wa-hover)]"
                 aria-label={`Quitar ${name}`}
               >
                 <X className="size-3" />
@@ -139,7 +140,7 @@ export function ChatTagsBar({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-6 px-2 text-xs"
+            className="h-6 px-2 text-xs text-[var(--wa-text-2)] hover:bg-[var(--wa-hover)] hover:text-[var(--wa-text)]"
             disabled={isPending}
           >
             <Plus className="size-3" />
