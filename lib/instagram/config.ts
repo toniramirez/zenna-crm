@@ -45,11 +45,36 @@ export function graphUrl(loginType: string, path: string): string {
  * App secret de la app de Meta. Solo se usa para validar la firma
  * `X-Hub-Signature-256` de los webhooks; nunca sale del servidor.
  */
+/**
+ * Todos los secrets candidatos para validar la firma de los webhooks.
+ *
+ * `INSTAGRAM_APP_SECRET` acepta varios separados por coma a propósito. Una app
+ * de Meta con el producto Instagram tiene **dos** secrets distintos —el de
+ * Configuración de la app → Básica y el de Instagram → Configuración de la
+ * API— y cuál de los dos firma los webhooks depende de cómo esté armada la
+ * integración. Los dos son 32 hex, así que a ojo son indistinguibles. Probar
+ * ambos sale prácticamente gratis y evita un debug a ciegas: el que no
+ * corresponde simplemente no valida.
+ *
+ * El trim tampoco es cosmético: un salto de línea pegado al valor al copiarlo
+ * en el panel de Railway cambia el HMAC y hace fallar *todos* los webhooks.
+ */
+export function appSecrets(): string[] {
+  return (process.env.INSTAGRAM_APP_SECRET ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+/**
+ * El secret principal — el primero de la lista.
+ *
+ * Es el que se usa para intercambiar el token corto por uno de 60 días, donde
+ * no hay lugar a probar varios: Meta acepta uno solo. Poné primero el que
+ * corresponda al `login_type` que uses.
+ */
 export function appSecret(): string | null {
-  // El trim no es cosmético: un salto de línea pegado al valor al copiarlo en
-  // el panel de Railway cambia el HMAC y hace que *todos* los webhooks fallen
-  // con "firma inválida", sin ninguna pista de por qué.
-  return process.env.INSTAGRAM_APP_SECRET?.trim() || null;
+  return appSecrets()[0] ?? null;
 }
 
 /** Token acordado con Meta para el handshake de verificación del webhook. */

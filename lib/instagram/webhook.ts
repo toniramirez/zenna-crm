@@ -1,63 +1,82 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 /**
- * Valida la firma `X-Hub-Signature-256` que Meta manda en cada webhook.
+ * Identifica un secret en los logs sin exponerlo. Es el mismo valor que sale de
+ * `printf '%s' "<secret>" | sha256sum | cut -c1-8`, así que se puede comparar
+ * un secret candidato contra lo que loguea producción sin pegarlo en ningún lado.
+ */
+export function secretFingerprint(secret: string): string {
+  return createHash("sha256").update(secret).digest("hex").slice(0, 8);
+}
+
+/**
+ * Valida la firma `X-Hub-Signature-256` que Meta manda en cada webhook, contra
+ * cada uno de los secrets candidatos. Devuelve el fingerprint del que cerró, o
+ * `null` si no cerró ninguno.
  *
  * Sin esto, cualquiera que conozca la URL puede inyectar mensajes falsos en la
  * bandeja. La firma es HMAC-SHA256 del cuerpo **crudo** con el app secret, así
  * que hay que firmar el body tal cual llegó: si se re-serializa el JSON, la
  * firma no cierra.
+ *
+ * Devolver el fingerprint y no un booleano es lo que después deja registrado en
+ * el log *cuál* de los secrets configurados es el bueno.
  */
-export function verifySignature(args: {
+export function matchSignature(args: {
   rawBody: string;
   header: string | null;
-  appSecret: string;
-}): boolean {
-  if (!args.header) return false;
+  appSecrets: string[];
+}): string | null {
+  if (!args.header) return null;
 
   const [algo, signature] = args.header.split("=");
-  if (algo !== "sha256" || !signature) return false;
+  if (algo !== "sha256" || !signature) return null;
 
-  const expected = createHmac("sha256", args.appSecret)
-    .update(args.rawBody, "utf8")
-    .digest("hex");
+  const received = Buffer.from(signature, "hex");
 
-  const a = Buffer.from(signature, "hex");
-  const b = Buffer.from(expected, "hex");
-  // timingSafeEqual explota si los largos difieren, así que se chequea antes.
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
+  for (const secret of args.appSecrets) {
+    const expected = Buffer.from(
+      createHmac("sha256", secret).update(args.rawBody, "utf8").digest("hex"),
+      "hex",
+    );
+    // timingSafeEqual explota si los largos difieren, así que se chequea antes.
+    if (received.length !== expected.length) continue;
+    if (timingSafeEqual(received, expected)) return secretFingerprint(secret);
+  }
+
+  return null;
 }
 
 /**
- * Detalle para el log cuando la firma no cierra.
+ * Detalle para el log cuando no cerró ninguno.
  *
- * "Firma inválida" a secas no distingue las dos causas reales, que se arreglan
- * de forma muy distinta: que `INSTAGRAM_APP_SECRET` no sea el secret con el que
- * Meta firma (el de Configuración → Básica, no el de Instagram → API), o que el
- * cuerpo haya llegado alterado. El secret nunca se loguea: sale un hash corto,
- * suficiente para comparar dos entornos entre sí sin exponer el valor.
+ * "Firma inválida" a secas no distingue causas que se arreglan de forma muy
+ * distinta: que ninguno de los secrets configurados sea el que firma, que el
+ * header no venga, o que el cuerpo haya llegado alterado. Los secrets nunca se
+ * loguean — sale su largo y su fingerprint, que alcanzan para saber cuáles se
+ * probaron sin exponer ninguno.
  */
 export function describeSignatureMismatch(args: {
   rawBody: string;
   header: string | null;
-  appSecret: string;
+  appSecrets: string[];
 }): string {
   const [algo, received] = (args.header ?? "").split("=");
-  const expected = createHmac("sha256", args.appSecret)
-    .update(args.rawBody, "utf8")
-    .digest("hex");
-  const secretFingerprint = createHash("sha256")
-    .update(args.appSecret)
-    .digest("hex")
-    .slice(0, 8);
+
+  const tried = args.appSecrets
+    .map((secret) => {
+      const expected = createHmac("sha256", secret)
+        .update(args.rawBody, "utf8")
+        .digest("hex");
+      return `${secret.length}ch/${secretFingerprint(secret)}→${expected.slice(0, 12)}`;
+    })
+    .join(" ");
 
   return [
     `algo=${algo || "(sin header)"}`,
     `recibida=${received ? received.slice(0, 12) : "(vacía)"}`,
-    `calculada=${expected.slice(0, 12)}`,
     `body=${args.rawBody.length}b`,
-    `secret=${args.appSecret.length}ch/${secretFingerprint}`,
+    `probados=[${tried || "ninguno"}]`,
   ].join(" ");
 }
 

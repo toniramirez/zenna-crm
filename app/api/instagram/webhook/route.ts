@@ -1,11 +1,11 @@
 import type { NextRequest } from "next/server";
-import { appSecret, loadAccount, verifyToken } from "@/lib/instagram/config";
+import { appSecrets, loadAccount, verifyToken } from "@/lib/instagram/config";
 import { ingestMessagingEvents } from "@/lib/instagram/ingest";
 import {
   describeSignatureMismatch,
   flattenMessagingEvents,
+  matchSignature,
   parseWebhookBody,
-  verifySignature,
 } from "@/lib/instagram/webhook";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -57,8 +57,8 @@ export async function GET(request: NextRequest) {
  * duplica nada: el índice único sobre `messages.external_id` lo absorbe.
  */
 export async function POST(request: NextRequest) {
-  const secret = appSecret();
-  if (!secret) {
+  const secrets = appSecrets();
+  if (secrets.length === 0) {
     console.error("[instagram/webhook] falta INSTAGRAM_APP_SECRET");
     return new Response("Webhook no configurado", { status: 500 });
   }
@@ -67,11 +67,19 @@ export async function POST(request: NextRequest) {
   const rawBody = await request.text();
 
   const signature = request.headers.get("x-hub-signature-256");
-  const valid = verifySignature({ rawBody, header: signature, appSecret: secret });
-  if (!valid) {
+  const matched = matchSignature({
+    rawBody,
+    header: signature,
+    appSecrets: secrets,
+  });
+  if (!matched) {
     console.warn(
       "[instagram/webhook] firma inválida — request descartado:",
-      describeSignatureMismatch({ rawBody, header: signature, appSecret: secret }),
+      describeSignatureMismatch({
+        rawBody,
+        header: signature,
+        appSecrets: secrets,
+      }),
     );
     return new Response("Firma inválida", { status: 401 });
   }
@@ -91,8 +99,10 @@ export async function POST(request: NextRequest) {
   // Log de diagnóstico. Sin esto no hay forma de distinguir "Meta nunca lo
   // mandó" de "llegó y lo descartamos": las dos se ven igual desde afuera,
   // porque a Meta siempre le contestamos 200.
+  // `firma=` deja registrado cuál de los secrets configurados es el que Meta
+  // usa de verdad. Con eso se puede podar la lista y dejar uno solo.
   console.log(
-    `[instagram/webhook] object=${body.object} entries=${body.entry?.length ?? 0} eventos=${events.length}`,
+    `[instagram/webhook] object=${body.object} entries=${body.entry?.length ?? 0} eventos=${events.length} firma=${matched}`,
   );
   if (events.length === 0) {
     // Payload que no supimos interpretar. Se loguea entero (truncado) para
