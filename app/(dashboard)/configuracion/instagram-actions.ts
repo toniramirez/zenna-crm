@@ -106,8 +106,14 @@ export async function connectInstagramAction(
       );
 
     if (error) {
-      console.error("[instagram] upsert error:", error.message);
-      return { error: "No pudimos guardar la cuenta." };
+      console.error("[instagram] upsert error:", error.code, error.message);
+      // Mostramos la causa real y no un "algo salió mal": este panel es
+      // owner-only y sin el detalle no hay forma de distinguir una key mal
+      // cargada de un problema de permisos. Mismo criterio que `devError`
+      // en el panel de WhatsApp.
+      return {
+        error: `No pudimos guardar la cuenta${error.code ? ` (${error.code})` : ""}: ${error.message}`,
+      };
     }
 
     revalidatePath("/configuracion");
