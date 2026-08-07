@@ -94,7 +94,8 @@ export type IgAttachment = {
 export type IgMessaging = {
   sender?: { id?: string };
   recipient?: { id?: string };
-  timestamp?: number;
+  // Meta no es consistente con el tipo: ver `eventTimestamp`.
+  timestamp?: number | string;
   message?: {
     mid?: string;
     text?: string;
@@ -171,6 +172,34 @@ export function flattenMessagingEvents(body: IgWebhookBody): IgMessaging[] {
 
     return [...fromMessaging, ...fromChanges];
   });
+}
+
+/**
+ * Fecha del evento, en ISO y a prueba de las tres formas en que Meta manda
+ * `timestamp`.
+ *
+ * Por `messaging[]` llega un número en milisegundos, pero por `changes[]` —y en
+ * el payload de prueba del App Dashboard— puede llegar como **string** y en
+ * **segundos**. Las dos variantes rompían: `new Date("1527459824")` es Invalid
+ * Date y `.toISOString()` sobre eso tira `RangeError`, que se comía el evento
+ * entero antes de insertar el mensaje. Y un valor en segundos tomado como
+ * milisegundos fecha el mensaje en 1970 y lo manda al fondo de la bandeja.
+ *
+ * Si no se puede interpretar, la hora de llegada es mejor aproximación que
+ * perder el mensaje: el webhook se procesa a los segundos de que Meta lo emite.
+ */
+export function eventTimestamp(raw: number | string | undefined): string {
+  const n = typeof raw === "string" ? Number(raw.trim()) : raw;
+
+  if (typeof n === "number" && Number.isFinite(n) && n > 0) {
+    // El corte en 1e12 es ~septiembre de 2001 leído como milisegundos: cualquier
+    // valor por debajo es, sin ambigüedad, un epoch en segundos.
+    const ms = n < 1e12 ? n * 1000 : n;
+    const date = new Date(ms);
+    if (!Number.isNaN(date.getTime())) return date.toISOString();
+  }
+
+  return new Date().toISOString();
 }
 
 /**

@@ -4,6 +4,7 @@ import { fetchContactProfile } from "./client";
 import { isSendable, type InstagramAccount } from "./config";
 import {
   attachmentToMessageType,
+  eventTimestamp,
   type IgAttachment,
   type IgMessaging,
 } from "./webhook";
@@ -295,9 +296,7 @@ async function handleMessageEvent(
   });
   if (!conversationId) return;
 
-  const sentAt = event.timestamp
-    ? new Date(event.timestamp).toISOString()
-    : new Date().toISOString();
+  const sentAt = eventTimestamp(event.timestamp);
 
   const text = message.text?.trim() || null;
   const attachments = message.attachments ?? [];
@@ -375,9 +374,7 @@ async function handleReactionEvent(
     body: reaction.action === "unreact" ? "" : (reaction.emoji ?? "❤️"),
     reaction_target_external_id: reaction.mid,
     status: "delivered",
-    sent_at: event.timestamp
-      ? new Date(event.timestamp).toISOString()
-      : new Date().toISOString(),
+    sent_at: eventTimestamp(event.timestamp),
   });
 }
 
@@ -394,9 +391,7 @@ async function handleReadEvent(supabase: Db, event: IgMessaging): Promise<void> 
     .maybeSingle();
   if (!conversation) return;
 
-  const readAt = event.timestamp
-    ? new Date(event.timestamp).toISOString()
-    : new Date().toISOString();
+  const readAt = eventTimestamp(event.timestamp);
 
   await supabase
     .from("messages")
