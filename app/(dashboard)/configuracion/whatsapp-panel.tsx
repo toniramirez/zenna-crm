@@ -35,9 +35,18 @@ function formatJid(jid: string | null): string {
   return digits ? `+${digits}` : jid;
 }
 
-function StateDot({ state }: { state: string }) {
-  const cls =
-    state === "connected"
+/**
+ * El worker refresca `updated_at` cada 30s mientras el socket está realmente
+ * abierto. Si un estado 'connected' lleva más de 3 latidos sin refrescarse, el
+ * proceso está caído (o con el socket muerto) y la fila quedó vieja: mostrar
+ * "Conectado" ahí es mentirle a la usuaria.
+ */
+const STALE_CONNECTED_MS = 90_000;
+
+function StateDot({ state, stale }: { state: string; stale?: boolean }) {
+  const cls = stale
+    ? "bg-rose-500"
+    : state === "connected"
       ? "bg-emerald-500"
       : state === "qr" || state === "connecting" || state === "reconnect_requested"
         ? "bg-amber-500"
@@ -49,13 +58,17 @@ function StateDot({ state }: { state: string }) {
       className={cn(
         "inline-block size-2 rounded-full",
         cls,
-        state !== "connected" && state !== "disconnected" && "animate-pulse",
+        !stale &&
+          state !== "connected" &&
+          state !== "disconnected" &&
+          "animate-pulse",
       )}
     />
   );
 }
 
-function stateLabel(state: string): string {
+function stateLabel(state: string, stale?: boolean): string {
+  if (stale) return "Sin respuesta del worker";
   switch (state) {
     case "connected":
       return "Conectado";
@@ -76,6 +89,16 @@ export function WhatsappPanel({ initialStatus }: { initialStatus: Status | null 
   const supabase = useMemo(() => createClient(), []);
   const [status, setStatus] = useState<Status | null>(initialStatus);
   const [isPending, startTransition] = useTransition();
+
+  // Reloj propio para medir la antigüedad del latido. Leer Date.now() durante
+  // el render es impuro y además dejaba la medición atada a que el polling
+  // siguiera provocando re-renders. Arranca en 0 (⇒ "no vencido") hasta que
+  // corre el efecto, así el primer paint nunca acusa una caída falsa.
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 2000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -172,8 +195,12 @@ export function WhatsappPanel({ initialStatus }: { initialStatus: Status | null 
   const updatedAt = status?.updated_at
     ? new Date(status.updated_at).getTime()
     : 0;
-  const stuckMs = Date.now() - updatedAt;
+  const stuckMs = now - updatedAt;
   const looksStuck = isTransient && stuckMs > 12_000;
+
+  // 'connected' sin latido reciente = la sesión figura viva pero no hay nadie
+  // del otro lado. Es exactamente el caso "aparece conectado pero no funciona".
+  const staleConnected = state === "connected" && stuckMs > STALE_CONNECTED_MS;
 
   return (
     <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
@@ -186,8 +213,8 @@ export function WhatsappPanel({ initialStatus }: { initialStatus: Status | null 
           <div className="min-w-0">
             <h2 className="font-semibold">WhatsApp</h2>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <StateDot state={state} />
-              {stateLabel(state)}
+              <StateDot state={state} stale={staleConnected} />
+              {stateLabel(state, staleConnected)}
               {state === "connected" && status?.phone_number ? (
                 <>
                   {" · "}
@@ -200,7 +227,7 @@ export function WhatsappPanel({ initialStatus }: { initialStatus: Status | null 
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {state === "connected" ? (
+          {state === "connected" && !staleConnected ? (
             <Button
               variant="outline"
               size="sm"
@@ -215,7 +242,7 @@ export function WhatsappPanel({ initialStatus }: { initialStatus: Status | null 
               )}
               Cerrar sesión
             </Button>
-          ) : state === "disconnected" ? (
+          ) : state === "disconnected" || staleConnected ? (
             <Button size="sm" onClick={handleReconnect} disabled={isPending}>
               {isPending ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -286,6 +313,31 @@ export function WhatsappPanel({ initialStatus }: { initialStatus: Status | null 
               </div>
             ) : null}
           </div>
+        ) : staleConnected ? (
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
+            <div className="size-14 rounded-full bg-rose-50 grid place-items-center">
+              <AlertTriangle className="size-7 text-rose-600" />
+            </div>
+            <p className="font-medium">Conexión caída</p>
+            <p className="text-sm text-muted-foreground max-w-sm">
+              La sesión figura vinculada, pero el worker no da señales desde
+              hace {Math.round(stuckMs / 60000)} min. Mientras tanto los
+              mensajes que entren no se guardan en el CRM.
+            </p>
+            <p className="text-xs text-muted-foreground max-w-sm">
+              Revisá que <code className="text-foreground/80">npm run worker</code>{" "}
+              (o <code className="text-foreground/80">pm2 status</code>) esté
+              corriendo en la PC del salón.
+            </p>
+            <Button onClick={handleReconnect} disabled={isPending}>
+              {isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <RotateCcw className="size-4" />
+              )}
+              Reintentar conexión
+            </Button>
+          </div>
         ) : state === "connected" ? (
           <div className="flex flex-col items-center gap-3 py-6">
             <div className="size-14 rounded-full bg-emerald-50 grid place-items-center">
@@ -348,7 +400,7 @@ export function WhatsappPanel({ initialStatus }: { initialStatus: Status | null 
       </div>
 
       {/* Footer info — when something to show */}
-      {state === "qr" || state === "connected" ? (
+      {state === "qr" || (state === "connected" && !staleConnected) ? (
         <div className="border-t bg-muted/10 px-5 py-3 text-xs text-muted-foreground">
           {state === "qr"
             ? "El QR expira en menos de un minuto. Si no llegás a escanearlo, se genera uno nuevo automáticamente."

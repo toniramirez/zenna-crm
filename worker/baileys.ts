@@ -74,7 +74,19 @@ type StatusPatch = Partial<{
   phone_number: string | null;
   last_connected_at: string;
   last_error: string | null;
+  updated_at: string;
 }>;
+
+/**
+ * Is the socket actually usable right now? `currentSock?.user` only tells us
+ * that a socket object was built and paired at some point — the underlying
+ * WebSocket can already be closed while the object lingers. That gap is what
+ * made outgoing sends fail with "Connection Closed" instead of waiting for
+ * the reconnect.
+ */
+function isSocketAlive(): boolean {
+  return !!currentSock?.user && currentSock.ws?.isOpen === true;
+}
 
 async function updateStatus(patch: StatusPatch) {
   const { error } = await supabase
@@ -123,21 +135,50 @@ async function checkCommands() {
     return;
   }
 
-  if (data.state === "reconnect_requested" && !currentSock && !connecting) {
-    console.log(
-      "🔄 Reconexión solicitada desde la UI. Limpiando creds previas y mostrando QR nuevo...",
-    );
-    // Always clear stored creds on user-initiated reconnect so the UI flow
-    // produces a fresh QR. If the existing creds were valid the worker
-    // would already be connected (state='connected') and the Conectar
-    // button would be hidden, so wiping here is safe.
-    await clearStoredCreds();
+  if (data.state === "reconnect_requested" && !isSocketAlive() && !connecting) {
+    console.log("🔄 Reconexión solicitada desde la UI. Redialando...");
+    // Puede quedar un socket zombi: el objeto sigue ahí con `user` cargado
+    // pero el WebSocket ya está cerrado. Antes el guard era `!currentSock`, así
+    // que en ese estado la orden se ignoraba para siempre y el botón no hacía
+    // nada. Lo cerramos antes de abrir otro — dos sockets sobre las mismas
+    // creds se pisan entre sí.
+    if (currentSock) {
+      try {
+        currentSock.end(undefined);
+      } catch {
+        // ya estaba muerto
+      }
+      currentSock = null;
+    }
+    // NO borramos las creds acá. Si siguen siendo válidas queremos reconectar
+    // sin obligar a rescanear el QR; y si WhatsApp las rechaza, el handler de
+    // `connection === "close"` ya detecta loggedOut, las limpia y muestra un
+    // QR nuevo solo.
     await updateStatus({ state: "connecting", last_error: null, qr: null });
     void connect();
   }
 }
 
 setInterval(() => void checkCommands(), 3000);
+
+/**
+ * Latido. `whatsapp_status` sólo se escribía en los cambios de conexión, así
+ * que si el worker se moría (o se quedaba con un socket muerto) la fila
+ * quedaba en 'connected' para siempre y la UI mostraba "Conectado" con todo
+ * caído. Refrescamos `updated_at` mientras el socket esté realmente abierto;
+ * la UI trata un 'connected' viejo como sin conexión.
+ *
+ * Sólo tocamos `updated_at`: no pisamos `state` para no atropellar un
+ * logout_requested / reconnect_requested que la UI acabe de escribir.
+ */
+const HEARTBEAT_MS = 30_000;
+
+async function heartbeat() {
+  if (!isSocketAlive()) return;
+  await updateStatus({ updated_at: new Date().toISOString() });
+}
+
+setInterval(() => void heartbeat(), HEARTBEAT_MS);
 
 // ─────────────────────────────────────────── Helpers (CRM ingest)
 
@@ -327,14 +368,21 @@ async function handleUpsertedMessage(msg: WAMessage) {
   const fromMe = !!msg.key.fromMe;
   const externalId = msg.key.id ?? null;
 
-  // Dedupe Multi-Device echoes: messages sent through the CRM via pollOutgoing
-  // are stored with Baileys' returned key.id in external_id, and WhatsApp then
-  // replays the same message here with fromMe=true. Skip if we already have it.
-  if (fromMe && externalId) {
+  // Dedupe por external_id, en ambas direcciones:
+  //  - salientes: pollOutgoing guarda el key.id que devuelve Baileys y
+  //    WhatsApp nos reenvía el mismo mensaje con fromMe=true (eco multi-device).
+  //  - entrantes: al aceptar 'append', WhatsApp puede reentregar el mismo
+  //    mensaje encolado en varias reconexiones. Sin este chequeo cada
+  //    reconexión duplicaría la conversación entera.
+  if (externalId) {
+    // `.limit(1)` porque maybeSingle() devuelve error si ya hay más de una
+    // fila con ese external_id (duplicados históricos): sin el limit ese error
+    // se traduciría en data=null y volveríamos a insertar el mismo mensaje.
     const { data: existing } = await supabase
       .from("messages")
       .select("id")
       .eq("external_id", externalId)
+      .limit(1)
       .maybeSingle();
     if (existing) return;
   }
@@ -541,8 +589,23 @@ async function sendOutgoing(
   return { id: result?.key.id, content: result?.message ?? null };
 }
 
+/**
+ * Errores que significan "el socket se cayó", no "este mensaje es inválido".
+ * Se reencolan para el próximo tick en vez de darlos por perdidos.
+ */
+function isTransientSendError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("connection closed") ||
+    m.includes("connection terminated") ||
+    m.includes("connection lost") ||
+    m.includes("timed out") ||
+    m.includes("no_sock")
+  );
+}
+
 async function pollOutgoing() {
-  if (!currentSock?.user) return;
+  if (!isSocketAlive()) return;
 
   const { data: queued, error } = await supabase
     .from("messages")
@@ -596,6 +659,17 @@ async function pollOutgoing() {
       console.log("→ sent", m.type, m.id, "to", conv.external_id);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      if (isTransientSendError(msg)) {
+        // El socket se cayó a mitad del envío. Volvemos a 'queued' para que
+        // salga cuando reconecte — antes se marcaba 'failed' y el mensaje
+        // quedaba muerto aunque WhatsApp estuviera por volver.
+        console.warn("→ send diferido (conexión caída)", m.id, msg);
+        await supabase
+          .from("messages")
+          .update({ status: "queued" })
+          .eq("id", m.id);
+        return;
+      }
       console.error("→ send failed", m.id, msg);
       await supabase
         .from("messages")
@@ -726,7 +800,16 @@ async function connect() {
     });
 
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
-      if (type !== "notify") return;
+      // 'notify' = mensaje que entra en vivo.
+      // 'append' = mensaje que WhatsApp tenía encolado y nos entrega al
+      //            reconectar (Baileys lo marca así cuando el nodo trae
+      //            attrs.offline).
+      //
+      // Antes descartábamos 'append', así que TODO lo que llegaba mientras el
+      // worker estaba caído o reconectando se descifraba y se tiraba en
+      // silencio: la sesión quedaba "conectada" y el CRM vacío. Ingerimos los
+      // dos tipos; el dedupe por external_id de abajo cubre las reentregas.
+      if (type !== "notify" && type !== "append") return;
       for (const msg of messages) {
         try {
           // Reactions arrive embedded as reactionMessage; handle separately
