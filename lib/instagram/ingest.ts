@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { notifyInboundMessage } from "@/lib/push/send";
 import type { Database } from "@/types/database.types";
 import { fetchContactProfile } from "./client";
 import { isSendable, type InstagramAccount } from "./config";
@@ -312,12 +313,21 @@ async function handleMessageEvent(
 
   if (attachments.length === 0) {
     if (!text) return;
-    await insertMessage(supabase, {
+    const stored = await insertMessage(supabase, {
       ...base,
       external_id: message.mid,
       type: "text",
       body: text,
     });
+    // Solo los entrantes nuevos avisan: un echo es un mensaje que mandamos
+    // nosotros desde la app de Instagram, y un duplicado ya notificó antes.
+    if (stored && !isEcho) {
+      void notifyInboundMessage(supabase, {
+        conversationId,
+        body: text,
+        type: "text",
+      });
+    }
     return;
   }
 
@@ -336,7 +346,7 @@ async function handleMessageEvent(
 
     // Si no pudimos bajar el archivo igual dejamos rastro del mensaje: es
     // preferible una fila que diga "mandó una imagen" a un hueco silencioso.
-    await insertMessage(supabase, {
+    const inserted = await insertMessage(supabase, {
       ...base,
       external_id: index === 0 ? message.mid : `${message.mid}:${index}`,
       type: (type ?? "document") as MessageType,
@@ -346,6 +356,15 @@ async function handleMessageEvent(
       media_filename: attachment.payload?.title ?? null,
       error: stored ? null : "No pudimos descargar el adjunto de Instagram.",
     });
+
+    // Un mensaje con cuatro fotos es un aviso, no cuatro: solo el primero.
+    if (inserted && !isEcho && index === 0) {
+      void notifyInboundMessage(supabase, {
+        conversationId,
+        body: text,
+        type: type ?? "document",
+      });
+    }
   }
 }
 

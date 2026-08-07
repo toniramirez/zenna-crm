@@ -18,7 +18,14 @@ import {
   Search,
   Send,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+} from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -93,6 +100,76 @@ function relativeTime(iso: string | null): string {
   return format(d, "d MMM", { locale: es });
 }
 
+/**
+ * Cuánto hace que una conversación espera respuesta. `last_message_at` sirve
+ * de reloj porque, mientras `awaiting_reply` siga en true, el último mensaje
+ * es el de la clienta: en cuanto el salón contesta el flag se apaga.
+ */
+type WaitLevel = "fresh" | "warm" | "cold";
+
+const WAIT_WARM_MS = 4 * 60 * 60 * 1000;
+const WAIT_COLD_MS = 24 * 60 * 60 * 1000;
+
+function waitElapsed(ms: number): string {
+  const hours = Math.floor(ms / (60 * 60 * 1000));
+  if (hours < 24) return `hace ${hours} h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `hace ${days} d`;
+  return `hace ${Math.floor(days / 7)} sem`;
+}
+
+/**
+ * `now` llega en null durante el render del servidor y el primer render del
+ * cliente: sin reloj mostramos la versión neutra, así el HTML coincide y no
+ * hay mismatch de hidratación.
+ */
+function waitState(
+  c: ConversationWithClient,
+  now: number | null,
+): { level: WaitLevel; label: string } {
+  if (!now || !c.last_message_at) return { level: "fresh", label: "Esperando" };
+  const ms = now - new Date(c.last_message_at).getTime();
+  if (ms < WAIT_WARM_MS) return { level: "fresh", label: "Esperando" };
+  return {
+    level: ms < WAIT_COLD_MS ? "warm" : "cold",
+    label: `Esperando ${waitElapsed(ms)}`,
+  };
+}
+
+/*
+ * Reloj de la bandeja, a un tick por minuto. Va como store externo y no como
+ * useState + efecto por dos razones: el snapshot del servidor es `null`, así
+ * que el HTML no depende de la hora y la hidratación nunca choca; y un solo
+ * intervalo alcanza para todas las filas de la lista.
+ */
+const clockListeners = new Set<() => void>();
+let clockNow = Date.now();
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+
+function subscribeClock(onChange: () => void): () => void {
+  clockListeners.add(onChange);
+  clockTimer ??= setInterval(() => {
+    clockNow = Date.now();
+    for (const listener of clockListeners) listener();
+  }, 60_000);
+
+  return () => {
+    clockListeners.delete(onChange);
+    if (clockListeners.size === 0 && clockTimer) {
+      clearInterval(clockTimer);
+      clockTimer = null;
+    }
+  };
+}
+
+function useMinuteClock(): number | null {
+  return useSyncExternalStore(
+    subscribeClock,
+    () => clockNow,
+    () => null,
+  );
+}
+
 function messageDayLabel(iso: string): string {
   const d = new Date(iso);
   if (isToday(d)) return "Hoy";
@@ -155,6 +232,11 @@ export function CrmView({
   const [newTurnoOpen, setNewTurnoOpen] = useState(false);
   const [presupuestoOpen, setPresupuestoOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLInputElement | null>(null);
+
+  // Hace envejecer sola la etiqueta "Esperando hace 5 h", sin depender de que
+  // llegue un mensaje nuevo que provoque el re-render.
+  const now = useMinuteClock();
 
   // Subscribe to conversation changes (new conversations, last_message_at updates)
   useEffect(() => {
@@ -282,6 +364,14 @@ export function CrmView({
     };
   }, [selectedId, supabase]);
 
+  // Al abrir una conversación el cursor ya queda en el campo de escritura.
+  // Solo en desktop: en el celular esto levantaría el teclado y taparía el chat.
+  useEffect(() => {
+    if (!selectedId) return;
+    if (!window.matchMedia("(min-width: 768px)").matches) return;
+    composerRef.current?.focus();
+  }, [selectedId]);
+
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     const el = scrollRef.current;
@@ -327,6 +417,12 @@ export function CrmView({
     [conversations],
   );
 
+  /** Mensajes sin leer, no conversaciones: es el número que se busca de reojo. */
+  const unreadMessages = useMemo(
+    () => conversations.reduce((sum, c) => sum + Math.max(0, c.unread_count), 0),
+    [conversations],
+  );
+
   const tagsByName = useMemo(() => {
     const map = new Map<string, ClientTag>();
     for (const t of allTags) map.set(t.name, t);
@@ -348,12 +444,18 @@ export function CrmView({
     const text = draft.trim();
     if (!text) return;
 
+    // Vaciamos el campo y devolvemos el foco en el acto: en un chat se escribe
+    // en ráfagas y esperar la respuesta del servidor para poder seguir tipeando
+    // obliga a volver a clickear después de cada Enter.
+    setDraft("");
+    composerRef.current?.focus();
+
     startTransition(async () => {
       const result = await sendMessageAction(selected.id, text);
       if (result.error) {
         toast.error(result.error);
-      } else {
-        setDraft("");
+        // Devolvemos el texto solo si no empezó a escribir otra cosa.
+        setDraft((d) => (d.trim() ? d : text));
       }
     });
   }
@@ -380,6 +482,12 @@ export function CrmView({
               {filteredConversations.length}
               {filtersActive ? ` de ${conversations.length}` : ""}{" "}
               {conversations.length === 1 ? "conversación" : "conversaciones"}
+              {unreadMessages > 0 ? (
+                <span className="font-medium text-[var(--wa-accent-strong)]">
+                  {" · "}
+                  {unreadMessages} sin leer
+                </span>
+              ) : null}
             </div>
           </div>
           {filtersActive ? (
@@ -510,18 +618,30 @@ export function CrmView({
                 // case where the user needs the number to identify them.
                 const showPhoneInList =
                   phone && (c.clients?.full_name || c.display_name);
+                const wait = c.awaiting_reply ? waitState(c, now) : null;
                 return (
                   <li key={c.id}>
                     <button
                       type="button"
                       onClick={() => setSelectedId(c.id)}
                       className={cn(
-                        "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
+                        "relative flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
                         isSel
                           ? "wa-row-active"
                           : "hover:bg-[var(--wa-hover)]",
                       )}
                     >
+                      {/*
+                        Una espera de más de un día se marca con un filete al
+                        borde: se ve de reojo bajando la lista sin ensuciar la
+                        fila para las conversaciones al día.
+                      */}
+                      {wait?.level === "cold" ? (
+                        <span
+                          aria-hidden
+                          className="absolute inset-y-0 left-0 w-[3px] bg-[var(--wa-wait-cold)]"
+                        />
+                      ) : null}
                       <ChatAvatar
                         name={title}
                         avatarPath={c.avatar_path}
@@ -571,10 +691,19 @@ export function CrmView({
                         {(c.awaiting_reply ||
                           (c.clients?.tags?.length ?? 0) > 0) && (
                           <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
-                            {c.awaiting_reply ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--wa-system-bubble)] px-2 py-0.5 text-[0.6875rem] font-medium text-[var(--wa-system-text)]">
+                            {wait ? (
+                              <span
+                                className={cn(
+                                  "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium",
+                                  wait.level === "cold"
+                                    ? "bg-[var(--wa-wait-cold-bg)] text-[var(--wa-wait-cold)]"
+                                    : wait.level === "warm"
+                                      ? "bg-[var(--wa-wait-warm-bg)] text-[var(--wa-wait-warm)]"
+                                      : "bg-[var(--wa-system-bubble)] text-[var(--wa-system-text)]",
+                                )}
+                              >
                                 <Hourglass className="size-2.5" />
-                                Esperando
+                                {wait.label}
                               </span>
                             ) : null}
                             {(c.clients?.tags ?? [])
@@ -798,17 +927,22 @@ export function CrmView({
                 }
                 disabled={isPending}
               />
+              {/*
+                A propósito no se deshabilita mientras se envía: `disabled`
+                le saca el foco al input y obliga a volver a clickear para
+                escribir el mensaje siguiente.
+              */}
               <Input
+                ref={composerRef}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder="Escribí un mensaje"
                 autoComplete="off"
-                disabled={isPending}
                 className="min-w-0 flex-1 border-transparent bg-[var(--wa-composer-field)] text-[var(--wa-text)] placeholder:text-[var(--wa-text-2)]"
               />
               <Button
                 type="submit"
-                disabled={isPending || draft.trim().length === 0}
+                disabled={draft.trim().length === 0}
                 size="icon"
                 className="shrink-0 rounded-full bg-[var(--wa-accent)] text-white hover:bg-[var(--wa-accent-strong)]"
               >

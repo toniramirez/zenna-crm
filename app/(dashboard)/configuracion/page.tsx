@@ -9,6 +9,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { InstagramPanel } from "./instagram-panel";
+import { NotificationsPanel } from "./notifications-panel";
 import { WhatsappPanel } from "./whatsapp-panel";
 import type { Database } from "@/types/database.types";
 
@@ -68,6 +69,15 @@ export default async function ConfiguracionPage() {
           verifyTokenConfigured={Boolean(verifyToken())}
           appSecretConfigured={Boolean(appSecret())}
           serviceKeyConfigured={serviceKeyConfigured}
+        />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold tracking-tight">
+          Avisos en el teléfono
+        </h2>
+        <NotificationsPanel
+          vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null}
         />
       </section>
     </div>

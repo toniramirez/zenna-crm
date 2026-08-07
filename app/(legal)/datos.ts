@@ -10,4 +10,4 @@ export const CONTACTO_EMAIL = "anto_ramirez9@hotmail.com";
 
 export const INSTAGRAM_HANDLE = "@zennahairsalon";
 
-export const ULTIMA_ACTUALIZACION = "6 de agosto de 2026";
+export const ULTIMA_ACTUALIZACION = "7 de agosto de 2026";

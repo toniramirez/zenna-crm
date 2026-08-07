@@ -25,8 +25,16 @@ export default function PrivacidadPage() {
         con ellas por WhatsApp e Instagram.
       </p>
       <p>
-        No es una aplicación de uso público: no hay registro abierto ni cuentas
-        para clientas. El único acceso es el del personal autorizado del salón.
+        Es una aplicación de un solo negocio: la desarrollamos y la usamos para
+        el salón que administramos nosotros mismos. No la ofrecemos a terceros,
+        no hay registro abierto y no existen cuentas para clientas. El único
+        acceso al sistema es el del personal autorizado del salón, y la única
+        cuenta de Instagram conectada es la del propio salón.
+      </p>
+      <p>
+        El responsable del tratamiento de los datos es la peluquería que opera{" "}
+        {INSTAGRAM_HANDLE}. Para cualquier consulta:{" "}
+        <a href={`mailto:${CONTACTO_EMAIL}`}>{CONTACTO_EMAIL}</a>.
       </p>
 
       <h2>Qué datos tratamos</h2>
@@ -61,6 +69,66 @@ export default function PrivacidadPage() {
         información de navegación con fines publicitarios. No usamos cookies de
         seguimiento de terceros.
       </p>
+
+      <h2>Datos que obtenemos de la plataforma de Meta</h2>
+      <p>
+        Zenna se conecta con la API de Instagram de Meta para que el salón pueda
+        atender por mensajes directos desde el mismo lugar donde lleva los
+        turnos. Usamos estos permisos y, con cada uno, únicamente estos datos:
+      </p>
+      <ul>
+        <li>
+          <strong>instagram_business_basic</strong> — datos básicos de la cuenta
+          de Instagram del propio salón: identificador, nombre de usuario,
+          nombre y foto de perfil. Sirven para mostrar en el panel qué cuenta
+          está conectada.
+        </li>
+        <li>
+          <strong>instagram_business_manage_messages</strong> — recibir y
+          responder los mensajes directos que las personas le envían al salón.
+          De cada conversación guardamos el identificador del contacto dentro de
+          nuestra app (IGSID), su nombre, su nombre de usuario y su foto de
+          perfil públicos, y el contenido de los mensajes con sus archivos
+          adjuntos.
+        </li>
+        <li>
+          <strong>human_agent</strong> — permitir que una persona del salón
+          responda una consulta fuera de la ventana estándar de respuesta, en
+          los casos de atención al cliente que Meta contempla. No habilita
+          ningún dato adicional.
+        </li>
+      </ul>
+      <p>
+        El IGSID es un identificador propio de nuestra aplicación: la misma
+        persona tiene un IGSID distinto en cualquier otra integración, así que no
+        permite cruzar información con terceros. No accedemos a la lista de
+        seguidores, ni a publicaciones, ni a métricas, ni a ningún dato de la
+        cuenta de Instagram que no esté enumerado arriba.
+      </p>
+      <p>
+        Sobre los datos obtenidos de la plataforma de Meta asumimos además estos
+        compromisos, conforme a las Condiciones de la Plataforma de Meta:
+      </p>
+      <ul>
+        <li>No los vendemos, alquilamos ni cedemos a terceros.</li>
+        <li>
+          No los transferimos a intermediarios de datos, redes publicitarias ni
+          servicios de monetización de datos.
+        </li>
+        <li>
+          No los usamos para publicidad dirigida, segmentación, elaboración de
+          perfiles ni para entrenar modelos de inteligencia artificial.
+        </li>
+        <li>
+          No los usamos para tomar decisiones sobre acceso a crédito, empleo,
+          seguros, vivienda ni prestaciones sociales.
+        </li>
+        <li>
+          Los usamos exclusivamente para atender a quien le escribe al salón, y
+          los eliminamos cuando dejan de ser necesarios para esa finalidad o
+          cuando la persona lo solicita.
+        </li>
+      </ul>
 
       <h2>Para qué los usamos</h2>
       <ul>
@@ -110,9 +178,16 @@ export default function PrivacidadPage() {
       <p>
         Conservamos los datos mientras la persona siga siendo clienta del salón y
         durante los plazos que exija la normativa fiscal y comercial aplicable.
-        Pasado ese período, o ante un pedido de eliminación, se borran conforme
-        al procedimiento descripto en la página de{" "}
-        <a href="/eliminacion-de-datos">eliminación de datos</a>.
+        Las conversaciones y los archivos adjuntos de Instagram y WhatsApp se
+        conservan mientras sean útiles para la atención y, en todo caso, se
+        eliminan a más tardar a los 24 meses del último contacto.
+      </p>
+      <p>
+        Ante un pedido de eliminación borramos los datos dentro de los 30 días
+        corridos, conforme al procedimiento descripto en la página de{" "}
+        <a href="/eliminacion-de-datos">eliminación de datos</a>. Si se
+        desconecta la cuenta de Instagram de la aplicación, dejamos de recibir
+        datos nuevos de Meta de forma inmediata.
       </p>
 
       <h2>Seguridad</h2>

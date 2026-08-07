@@ -25,10 +25,19 @@ export default function TerminosPage() {
         por WhatsApp y por mensajes directos de Instagram.
       </p>
       <p>
-        No es un servicio ofrecido al público ni una plataforma contratable: es
-        una herramienta de uso interno. Estos términos alcanzan tanto al personal
-        que la usa como a las personas que se comunican con el salón a través de
-        los canales que administra.
+        Es una aplicación de un solo negocio: la desarrollamos para el salón que
+        administramos nosotros mismos. No es un servicio ofrecido al público ni
+        una plataforma contratable por otros negocios, y la única cuenta de
+        Instagram conectada es la del propio salón. Estos términos alcanzan tanto
+        al personal que la usa como a las personas que se comunican con el salón
+        a través de los canales que administra.
+      </p>
+      <p>
+        El uso de las integraciones con Instagram y WhatsApp se rige además por
+        las condiciones de Meta Platforms. Nos comprometemos a usar los datos
+        obtenidos de esas plataformas únicamente para la atención al cliente del
+        salón, según se detalla en la{" "}
+        <a href="/privacidad">política de privacidad</a>.
       </p>
 
       <h2>Acceso al sistema</h2>

@@ -540,6 +540,11 @@
   --wa-avatar-fg: #ffffff;
   --wa-bubble-shadow: 0 1px 0.5px #0b141a21;
   --wa-overlay: #0b141a66;
+  /* Espera sin responder: ámbar a partir de unas horas, rojo pasado un día. */
+  --wa-wait-warm: #a25b00;
+  --wa-wait-warm-bg: #fdefd3;
+  --wa-wait-cold: #b42318;
+  --wa-wait-cold-bg: #fbe1de;
 }
 
 .dark .wa-scope {
@@ -576,6 +581,10 @@
   --wa-avatar-fg: #cfd5d9;
   --wa-bubble-shadow: 0 1px 0.5px #0b141a61;
   --wa-overlay: #0b141a8c;
+  --wa-wait-warm: #f0b429;
+  --wa-wait-warm-bg: #3a2e14;
+  --wa-wait-cold: #f2857c;
+  --wa-wait-cold-bg: #3a1f1c;
 }
 
 /*
@@ -635,6 +644,16 @@
 
 .wa-row-active {
   background: var(--wa-active);
+}
+
+/*
+ * Radix ScrollArea mete el contenido dentro de un div con `display: table`
+ * para poder medirlo. En la lista de chats eso hace que cada fila crezca
+ * hasta el ancho del texto más largo en vez de truncar, y la hora y el globo
+ * de no leídos se van fuera del panel (invisibles). Lo volvemos a `block`.
+ */
+.wa-scope [data-slot="scroll-area-viewport"] > div {
+  display: block !important;
 }
 
 .wa-scope ::-webkit-scrollbar {

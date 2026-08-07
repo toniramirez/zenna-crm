@@ -31,6 +31,7 @@ function decodeWaMessageContent(b64: string): WAMessageContent {
   return proto.Message.decode(buf);
 }
 import qrcode from "qrcode-terminal";
+import { notifyInboundMessage } from "@/lib/push/send";
 import type { Database } from "@/types/database.types";
 import { processAutomations, processInboundAutomations } from "./automations";
 import { downloadAndStoreMedia, fetchAndStoreAvatar } from "./media";
@@ -465,6 +466,14 @@ async function handleUpsertedMessage(msg: WAMessage) {
       inserted.id,
       new Date(sentAt),
     );
+
+    // Aviso al teléfono. Va suelto a propósito: si el push falla, el mensaje
+    // ya quedó guardado y la bandeja lo muestra igual.
+    void notifyInboundMessage(supabase, {
+      conversationId,
+      body: mediaResult?.caption ?? textBody ?? null,
+      type: mediaResult?.type ?? "text",
+    });
   }
 }
 
