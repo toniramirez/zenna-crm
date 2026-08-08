@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   Cormorant_Garamond,
   Inter,
@@ -54,8 +54,27 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "Zenna",
-    statusBarStyle: "default",
+    // La app instalada arranca en la bandeja y la bandeja es oscura: con
+    // "default" (barra blanca) la hora del teléfono queda ilegible.
+    statusBarStyle: "black-translucent",
   },
+};
+
+/**
+ * El teléfono va oscuro y el escritorio claro (ver `@media (width < 48rem)` en
+ * app/globals.css), así que la barra del navegador se pinta por ancho. El
+ * atributo `media` de `theme-color` acepta cualquier media query, no sólo
+ * `prefers-color-scheme`.
+ *
+ * `viewportFit: "cover"` es lo que habilita `env(safe-area-inset-*)`: sin eso,
+ * la barra de pestañas se apoyaría sobre el gesto de inicio del iPhone.
+ */
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(max-width: 767px)", color: "#0b141a" },
+    { media: "(min-width: 768px)", color: "#fbfaf9" },
+  ],
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -72,15 +91,19 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <Providers>{children}</Providers>
         {/*
-         * Mobile-safe toast position: bottom-right never overlaps the mobile
-         * header (h-14) at the top. mobileOffset adds breathing room on
-         * narrow screens.
+         * Abajo a la derecha: no tapa ningún encabezado. En el teléfono el
+         * offset suma `--tabbar-space` para que el aviso quede arriba de la
+         * barra de pestañas y no debajo (donde no se lee ni se cierra).
          */}
         <Toaster
           richColors
           closeButton
           position="bottom-right"
-          mobileOffset={{ bottom: "1rem", right: "0.75rem", left: "0.75rem" }}
+          mobileOffset={{
+            bottom: "calc(1rem + var(--tabbar-space))",
+            right: "0.75rem",
+            left: "0.75rem",
+          }}
         />
       </body>
     </html>

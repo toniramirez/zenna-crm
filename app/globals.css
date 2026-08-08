@@ -5,7 +5,25 @@
 @source "../components/**/*.{ts,tsx}";
 @source "../lib/**/*.{ts,tsx}";
 
-@custom-variant dark (&:is(.dark *));
+/*
+ * `dark:` tiene dos disparadores:
+ *
+ *  1. la clase `.dark` en un ancestro — el mecanismo clásico, hoy sin usar;
+ *  2. cualquier viewport por debajo de `md` (48rem / 768px).
+ *
+ * El (2) es la regla de esta app: en el teléfono Zenna se usa como si fuera
+ * WhatsApp, y WhatsApp es oscuro. El escritorio se queda en el claro de marca,
+ * intacto. Al colgarlo del mismo variant, las ~16 utilidades `dark:` que ya
+ * existen en los componentes de shadcn siguen funcionando sin tocarlas.
+ */
+@custom-variant dark {
+  &:is(.dark *) {
+    @slot;
+  }
+  @media (width < 48rem) {
+    @slot;
+  }
+}
 
 /*
  * Zenna CRM — sistema de marca (v6: calcado 1:1 de peluquerOS)
@@ -277,6 +295,96 @@
   --wa-ink: #7ae3c3;
 }
 
+/* ── Teléfono: el tema es el de WhatsApp ──────────────────────────────────
+ * Abajo de 768px la app no compite con WhatsApp: se hace pasar por él. El
+ * gris azulado de WhatsApp (#0b141a de fondo, #111b21 de superficie, #202c33
+ * de control) y el verde como único color de acción. Es una capa de tokens,
+ * no un rediseño: cada pantalla ya pinta con `bg-card`, `text-muted-
+ * foreground`, etc., así que hereda el oscuro sin tocar una sola clase.
+ *
+ * La consulta es por ancho y no por `prefers-color-scheme`: el pedido es que
+ * el teléfono se vea siempre así, prenda o no el modo oscuro del sistema.
+ * Y por ser `@media`, el escritorio queda demostrablemente afuera.
+ */
+:root {
+  /* Sin barra de pestañas: es el estado del escritorio. */
+  --tabbar-h: 0px;
+  --tabbar-space: 0px;
+}
+
+@media (width < 48rem) {
+  :root {
+    --background: #0b141a;
+    --foreground: #e9edef;
+
+    --card: #111b21;
+    --card-foreground: #e9edef;
+
+    --popover: #233138;
+    --popover-foreground: #e9edef;
+
+    /* Acción = el verde del botón "+" de WhatsApp, no el mocha de marca. */
+    --primary: #21c063;
+    --primary-foreground: #0b141a;
+
+    --secondary: #202c33;
+    --secondary-foreground: #e9edef;
+
+    --muted: #202c33;
+    --muted-foreground: #8696a0;
+
+    --accent: #2a3942;
+    --accent-foreground: #e9edef;
+
+    --destructive: #f15c6d;
+    --destructive-foreground: #0b141a;
+
+    --border: #22303a;
+    --input: #2a3942;
+    --ring: #00a884;
+
+    --chart-1: #00a884;
+    --chart-2: #f0aa63;
+    --chart-3: #53bdeb;
+    --chart-4: #8696a0;
+    --chart-5: #f15c6d;
+
+    /* El rail no existe en el teléfono; van igual para que nada quede claro. */
+    --sidebar: #0b141a;
+    --sidebar-foreground: #e9edef;
+    --sidebar-primary: #00a884;
+    --sidebar-primary-foreground: #0b141a;
+    --sidebar-accent: #202c33;
+    --sidebar-accent-foreground: #e9edef;
+    --sidebar-border: #22303a;
+    --sidebar-ring: #00a884;
+
+    --appt-tint: 78%;
+
+    /*
+     * El dorado sobrevive: en finanzas y caja marca cifras, no acciones, y
+     * sobre el gris de WhatsApp sigue leyéndose. El verde se reserva para lo
+     * que se toca.
+     */
+    --gold: #f0aa63;
+    --gold-soft: #3a2a15;
+    --bone: #111b21;
+    --ink: #e9edef;
+
+    --wa: #00a884;
+    --wa-soft: #005c4b;
+    --wa-ink: #7ae3c3;
+
+    /*
+     * Alto de la barra de pestañas + el respiro del gesto de inicio. Las
+     * pantallas que llegan hasta el borde inferior reservan este espacio;
+     * arriba de `md` la barra no existe y el valor es 0 (ver más abajo).
+     */
+    --tabbar-h: 4.875rem;
+    --tabbar-space: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -496,6 +604,19 @@
     gap: 0.625rem;
     padding: 0 0.625rem;
   }
+
+  /*
+   * Fila que rueda con el dedo (chips de filtro). La barra de scroll sobra:
+   * en el teléfono no se ve, y en el trackpad ensucia una fila de 32px.
+   */
+  .hide-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* ── Bandeja de WhatsApp — tokens calcados del referente ──────────────────
@@ -540,51 +661,66 @@
   --wa-avatar-fg: #ffffff;
   --wa-bubble-shadow: 0 1px 0.5px #0b141a21;
   --wa-overlay: #0b141a66;
+  /* Chip de filtro activo (Todos / No leídos / Esperando). */
+  --wa-chip-on: #d9fdd3;
+  --wa-chip-on-text: #008069;
   /* Espera sin responder: ámbar a partir de unas horas, rojo pasado un día. */
   --wa-wait-warm: #a25b00;
   --wa-wait-warm-bg: #fdefd3;
   --wa-wait-cold: #b42318;
   --wa-wait-cold-bg: #fbe1de;
-}
 
-.dark .wa-scope {
-  --wa-app: #111b21;
-  --wa-panel: #111b21;
-  --wa-panel-header: #202c33;
-  --wa-search-bg: #111b21;
-  --wa-search-field: #202c33;
-  --wa-hover: #202c33;
-  --wa-active: #2a3942;
-  --wa-divider: #222d34;
-  --wa-border: #2f3b43;
-  --wa-conv: #0b141a;
-  --wa-bubble-in: #202c33;
-  --wa-bubble-out: #005c4b;
-  --wa-text: #e9edef;
-  --wa-text-2: #8696a0;
-  --wa-text-3: #8696a0;
-  --wa-meta: #8696a0;
-  --wa-meta-out: #e9edef99;
-  --wa-accent: #00a884;
-  --wa-accent-strong: #00a884;
-  --wa-badge: #00a884;
-  --wa-badge-text: #111b21;
-  --wa-tick: #8696a0;
-  --wa-tick-read: #53bdeb;
-  --wa-link: #53bdeb;
-  --wa-composer: #202c33;
-  --wa-composer-field: #2a3942;
-  --wa-icon: #8696a0;
-  --wa-system-bubble: #182229;
-  --wa-system-text: #8696a0;
-  --wa-avatar-bg: #6a7175;
-  --wa-avatar-fg: #cfd5d9;
-  --wa-bubble-shadow: 0 1px 0.5px #0b141a61;
-  --wa-overlay: #0b141a8c;
-  --wa-wait-warm: #f0b429;
-  --wa-wait-warm-bg: #3a2e14;
-  --wa-wait-cold: #f2857c;
-  --wa-wait-cold-bg: #3a1f1c;
+  /*
+   * Va por el variant `dark` y no por `.dark .wa-scope`: así se enciende con
+   * la clase (escritorio, si algún día se ofrece) y también por ancho, que es
+   * como llega en el teléfono.
+   */
+  @variant dark {
+    --wa-app: #0b141a;
+    --wa-panel: #0b141a;
+    --wa-panel-header: #202c33;
+    --wa-search-bg: #202c33;
+    --wa-search-field: #2a3942;
+    --wa-hover: #202c33;
+    --wa-active: #2a3942;
+    --wa-divider: #222d34;
+    --wa-border: #22303a;
+    --wa-conv: #0b141a;
+    --wa-bubble-in: #202c33;
+    --wa-bubble-out: #005c4b;
+    --wa-text: #e9edef;
+    --wa-text-2: #8696a0;
+    --wa-text-3: #8696a0;
+    --wa-meta: #8696a0;
+    --wa-meta-out: #e9edef99;
+    --wa-accent: #00a884;
+    --wa-accent-strong: #00a884;
+    --wa-badge: #21c063;
+    --wa-badge-text: #0b141a;
+    --wa-tick: #8696a0;
+    --wa-tick-read: #53bdeb;
+    --wa-link: #53bdeb;
+    --wa-composer: #0b141a;
+    --wa-composer-field: #202c33;
+    --wa-icon: #8696a0;
+    --wa-system-bubble: #182229;
+    --wa-system-text: #8696a0;
+    --wa-avatar-bg: #6a7175;
+    --wa-avatar-fg: #cfd5d9;
+    --wa-bubble-shadow: 0 1px 0.5px #0b141a61;
+    --wa-overlay: #0b141a8c;
+    /*
+     * El verde de la burbuja saliente (#005c4b) sobre su propio verde no daba
+     * contraste para texto chico; el chip usa un fondo más profundo y el verde
+     * claro encima.
+     */
+    --wa-chip-on: #103529;
+    --wa-chip-on-text: #21c063;
+    --wa-wait-warm: #f0b429;
+    --wa-wait-warm-bg: #3a2e14;
+    --wa-wait-cold: #f2857c;
+    --wa-wait-cold-bg: #3a1f1c;
+  }
 }
 
 /*
@@ -595,6 +731,20 @@
 .wa-conv-bg {
   position: relative;
   background-color: var(--wa-conv);
+
+  /*
+   * El garabato se configura desde el elemento y no desde el `::before`: un
+   * pseudo-elemento no admite `:is(.dark *)` detrás, así que el variant se
+   * aplica acá y el `::before` sólo lee las variables.
+   */
+  --wa-doodle-opacity: 0.06;
+  --wa-doodle-filter: none;
+
+  /* En oscuro invertimos el trazo: queda claro sobre el papel casi negro. */
+  @variant dark {
+    --wa-doodle-opacity: 0.05;
+    --wa-doodle-filter: invert(1);
+  }
 }
 
 .wa-conv-bg::before {
@@ -606,13 +756,8 @@
   background-image: url("/wa-doodle.svg");
   background-repeat: repeat;
   background-size: 400px 400px;
-  opacity: 0.06;
-}
-
-/* En oscuro invertimos el trazo (queda claro sobre el papel casi negro). */
-.dark .wa-conv-bg::before {
-  opacity: 0.05;
-  filter: invert(1);
+  opacity: var(--wa-doodle-opacity);
+  filter: var(--wa-doodle-filter);
 }
 
 .wa-conv-scroll {
@@ -699,6 +844,74 @@
 .wa-composer [data-slot="input"]:focus-visible {
   border-color: transparent;
   box-shadow: none;
+}
+
+/* ── Barra de pestañas del teléfono ───────────────────────────────────────
+ * La navegación de la app en el celular es esta barra, no el rail ni el menú
+ * hamburguesa: pastilla flotante apoyada abajo, con el ítem activo marcado
+ * por una cápsula detrás del ícono. Mismo gesto que WhatsApp.
+ *
+ * Flota (position: fixed) en vez de ocupar una fila del layout para que la
+ * lista siga corriendo por debajo. A cambio, todo lo que llega al borde
+ * inferior reserva `--tabbar-space`.
+ */
+.tabbar-item {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1875rem;
+  padding-top: 0.375rem;
+  padding-bottom: 0.375rem;
+  color: var(--muted-foreground);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * La cápsula del ítem activo: crece desde atrás del ícono, no del bloque.
+ * El `max-width` es lo que la deja achicarse con cinco ítems en una pantalla
+ * de 320px, donde 60px fijos se desbordarían.
+ */
+.tabbar-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.75rem;
+  max-width: 100%;
+  height: 2rem;
+  border-radius: 9999px;
+  transition: background-color 150ms ease;
+}
+
+.tabbar-item[data-active="true"] {
+  color: var(--foreground);
+}
+
+.tabbar-item[data-active="true"] .tabbar-pill {
+  background: var(--accent);
+}
+
+.tabbar-item:active .tabbar-pill {
+  background: var(--secondary);
+}
+
+/*
+ * Una pantalla de detalle a pantalla completa (una conversación abierta) se
+ * marca con `data-mobile-fullscreen` y la barra se va: en WhatsApp tampoco
+ * está mientras chateás. La misma condición pone `--tabbar-space` en cero
+ * para que nadie reserve un espacio que ya no existe.
+ */
+@media (width < 48rem) {
+  [data-app-shell]:has([data-mobile-fullscreen]) {
+    --tabbar-h: 0px;
+    --tabbar-space: 0px;
+  }
+
+  [data-app-shell]:has([data-mobile-fullscreen]) [data-app-tabbar] {
+    display: none;
+  }
 }
 
 /* ── FullCalendar — agenda ────────────────────────────────────────────────

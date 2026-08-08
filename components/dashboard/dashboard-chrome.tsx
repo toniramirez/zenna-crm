@@ -8,30 +8,38 @@ import { cn } from "@/lib/utils";
 import { BrandWordmark } from "./brand-wordmark";
 import { useFocusMode } from "./focus-mode-context";
 import { MobileChromeProvider } from "./mobile-chrome";
-import { MobileSidebar } from "./mobile-sidebar";
+import { MobileTabBar } from "./mobile-tabbar";
 import type { NavItem } from "./nav";
 import { NavSearch } from "./nav-search";
 import { SidebarNav } from "./sidebar-nav";
 import { UserMenu } from "./user-menu";
 
 /**
- * Chrome del dashboard.
+ * Chrome del dashboard. Son dos aplicaciones distintas conviviendo:
  *
- * El escritorio usa el rail de íconos de 64px del referente: sin logo, sin
+ * El **escritorio** usa el rail de íconos de 64px del referente: sin logo, sin
  * etiquetas, tres grupos verticales (herramientas arriba, navegación al
  * medio, cuenta abajo) y el ítem activo marcado con una pastilla durazno.
  * El botón de panel lo expande a 232px mostrando las etiquetas — el rail
  * colapsado es el estado por defecto.
+ *
+ * El **teléfono** se hace pasar por WhatsApp: tema oscuro (los tokens viven en
+ * app/globals.css, colgados de `@media (width < 48rem)`) y navegación en una
+ * barra de pestañas abajo, con Chats al centro. Arriba queda apenas la marca;
+ * la cuenta y las secciones que no entran están en "Más".
  */
 export function DashboardChrome({
   items,
   profile,
   email,
+  unreadCount = 0,
   children,
 }: {
   items: NavItem[];
   profile: { role: AppRole };
   email: string;
+  /** No leídos de la bandeja, para el globo de la pestaña Chats. */
+  unreadCount?: number;
   children: ReactNode;
 }) {
   const { focused, toggle } = useFocusMode();
@@ -44,8 +52,12 @@ export function DashboardChrome({
   return (
     <MobileChromeProvider value={{ items, email, role: profile.role }}>
       <div
+        data-app-shell
         className={cn(
-          "grid h-screen w-full overflow-hidden transition-[grid-template-columns] duration-200",
+          // `h-dvh` y no `h-screen`: con la barra de pestañas apoyada abajo,
+          // los 100vh del navegador móvil (que incluyen la barra de URL
+          // retraída) le comían el borde inferior.
+          "grid h-dvh w-full overflow-hidden transition-[grid-template-columns] duration-200",
           collapsed ? "md:grid-cols-[64px_1fr]" : "md:grid-cols-[232px_1fr]",
         )}
       >
@@ -120,32 +132,35 @@ export function DashboardChrome({
         </aside>
 
         {/*
-          La barra de marca es solo de mobile. Una pantalla que ya trae su
+          La barra de marca es solo de mobile, y ya no lleva navegación: eso
+          ahora vive abajo, en la barra de pestañas. Una pantalla que trae su
           propio encabezado a pantalla completa la reemplaza marcándolo con
           `data-mobile-header` (la bandeja de mensajes): así no se apilan dos
-          barras y el contenido arranca ~56px más arriba. Esas pantallas montan
-          el menú y la cuenta adentro de su barra con los componentes de
-          `mobile-chrome`.
+          barras y el contenido arranca ~56px más arriba.
         */}
         <div className="flex flex-col min-w-0 min-h-0 [&:has([data-mobile-header])>header]:hidden">
-          <header className="md:hidden flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
-            <MobileSidebar items={items} />
+          <header className="md:hidden flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-4">
             <BrandWordmark size="sm" />
-            <div className="ml-auto">
-              <UserMenu email={email} role={profile.role} compact />
-            </div>
           </header>
 
           {/*
-            Padding por defecto para las pantallas de tipo "documento". Las que
-            van a sangre (agenda, bandeja de WhatsApp) marcan su raíz con
-            `data-bleed` y se quedan con el ancho completo, que es como se ven
-            en el referente.
+            Padding por defecto para las pantallas de tipo "documento", más el
+            hueco de la barra de pestañas para que la última fila no quede
+            debajo. Las que van a sangre (agenda, bandeja de WhatsApp) marcan
+            su raíz con `data-bleed`, se quedan con el ancho completo y
+            reservan ese hueco por su cuenta, adentro de su propio scroll.
           */}
-          <main className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 md:p-6 has-[[data-bleed]]:p-0">
+          <main className="flex-1 min-h-0 overflow-y-auto p-3 pb-[calc(0.75rem+var(--tabbar-space))] sm:p-4 sm:pb-[calc(1rem+var(--tabbar-space))] md:p-6 has-[[data-bleed]]:p-0">
             {children}
           </main>
         </div>
+
+        <MobileTabBar
+          items={items}
+          email={email}
+          role={profile.role}
+          unreadCount={unreadCount}
+        />
 
         <NavSearch
           items={items}

@@ -2,21 +2,20 @@
 
 import { createContext, useContext, type ReactNode } from "react";
 import type { AppRole } from "@/lib/auth";
-import { MobileSidebar } from "./mobile-sidebar";
 import type { NavItem } from "./nav";
 import { UserMenu } from "./user-menu";
 
 /**
- * En mobile el dashboard dibuja una barra propia (logo + menú + cuenta). Las
- * pantallas que ya traen su propio encabezado a pantalla completa —la bandeja
- * de mensajes— quedaban con dos barras apiladas y ~116px de cromo antes del
+ * En mobile el dashboard dibuja una barra propia con la marca. Las pantallas
+ * que ya traen su propio encabezado a pantalla completa —la bandeja de
+ * mensajes— quedaban con dos barras apiladas y ~116px de cromo antes del
  * primer chat.
  *
  * Solución: esas pantallas marcan su barra con `data-mobile-header` y el chrome
- * esconde la suya (ver `DashboardChrome`). Para no perder la navegación, la
- * pantalla monta `<MobileChromeNav />` y `<MobileChromeAccount />` dentro de su
- * propia barra; este contexto les acerca los datos (ítems, mail, rol) sin tener
- * que pasarlos a mano por el layout y la página.
+ * esconde la suya (ver `DashboardChrome`). Como la navegación vive abajo en la
+ * barra de pestañas, lo único que necesitan traerse adentro es la cuenta:
+ * montan `<MobileChromeAccount />` y este contexto le acerca el mail y el rol
+ * sin tener que pasarlos a mano por el layout y la página.
  */
 type MobileChromeValue = {
   items: NavItem[];
@@ -38,13 +37,6 @@ export function MobileChromeProvider({
       {children}
     </MobileChromeContext.Provider>
   );
-}
-
-/** Disparador del menú lateral. Ya viene con `md:hidden`. */
-export function MobileChromeNav() {
-  const ctx = useContext(MobileChromeContext);
-  if (!ctx) return null;
-  return <MobileSidebar items={ctx.items} />;
 }
 
 /** Avatar de la cuenta, con el mismo menú que el rail de escritorio. */

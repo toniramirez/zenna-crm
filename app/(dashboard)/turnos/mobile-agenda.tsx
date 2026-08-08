@@ -224,7 +224,7 @@ export function MobileAgenda({
   }, [dayKey, view, proFilter]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-card">
+    <div className="relative flex h-full min-h-0 flex-col bg-card">
       {/* ── Franja de contexto: fecha + totales, abre el calendario ─────── */}
       <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
         <PopoverTrigger asChild>
@@ -348,9 +348,13 @@ export function MobileAgenda({
       ) : null}
 
       {/* ── Lista de turnos ─────────────────────────────────────────────── */}
+      {/*
+        El relleno de abajo deja pasar el botón flotante y la barra de
+        pestañas: sin él, el último turno del día queda tapado.
+      */}
       <div
         ref={scrollerRef}
-        className="min-h-0 flex-1 overflow-y-auto border-t border-border"
+        className="min-h-0 flex-1 overflow-y-auto border-t border-border pb-[calc(5.5rem+var(--tabbar-space))]"
       >
         {groups.length === 0 ? (
           <div className="px-8 py-14 text-center">
@@ -364,7 +368,7 @@ export function MobileAgenda({
             <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">
               {outsideWindow
                 ? "Recargá la página para traer los turnos de esta fecha."
-                : `Tocá «Nuevo turno» abajo para agendar ${
+                : `Tocá el botón «+» para agendar ${
                     view === "week" ? "en esta semana" : "en este día"
                   }.`}
             </p>
@@ -418,17 +422,20 @@ export function MobileAgenda({
         )}
       </div>
 
-      {/* ── Acción principal ────────────────────────────────────────────── */}
-      <div className="shrink-0 border-t border-border bg-card px-3 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))]">
-        <button
-          type="button"
-          onClick={handleCreate}
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary text-[0.9375rem] font-medium text-primary-foreground active:opacity-90"
-        >
-          <Plus className="size-4" />
-          Nuevo turno
-        </button>
-      </div>
+      {/* ── Acción principal ──────────────────────────────────────────────
+        Botón redondo flotante y no una barra a lo ancho: abajo de todo ya está
+        la barra de pestañas de la app, y dos barras apiladas se comen 130px de
+        agenda. Se apoya justo arriba de ella (`--tabbar-space`) y a la derecha,
+        que es el gesto del "+" de WhatsApp.
+      */}
+      <button
+        type="button"
+        onClick={handleCreate}
+        aria-label="Nuevo turno"
+        className="absolute right-4 bottom-[calc(1rem+var(--tabbar-space))] z-30 flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg active:opacity-90"
+      >
+        <Plus className="size-6" strokeWidth={2} />
+      </button>
     </div>
   );
 }

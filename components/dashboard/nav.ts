@@ -41,6 +41,12 @@ export function getIcon(name: IconName): LucideIcon {
 export type NavItem = {
   href: string;
   label: string;
+  /**
+   * Nombre para la barra de pestañas del teléfono, donde cada ítem tiene
+   * ~70px de ancho. Sin esto "Clientas y servicios" se corta en "Clientas
+   * y…" y "Mensajes" no llega a evocar WhatsApp. Si falta, se usa `label`.
+   */
+  shortLabel?: string;
   iconName: IconName;
   roles: AppRole[];
 };
@@ -60,6 +66,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     href: "/clientas",
     label: "Clientas y servicios",
+    shortLabel: "Clientas",
     iconName: "users",
     roles: ["owner", "receptionist"],
   },
@@ -67,6 +74,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/crm",
     // La bandeja dejó de ser solo WhatsApp: también entran los DMs de Instagram.
     label: "Mensajes",
+    shortLabel: "Chats",
     iconName: "chat",
     roles: ["owner", "receptionist"],
   },
@@ -91,6 +99,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     href: "/comisiones",
     label: "Mis comisiones",
+    shortLabel: "Comisiones",
     iconName: "trending",
     roles: ["professional"],
   },
@@ -101,6 +110,24 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["owner"],
   },
 ];
+
+/**
+ * Orden de la barra inferior del teléfono. La app en el celular es un chat:
+ * "Chats" va al medio, que es donde llega el pulgar sin estirarse, y lo demás
+ * se acomoda alrededor. Los ítems que no entran caen en la hoja "Más".
+ *
+ * Son hrefs y no ítems: el rol decide antes cuáles existen, así que esto es
+ * sólo una preferencia de orden — lo que no está se saltea sin dejar hueco.
+ */
+export const MOBILE_TAB_ORDER = [
+  "/turnos",
+  "/caja",
+  "/crm",
+  "/clientas",
+] as const;
+
+/** Cuántos ítems entran en la barra antes de que aparezca "Más". */
+export const MOBILE_TAB_SLOTS = 4;
 
 export const ROLE_LABEL: Record<AppRole, string> = {
   owner: "Admin",

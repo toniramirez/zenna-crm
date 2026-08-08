@@ -14,6 +14,7 @@ import {
   Hourglass,
   Lock,
   MessageCircle,
+  MoreHorizontal,
   MoreVertical,
   Search,
   Send,
@@ -27,14 +28,12 @@ import {
   useTransition,
 } from "react";
 import { toast } from "sonner";
-import {
-  MobileChromeAccount,
-  MobileChromeNav,
-} from "@/components/dashboard/mobile-chrome";
+import { MobileChromeAccount } from "@/components/dashboard/mobile-chrome";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { onOpenConversation } from "@/lib/push/open-conversation";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
@@ -368,6 +367,11 @@ export function CrmView({
     };
   }, [selectedId, supabase]);
 
+  // Toque en una notificación con la bandeja ya abierta. El id llega por el
+  // puente del service worker y no por la URL: `selectedId` es estado de React
+  // y una navegación a /crm?c=… no lo reemplaza una vez montado.
+  useEffect(() => onOpenConversation(setSelectedId), []);
+
   // Al abrir una conversación el cursor ya queda en el campo de escritura.
   // Solo en desktop: en el celular esto levantaría el teclado y taparía el chat.
   useEffect(() => {
@@ -474,19 +478,61 @@ export function CrmView({
         )}
       >
         {/*
-          Identidad de la cuenta conectada — el bloque superior del referente.
-          En mobile esta barra *es* la barra de la app: `data-mobile-header`
-          hace que el chrome esconda la suya (la del logo) y a cambio traemos
-          acá adentro el menú y la cuenta. Antes se apilaban las dos y quedaban
-          ~116px de cromo antes del primer chat.
+          Encabezado del teléfono: es la pantalla "Chats" de WhatsApp. Título
+          grande, acciones al ras de los bordes y nada más — la navegación ya
+          está abajo en la barra de pestañas.
+
+          `data-mobile-header` hace que el chrome esconda su propia barra de
+          marca; sin eso se apilaban las dos y quedaban ~116px de cromo antes
+          del primer chat. La cuenta se trae acá adentro con
+          `MobileChromeAccount`.
         */}
         <div
           data-mobile-header
-          className="flex h-[var(--wa-header-h)] shrink-0 items-center gap-2 bg-[var(--wa-panel-header)] pl-2 pr-3 md:gap-3 md:pl-4 md:pr-4"
+          className="shrink-0 bg-[var(--wa-panel)] px-4 pt-1 md:hidden"
         >
-          <MobileChromeNav />
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--wa-avatar-bg)] text-[var(--wa-icon)] md:size-10">
-            <MessageCircle className="size-4 md:size-5" strokeWidth={1.75} />
+          <div className="flex h-11 items-center">
+            {onOpenConfig ? (
+              <button
+                type="button"
+                onClick={onOpenConfig}
+                aria-label="Configuración del CRM"
+                className="-ml-2 flex size-10 shrink-0 items-center justify-center rounded-full text-[var(--wa-text)] active:bg-[var(--wa-hover)]"
+              >
+                <MoreHorizontal className="size-5" strokeWidth={2} />
+              </button>
+            ) : null}
+            <div className="ml-auto flex items-center gap-1">
+              {filtersActive ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatusFilter("all");
+                    setTagFilter([]);
+                    setQuery("");
+                  }}
+                  aria-label="Limpiar filtros"
+                  className="flex size-10 shrink-0 items-center justify-center rounded-full text-[var(--wa-text)] active:bg-[var(--wa-hover)]"
+                >
+                  <Check className="size-5" strokeWidth={2} />
+                </button>
+              ) : null}
+              <MobileChromeAccount />
+            </div>
+          </div>
+          <h1 className="pb-2 pt-1 font-display text-[2rem] font-bold leading-none tracking-tight text-[var(--wa-text)]">
+            Chats
+          </h1>
+        </div>
+
+        {/*
+          Encabezado del escritorio: la identidad de la cuenta conectada, tal
+          cual el referente. Acá el título grande no va — la bandeja comparte
+          la pantalla con el hilo y con el rail.
+        */}
+        <div className="hidden h-[var(--wa-header-h)] shrink-0 items-center gap-3 bg-[var(--wa-panel-header)] px-4 md:flex">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--wa-avatar-bg)] text-[var(--wa-icon)]">
+            <MessageCircle className="size-5" strokeWidth={1.75} />
           </span>
           <div className="min-w-0 flex-1 leading-tight">
             <div className="text-[1.0625rem] font-medium text-[var(--wa-text)]">
@@ -530,26 +576,29 @@ export function CrmView({
               <MoreVertical className="size-5" strokeWidth={1.75} />
             </button>
           ) : null}
-          <MobileChromeAccount />
         </div>
 
-        {/* Buscador */}
-        <div className="shrink-0 px-3 py-2">
+        {/* Buscador. En el teléfono es la píldora ancha de WhatsApp. */}
+        <div className="shrink-0 px-4 pb-2 md:px-3 md:py-2">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[var(--wa-text-3)]" />
+            <Search className="pointer-events-none absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-[var(--wa-text-3)] md:left-3.5 md:size-4" />
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Buscá un chat o un contacto"
               aria-label="Buscá un chat o un contacto"
-              className="h-9 w-full rounded-lg border border-transparent bg-[var(--wa-search-bg)] pl-11 pr-4 text-[0.8125rem] text-[var(--wa-text)] outline-none placeholder:text-[var(--wa-text-2)] focus:bg-[var(--wa-search-field)] focus:border-[var(--wa-divider)]"
+              className="h-11 w-full rounded-full border border-transparent bg-[var(--wa-search-bg)] pl-12 pr-4 text-[0.9375rem] text-[var(--wa-text)] outline-none placeholder:text-[var(--wa-text-2)] focus:border-[var(--wa-divider)] focus:bg-[var(--wa-search-field)] md:h-9 md:rounded-lg md:pl-11 md:text-[0.8125rem]"
             />
           </div>
         </div>
 
-        {/* Filtros rápidos */}
-        <div className="flex shrink-0 flex-wrap gap-2 px-3 pb-2">
+        {/*
+          Filtros rápidos. En el teléfono ruedan en una sola fila horizontal
+          —como los chips de WhatsApp— en vez de envolverse y empujar la lista
+          hacia abajo; en escritorio sí envuelven, que ahí sobra alto.
+        */}
+        <div className="hide-scrollbar flex shrink-0 flex-nowrap gap-2 overflow-x-auto px-4 pb-2 md:flex-wrap md:overflow-visible md:px-3">
           <FilterChip
             active={statusFilter === "all"}
             onClick={() => setStatusFilter("all")}
@@ -584,7 +633,7 @@ export function CrmView({
         </div>
 
         {allTags.some((t) => t.active) ? (
-          <div className="flex shrink-0 flex-wrap gap-1.5 px-3 pb-2">
+          <div className="hide-scrollbar flex shrink-0 flex-nowrap gap-1.5 overflow-x-auto px-4 pb-2 md:flex-wrap md:overflow-visible md:px-3">
             {allTags
               .filter((t) => t.active)
               .map((t) => {
@@ -595,7 +644,7 @@ export function CrmView({
                     type="button"
                     onClick={() => toggleTagFilter(t.name)}
                     className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.75rem] transition-colors",
+                      "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.75rem] transition-colors",
                       checked
                         ? "bg-[var(--wa-active)] font-medium text-[var(--wa-text)]"
                         : "border-transparent bg-[var(--wa-search-bg)] text-[var(--wa-text-2)] hover:text-[var(--wa-text)]",
@@ -613,15 +662,20 @@ export function CrmView({
               })}
           </div>
         ) : null}
+        {/*
+          `--tabbar-space` es el hueco de la barra de pestañas del teléfono
+          (0 en escritorio): sin él la última conversación queda tapada por la
+          barra y no hay forma de llegar a ella.
+        */}
         <ScrollArea className="flex-1 min-h-0">
           {filteredConversations.length === 0 ? (
-            <div className="p-6 text-center text-sm text-[var(--wa-text-2)]">
+            <div className="p-6 pb-[calc(1.5rem+var(--tabbar-space))] text-center text-sm text-[var(--wa-text-2)]">
               {conversations.length === 0
                 ? "Cuando llegue un mensaje al WhatsApp del salón va a aparecer acá."
                 : "Ninguna conversación coincide con el filtro."}
             </div>
           ) : (
-            <ul>
+            <ul className="pb-[var(--tabbar-space)]">
               {filteredConversations.map((c) => {
                 const isSel = c.id === selectedId;
                 const title = conversationTitle(c);
@@ -762,15 +816,32 @@ export function CrmView({
         </ScrollArea>
       </aside>
 
-      {/* Thread */}
+      {/*
+        Thread. Con una conversación abierta esto es, en el teléfono, toda la
+        pantalla: `data-mobile-fullscreen` le avisa al chrome que retire la
+        barra de pestañas y ponga `--tabbar-space` en cero. En WhatsApp pasa lo
+        mismo — mientras chateás no hay barra abajo, hay teclado.
+
+        El atributo va sólo cuando hay conversación elegida: la sección existe
+        siempre en el DOM (escondida con `hidden md:flex`), así que ponerlo
+        fijo escondería la barra también en la lista.
+      */}
       <section
+        data-mobile-fullscreen={selectedId ? "" : undefined}
         className={cn(
           "relative flex flex-col overflow-hidden bg-[var(--wa-panel-header)]",
           !selectedId && "hidden md:flex",
         )}
       >
-        {/* Cinta verde superior: la firma de la bandeja en el referente */}
-        <span aria-hidden className="h-1 shrink-0 bg-[var(--wa-accent)]" />
+        {/*
+          Cinta verde superior: la firma de la bandeja en el referente. Es de
+          escritorio nomás — en el teléfono el hilo va a sangre y una línea
+          verde arriba de todo no existe en WhatsApp.
+        */}
+        <span
+          aria-hidden
+          className="hidden h-1 shrink-0 bg-[var(--wa-accent)] md:block"
+        />
 
         {!selected ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-5 p-6 text-center">
@@ -929,7 +1000,7 @@ export function CrmView({
 
             <form
               onSubmit={handleSend}
-              className="wa-composer flex shrink-0 items-center gap-1.5 bg-[var(--wa-composer)] p-2 sm:gap-2 sm:px-4"
+              className="wa-composer flex shrink-0 items-center gap-1.5 bg-[var(--wa-composer)] p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:gap-2 sm:px-4 md:pb-2"
             >
               <MediaInput
                 conversationId={selected.id}
@@ -1234,9 +1305,9 @@ function FilterChip({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-[0.8125rem] transition-colors",
+        "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[0.8125rem] transition-colors md:h-7 md:px-3",
         active
-          ? "bg-[var(--wa-bubble-out)] text-[var(--wa-accent-strong)]"
+          ? "bg-[var(--wa-chip-on)] text-[var(--wa-chip-on-text)]"
           : "bg-[var(--wa-search-bg)] text-[var(--wa-text-2)] hover:bg-[var(--wa-active)]",
       )}
     >
