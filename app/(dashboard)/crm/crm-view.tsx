@@ -27,6 +27,10 @@ import {
   useTransition,
 } from "react";
 import { toast } from "sonner";
+import {
+  MobileChromeAccount,
+  MobileChromeNav,
+} from "@/components/dashboard/mobile-chrome";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -469,10 +473,20 @@ export function CrmView({
           selectedId && "hidden md:flex",
         )}
       >
-        {/* Identidad de la cuenta conectada — el bloque superior del referente */}
-        <div className="flex h-[var(--wa-header-h)] shrink-0 items-center gap-3 bg-[var(--wa-panel-header)] px-4">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--wa-avatar-bg)] text-[var(--wa-icon)]">
-            <MessageCircle className="size-5" strokeWidth={1.75} />
+        {/*
+          Identidad de la cuenta conectada — el bloque superior del referente.
+          En mobile esta barra *es* la barra de la app: `data-mobile-header`
+          hace que el chrome esconda la suya (la del logo) y a cambio traemos
+          acá adentro el menú y la cuenta. Antes se apilaban las dos y quedaban
+          ~116px de cromo antes del primer chat.
+        */}
+        <div
+          data-mobile-header
+          className="flex h-[var(--wa-header-h)] shrink-0 items-center gap-2 bg-[var(--wa-panel-header)] pl-2 pr-3 md:gap-3 md:pl-4 md:pr-4"
+        >
+          <MobileChromeNav />
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--wa-avatar-bg)] text-[var(--wa-icon)] md:size-10">
+            <MessageCircle className="size-4 md:size-5" strokeWidth={1.75} />
           </span>
           <div className="min-w-0 flex-1 leading-tight">
             <div className="text-[1.0625rem] font-medium text-[var(--wa-text)]">
@@ -516,6 +530,7 @@ export function CrmView({
               <MoreVertical className="size-5" strokeWidth={1.75} />
             </button>
           ) : null}
+          <MobileChromeAccount />
         </div>
 
         {/* Buscador */}

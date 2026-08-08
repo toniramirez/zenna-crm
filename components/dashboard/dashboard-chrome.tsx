@@ -7,6 +7,7 @@ import type { AppRole } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { BrandWordmark } from "./brand-wordmark";
 import { useFocusMode } from "./focus-mode-context";
+import { MobileChromeProvider } from "./mobile-chrome";
 import { MobileSidebar } from "./mobile-sidebar";
 import type { NavItem } from "./nav";
 import { NavSearch } from "./nav-search";
@@ -41,103 +42,117 @@ export function DashboardChrome({
     profile.role === "owner" || profile.role === "receptionist";
 
   return (
-    <div
-      className={cn(
-        "grid h-screen w-full overflow-hidden transition-[grid-template-columns] duration-200",
-        collapsed ? "md:grid-cols-[64px_1fr]" : "md:grid-cols-[232px_1fr]",
-      )}
-    >
-      <aside
+    <MobileChromeProvider value={{ items, email, role: profile.role }}>
+      <div
         className={cn(
-          "hidden md:flex flex-col bg-sidebar border-r border-sidebar-border",
-          collapsed ? "items-center px-3.5" : "px-3",
+          "grid h-screen w-full overflow-hidden transition-[grid-template-columns] duration-200",
+          collapsed ? "md:grid-cols-[64px_1fr]" : "md:grid-cols-[232px_1fr]",
         )}
       >
-        <div
+        <aside
           className={cn(
-            "flex flex-col gap-1 pt-3",
-            collapsed ? "items-center" : "w-full",
+            "hidden md:flex flex-col bg-sidebar border-r border-sidebar-border",
+            collapsed ? "items-center px-3.5" : "px-3",
           )}
         >
-          <button
-            type="button"
-            onClick={toggle}
-            title={collapsed ? "Expandir menú" : "Contraer menú"}
-            aria-label={collapsed ? "Expandir menú" : "Contraer menú"}
-            className={cn("rail-item", !collapsed && "rail-item-wide")}
-          >
-            <PanelLeft className="size-[18px] shrink-0" strokeWidth={1.75} />
-            {collapsed ? null : (
-              <span className="text-sm font-medium">Contraer</span>
+          <div
+            className={cn(
+              "flex flex-col gap-1 pt-3",
+              collapsed ? "items-center" : "w-full",
             )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setSearchOpen(true)}
-            title="Buscar (⌘K)"
-            aria-label="Buscar"
-            className={cn("rail-item", !collapsed && "rail-item-wide")}
           >
-            <Search className="size-[18px] shrink-0" strokeWidth={1.75} />
-            {collapsed ? null : (
-              <span className="text-sm font-medium">Buscar</span>
-            )}
-          </button>
-        </div>
-
-        <div
-          className={cn(
-            "flex-1 min-h-0 overflow-y-auto w-full pt-3",
-            collapsed && "flex justify-center",
-          )}
-        >
-          <SidebarNav items={items} compact={collapsed} />
-        </div>
-
-        <div
-          className={cn(
-            "flex flex-col gap-1 pb-3 pt-2",
-            collapsed ? "items-center" : "w-full",
-          )}
-        >
-          {showAssistant ? (
-            <Link
-              href="/ia"
-              title="Asistente"
-              aria-label="Asistente"
+            <button
+              type="button"
+              onClick={toggle}
+              title={collapsed ? "Expandir menú" : "Contraer menú"}
+              aria-label={collapsed ? "Expandir menú" : "Contraer menú"}
               className={cn("rail-item", !collapsed && "rail-item-wide")}
             >
-              <Headset className="size-[18px] shrink-0" strokeWidth={1.75} />
+              <PanelLeft className="size-[18px] shrink-0" strokeWidth={1.75} />
               {collapsed ? null : (
-                <span className="text-sm font-medium">Asistente</span>
+                <span className="text-sm font-medium">Contraer</span>
               )}
-            </Link>
-          ) : null}
-          <UserMenu email={email} role={profile.role} compact={collapsed} />
-        </div>
-      </aside>
-
-      <div className="flex flex-col min-w-0 min-h-0">
-        <header className="md:hidden flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
-          <MobileSidebar items={items} />
-          <BrandWordmark size="sm" />
-          <div className="ml-auto">
-            <UserMenu email={email} role={profile.role} compact />
+            </button>
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              title="Buscar (⌘K)"
+              aria-label="Buscar"
+              className={cn("rail-item", !collapsed && "rail-item-wide")}
+            >
+              <Search className="size-[18px] shrink-0" strokeWidth={1.75} />
+              {collapsed ? null : (
+                <span className="text-sm font-medium">Buscar</span>
+              )}
+            </button>
           </div>
-        </header>
+
+          <div
+            className={cn(
+              "flex-1 min-h-0 overflow-y-auto w-full pt-3",
+              collapsed && "flex justify-center",
+            )}
+          >
+            <SidebarNav items={items} compact={collapsed} />
+          </div>
+
+          <div
+            className={cn(
+              "flex flex-col gap-1 pb-3 pt-2",
+              collapsed ? "items-center" : "w-full",
+            )}
+          >
+            {showAssistant ? (
+              <Link
+                href="/ia"
+                title="Asistente"
+                aria-label="Asistente"
+                className={cn("rail-item", !collapsed && "rail-item-wide")}
+              >
+                <Headset className="size-[18px] shrink-0" strokeWidth={1.75} />
+                {collapsed ? null : (
+                  <span className="text-sm font-medium">Asistente</span>
+                )}
+              </Link>
+            ) : null}
+            <UserMenu email={email} role={profile.role} compact={collapsed} />
+          </div>
+        </aside>
 
         {/*
-          Padding por defecto para las pantallas de tipo "documento". Las que
-          van a sangre (agenda, bandeja de WhatsApp) marcan su raíz con
-          `data-bleed` y se quedan con el ancho completo, que es como se ven
-          en el referente.
+          La barra de marca es solo de mobile. Una pantalla que ya trae su
+          propio encabezado a pantalla completa la reemplaza marcándolo con
+          `data-mobile-header` (la bandeja de mensajes): así no se apilan dos
+          barras y el contenido arranca ~56px más arriba. Esas pantallas montan
+          el menú y la cuenta adentro de su barra con los componentes de
+          `mobile-chrome`.
         */}
-        <main className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 md:p-6 has-[[data-bleed]]:p-0">
-          {children}
-        </main>
-      </div>
+        <div className="flex flex-col min-w-0 min-h-0 [&:has([data-mobile-header])>header]:hidden">
+          <header className="md:hidden flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
+            <MobileSidebar items={items} />
+            <BrandWordmark size="sm" />
+            <div className="ml-auto">
+              <UserMenu email={email} role={profile.role} compact />
+            </div>
+          </header>
 
-      <NavSearch items={items} open={searchOpen} onOpenChange={setSearchOpen} />
-    </div>
+          {/*
+            Padding por defecto para las pantallas de tipo "documento". Las que
+            van a sangre (agenda, bandeja de WhatsApp) marcan su raíz con
+            `data-bleed` y se quedan con el ancho completo, que es como se ven
+            en el referente.
+          */}
+          <main className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 md:p-6 has-[[data-bleed]]:p-0">
+            {children}
+          </main>
+        </div>
+
+        <NavSearch
+          items={items}
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+        />
+      </div>
+    </MobileChromeProvider>
   );
 }

@@ -10,7 +10,6 @@ import type {
 } from "@fullcalendar/core";
 import esLocale from "@fullcalendar/core/locales/es";
 import interactionPlugin from "@fullcalendar/interaction";
-import listPlugin from "@fullcalendar/list";
 import FullCalendar from "@fullcalendar/react";
 import resourceTimeGridPlugin from "@fullcalendar/resource-timegrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -39,6 +38,14 @@ import {
   AppointmentDialog,
   type AppointmentDialogMode,
 } from "./appointment-dialog";
+import {
+  appointmentTotal,
+  capitalize,
+  countsTowardTotals,
+  initialOf,
+  money,
+} from "./appointment-utils";
+import { MobileAgenda } from "./mobile-agenda";
 import type {
   AppointmentWithRelations,
   ClientRow,
@@ -70,30 +77,6 @@ const CATEGORY_META: Record<ServiceCategory, { label: string; color: string }> =
     peinado: { label: "Peinado", color: "#7b6a55" },
     otro: { label: "Otro", color: "#a8a29e" },
   };
-
-function money(value: number): string {
-  return `$ ${Math.round(value).toLocaleString("es-AR")}`;
-}
-
-function appointmentTotal(a: AppointmentWithRelations): number {
-  return a.appointment_services.reduce(
-    (sum, line) => sum + (line.price_at_booking ?? 0),
-    0,
-  );
-}
-
-/** Los cancelados / no-show no suman ni al conteo ni a la facturación. */
-function countsTowardTotals(a: AppointmentWithRelations): boolean {
-  return a.status !== "cancelled" && a.status !== "no_show";
-}
-
-function initialOf(name: string): string {
-  return (name.trim()[0] ?? "?").toUpperCase();
-}
-
-function capitalize(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
 
 function appointmentToEvent(
   a: AppointmentWithRelations,
@@ -166,11 +149,13 @@ export function CalendarView({
     setScrollTime(`${String(hour).padStart(2, "0")}:00:00`);
   }, []);
 
-  // Track viewport width so we can switch to a single-column day view on
-  // mobile — ResourceTimeGrid with N professionals is unreadable below ~640px.
+  // Abajo de `md` la grilla de recursos no se puede leer ni tocar, así que
+  // servimos otra pantalla entera (MobileAgenda). El corte es el mismo en el
+  // que el chrome del dashboard cambia el rail lateral por el header con
+  // hamburguesa: por debajo de 768px estamos en modo teléfono.
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
-    const mql = window.matchMedia("(max-width: 639px)");
+    const mql = window.matchMedia("(max-width: 767px)");
     const update = () => setIsMobile(mql.matches);
     update();
     mql.addEventListener("change", update);
@@ -264,8 +249,6 @@ export function CalendarView({
     );
   }, [range, view]);
 
-  const dayViewName = isMobile ? "listDay" : "resourceTimeGridDay";
-
   const goto = useCallback((action: "prev" | "next" | "today") => {
     const api = calendarRef.current?.getApi();
     if (!api) return;
@@ -274,15 +257,12 @@ export function CalendarView({
     else api.today();
   }, []);
 
-  const changeView = useCallback(
-    (next: "day" | "week") => {
-      setView(next);
-      calendarRef.current
-        ?.getApi()
-        .changeView(next === "week" ? "timeGridWeek" : dayViewName);
-    },
-    [dayViewName],
-  );
+  const changeView = useCallback((next: "day" | "week") => {
+    setView(next);
+    calendarRef.current
+      ?.getApi()
+      .changeView(next === "week" ? "timeGridWeek" : "resourceTimeGridDay");
+  }, []);
 
   const pickDate = useCallback((date: Date | undefined) => {
     if (!date) return;
@@ -336,12 +316,8 @@ export function CalendarView({
   // this on mount (rather than via eventContent) to leave FullCalendar's
   // default time/title rendering — and the cancelled/completed styles —
   // completely untouched.
-  const handleEventDidMount = useCallback(
-    (arg: EventMountArg) => {
-      if (isMobile) return;
-      if (arg.view.type === "listDay") return;
-
-      const resourceId = arg.event.getResources()[0]?.id;
+  const handleEventDidMount = useCallback((arg: EventMountArg) => {
+    const resourceId = arg.event.getResources()[0]?.id;
       const start = arg.event.start;
       if (!resourceId || !start) return;
       const startsAtIso = start.toISOString();
