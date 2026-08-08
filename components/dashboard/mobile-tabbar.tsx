@@ -78,11 +78,11 @@ export function MobileTabBar({
       >
         {/*
           Pastilla flotante: la lista sigue corriendo por debajo y se ve
-          apenas velada, igual que en WhatsApp. El `backdrop-blur` sobre un
-          gris más claro que el fondo es lo que la separa del contenido, sin
-          necesidad de una línea divisoria.
+          apenas velada, igual que en WhatsApp. Lo que la separa del contenido
+          es el material —vidrio translúcido, ver `.tabbar-surface`— y no un
+          panel opaco ni una línea divisoria.
         */}
-        <div className="mx-auto flex max-w-md items-stretch gap-1 rounded-full border border-white/5 bg-secondary/90 px-1.5 py-1 shadow-lg backdrop-blur-xl">
+        <div className="tabbar-surface mx-auto flex max-w-md items-stretch gap-0.5 rounded-full px-1 py-0.5">
           {primary.map((item) => {
             const Icon = getIcon(item.iconName);
             const active = isActive(pathname, item.href);
@@ -96,13 +96,10 @@ export function MobileTabBar({
                 className="tabbar-item"
               >
                 <span className="tabbar-pill relative">
-                  <Icon
-                    className="size-[22px]"
-                    strokeWidth={active ? 2.25 : 1.75}
-                  />
+                  <Icon className="size-5" strokeWidth={active ? 2 : 1.6} />
                   {badge > 0 ? <TabBadge count={badge} /> : null}
                 </span>
-                <span className="max-w-full truncate text-[0.6875rem] font-medium">
+                <span className="max-w-full truncate text-[0.625rem] leading-[1.2] font-medium">
                   {item.shortLabel ?? item.label}
                 </span>
               </Link>
@@ -118,9 +115,14 @@ export function MobileTabBar({
             className="tabbar-item"
           >
             <span className="tabbar-pill">
-              <MoreHorizontal className="size-[22px]" strokeWidth={1.75} />
+              <MoreHorizontal
+                className="size-5"
+                strokeWidth={overflowActive ? 2 : 1.6}
+              />
             </span>
-            <span className="text-[0.6875rem] font-medium">Más</span>
+            <span className="text-[0.625rem] leading-[1.2] font-medium">
+              Más
+            </span>
           </button>
         </div>
       </nav>
@@ -222,7 +224,7 @@ export function MobileTabBar({
  */
 function TabBadge({ count }: { count: number }) {
   return (
-    <span className="absolute -top-1 left-1/2 ml-1 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[0.625rem] font-semibold tabular-nums text-primary-foreground">
+    <span className="absolute -top-1 left-1/2 ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.5625rem] font-semibold tabular-nums text-primary-foreground">
       {count > 99 ? "99+" : count}
       <span className="sr-only"> mensajes sin leer</span>
     </span>

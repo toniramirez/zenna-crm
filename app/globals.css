@@ -380,7 +380,7 @@
      * pantallas que llegan hasta el borde inferior reservan este espacio;
      * arriba de `md` la barra no existe y el valor es 0 (ver más abajo).
      */
-    --tabbar-h: 4.875rem;
+    --tabbar-h: 3.75rem;
     --tabbar-space: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
   }
 }
@@ -855,6 +855,34 @@
  * lista siga corriendo por debajo. A cambio, todo lo que llega al borde
  * inferior reserva `--tabbar-space`.
  */
+
+/*
+ * La superficie es un material, no un panel: vidrio del sistema de iOS. El
+ * fondo va a poco más de la mitad de opacidad para que la lista se siga
+ * leyendo por debajo, y lo que la vuelve legible igual es el `blur` con
+ * `saturate` — el mismo truco de Apple, que sube el color de lo que pasa por
+ * atrás en vez de taparlo. El borde es un pelo de luz, no una línea de caja;
+ * el `inset` de arriba imita el canto brillante del material.
+ *
+ * Sin `backdrop-filter` (navegador viejo) el velo no existe y el texto de
+ * abajo se mezclaría con las etiquetas: ahí el fondo se vuelve casi sólido.
+ */
+.tabbar-surface {
+  background: color-mix(in oklab, var(--background) 58%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgb(255 255 255 / 0.08);
+  box-shadow:
+    0 10px 30px -16px rgb(0 0 0 / 0.75),
+    inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .tabbar-surface {
+    background: color-mix(in oklab, var(--background) 94%, transparent);
+  }
+}
+
 .tabbar-item {
   display: flex;
   flex: 1 1 0;
@@ -862,9 +890,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.1875rem;
-  padding-top: 0.375rem;
-  padding-bottom: 0.375rem;
+  gap: 0.125rem;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
   color: var(--muted-foreground);
   -webkit-tap-highlight-color: transparent;
 }
@@ -872,15 +900,20 @@
 /*
  * La cápsula del ítem activo: crece desde atrás del ícono, no del bloque.
  * El `max-width` es lo que la deja achicarse con cinco ítems en una pantalla
- * de 320px, donde 60px fijos se desbordarían.
+ * de 320px, donde 56px fijos se desbordarían.
+ *
+ * Se pinta con blanco translúcido y no con `--accent`: sobre un material
+ * transparente un gris opaco se ve como un parche pegado encima, mientras que
+ * el blanco al 12% levanta lo que ya hay atrás, que es como se marca la
+ * selección en iOS.
  */
 .tabbar-pill {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 3.75rem;
+  width: 3.5rem;
   max-width: 100%;
-  height: 2rem;
+  height: 1.625rem;
   border-radius: 9999px;
   transition: background-color 150ms ease;
 }
@@ -890,11 +923,11 @@
 }
 
 .tabbar-item[data-active="true"] .tabbar-pill {
-  background: var(--accent);
+  background: rgb(255 255 255 / 0.12);
 }
 
 .tabbar-item:active .tabbar-pill {
-  background: var(--secondary);
+  background: rgb(255 255 255 / 0.07);
 }
 
 /*

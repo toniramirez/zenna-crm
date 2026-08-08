@@ -1,10 +1,13 @@
 {
-  "enabledMcpjsonServers": [
-    "supabase"
-  ],
   "permissions": {
     "allow": [
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(git commit *)",
+      "Bash(git --no-pager log --oneline -3)",
+      "Bash(npx next *)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
 }
