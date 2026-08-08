@@ -29,8 +29,14 @@ self.addEventListener("push", (event) => {
   const title = data.title || "Zenna";
   const options = {
     body: data.body || "Tenés un mensaje nuevo.",
-    icon: data.icon || "/zenna-logo.png",
-    badge: "/zenna-logo.png",
+    // El ícono lo elige quien manda el push (verde de WhatsApp, degradé de
+    // Instagram). El de acá es el genérico: un globo de mensaje, no el logo
+    // de Zenna — en la bandeja del teléfono lo que importa es de qué se trata
+    // el aviso, no de qué app viene.
+    icon: data.icon || "/icons/message.png",
+    // Android lo pinta de un solo color en la barra de estado: tiene que ser
+    // una silueta, no una foto.
+    badge: "/icons/badge.png",
     // `tag` agrupa: varios mensajes de la misma conversación reemplazan la
     // notificación anterior en vez de apilar una por mensaje.
     tag: data.tag || "zenna-mensaje",
@@ -43,6 +49,23 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
+/**
+ * Le pide a la app abierta que navegue ella misma. Devuelve false si nadie
+ * contesta a tiempo —una pestaña vieja, de antes de que existiera el puente—
+ * para poder recurrir al plan B.
+ */
+function askClientToNavigate(client, url) {
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    const timer = setTimeout(() => resolve(false), 500);
+    channel.port1.onmessage = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    client.postMessage({ type: "zenna:navigate", url }, [channel.port2]);
+  });
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const target = (event.notification.data && event.notification.data.url) || "/crm";
@@ -54,24 +77,43 @@ self.addEventListener("notificationclick", (event) => {
         includeUncontrolled: true,
       });
 
-      // Si la app ya está abierta la enfocamos y la llevamos al chat, en vez
-      // de abrir una segunda ventana.
-      for (const client of all) {
-        if (new URL(client.url).origin === self.location.origin) {
-          await client.focus();
-          if ("navigate" in client) {
-            try {
-              await client.navigate(target);
-            } catch {
-              // Algunas versiones de Safari rechazan navigate(): con el focus
-              // alcanza, la app ya está en pantalla.
-            }
-          }
+      const open = all.find((client) => {
+        try {
+          return new URL(client.url).origin === self.location.origin;
+        } catch {
+          return false;
+        }
+      });
+
+      // App cerrada: se abre directo en la conversación.
+      if (!open) {
+        await self.clients.openWindow(target);
+        return;
+      }
+
+      // El foco va primero y sin nada await de por medio: consume la
+      // activación que dejó el toque, y si esperamos algo antes se pierde.
+      await open.focus();
+
+      // Que navegue la app con su propio router: es instantáneo, no recarga
+      // nada y —sobre todo— anda en iOS, donde `client.navigate()` no existe.
+      if (await askClientToNavigate(open, target)) return;
+
+      // Plan B para una pestaña que no responde el mensaje.
+      if ("navigate" in open) {
+        try {
+          await open.navigate(target);
           return;
+        } catch {
+          // Algunas versiones de Safari lo rechazan: queda el openWindow.
         }
       }
 
-      await self.clients.openWindow(target);
+      try {
+        await self.clients.openWindow(target);
+      } catch {
+        // Sin permiso para abrir ventana: al menos quedó la app enfocada.
+      }
     })(),
   );
 });

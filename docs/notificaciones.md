@@ -21,7 +21,28 @@ cerrada. Es Web Push estándar (VAPID), sin servicios de terceros ni costo.
   de Next a propósito: el worker de WhatsApp corre suelto con `tsx`.
 - Un aviso por conversación (`tag`): cinco mensajes seguidos de la misma
   persona dejan una sola notificación, no cinco.
-- Al tocarla, la app abre `/crm?c=<conversación>` directo en ese chat.
+- El ícono es un globo de mensaje con el color del canal (verde de WhatsApp,
+  degradé de Instagram), no el logo de Zenna: en la bandeja del teléfono lo que
+  hay que reconocer de un vistazo es de qué se trata el aviso. Están en
+  `public/icons/`. En iPhone iOS ignora este ícono y muestra el de la app
+  instalada — no hay forma de cambiarlo.
+
+## El toque abre el chat
+
+Siempre termina en `/crm?c=<conversación>`, con la clienta que escribió ya
+abierta. Cómo llega ahí depende de si la app estaba abierta:
+
+- **Cerrada** → `openWindow()` con esa URL, y la bandeja arranca con esa
+  conversación seleccionada (`initialSelectedId`).
+- **Abierta** → el service worker le pasa la URL a la app por `postMessage` y
+  navega el router de Next (`components/dashboard/push-router.tsx`). Es por acá
+  y no por `client.navigate()` porque en iOS `navigate()` no existe: el toque
+  dejaba la app donde estaba. Si el mensaje no tiene respuesta en 500 ms —una
+  pestaña vieja, de antes de este puente— recién ahí se usa `navigate()`.
+
+Con la bandeja ya abierta, además del `router.push` va un evento
+(`lib/push/open-conversation.ts`) que cambia la conversación seleccionada: esa
+selección es estado de React y no se entera sola de un cambio en la URL.
 
 ## Puesta en marcha
 

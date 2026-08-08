@@ -23,6 +23,8 @@ export type PushPayload = {
   url?: string;
   /** Notificaciones con el mismo tag se reemplazan en vez de apilarse. */
   tag?: string;
+  /** Ícono grande del aviso. Sin esto el service worker pone el genérico. */
+  icon?: string;
 };
 
 /** Códigos con los que el servidor de push dice "este dispositivo ya no existe". */
@@ -188,7 +190,8 @@ export async function notifyInboundMessage(
         ? "Contacto de Instagram"
         : "Contacto sin nombre");
 
-    const canal = conversation?.channel === "instagram" ? "Instagram" : "WhatsApp";
+    const isInstagram = conversation?.channel === "instagram";
+    const canal = isInstagram ? "Instagram" : "WhatsApp";
     const text = (args.body ?? "").trim();
     const preview = text ? text.slice(0, 140) : mediaPreview(args.type ?? null);
 
@@ -196,6 +199,9 @@ export async function notifyInboundMessage(
       title: `${name} · ${canal}`,
       body: preview,
       url: `/crm?c=${args.conversationId}`,
+      // Un globo de mensaje con el color del canal: en la bandeja del teléfono
+      // se ve de dónde viene sin leer el título.
+      icon: isInstagram ? "/icons/instagram.png" : "/icons/whatsapp.png",
       // Un tag por conversación: cinco mensajes seguidos de la misma persona
       // dejan un solo aviso en pantalla, no cinco.
       tag: `conv-${args.conversationId}`,
