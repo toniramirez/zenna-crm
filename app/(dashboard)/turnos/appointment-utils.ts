@@ -1,5 +1,14 @@
 import type { AppointmentWithRelations } from "./types";
 
+/**
+ * Ventana de turnos que precarga la página. Navegar día/semana dentro de este
+ * rango no vuelve a pegarle al servidor; fuera de él, sencillamente no hay
+ * datos hasta recargar — y por eso la agenda móvil lo avisa en vez de mostrar
+ * un día vacío que parece libre.
+ */
+export const WINDOW_DAYS_BACK = 14;
+export const WINDOW_DAYS_FORWARD = 42;
+
 /** Total facturable del turno = suma de las líneas de servicio. */
 export function appointmentTotal(a: AppointmentWithRelations): number {
   return a.appointment_services.reduce(

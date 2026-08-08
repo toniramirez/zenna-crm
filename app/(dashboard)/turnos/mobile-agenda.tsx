@@ -3,7 +3,7 @@
 import { addDays, format, isSameDay, startOfDay, startOfWeek } from "date-fns";
 import { es } from "date-fns/locale";
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
@@ -19,6 +19,8 @@ import {
   firstName,
   money,
   servicesLabel,
+  WINDOW_DAYS_BACK,
+  WINDOW_DAYS_FORWARD,
 } from "./appointment-utils";
 import type { AppointmentWithRelations, ProfessionalRow } from "./types";
 
@@ -153,6 +155,17 @@ export function MobileAgenda({
     }));
   }, [visible]);
 
+  /**
+   * ¿El día visible cae fuera de lo que precargó el server? Si es así el día
+   * se ve vacío aunque tenga turnos, y hay que decirlo: un "no hay turnos"
+   * mentiroso hace que alguien sobrevenda una fecha.
+   */
+  const outsideWindow = useMemo(() => {
+    const first = startOfDay(addDays(now, -WINDOW_DAYS_BACK));
+    const last = startOfDay(addDays(now, WINDOW_DAYS_FORWARD));
+    return range.start < first || range.start >= last;
+  }, [now, range.start]);
+
   const title = useMemo(() => {
     if (view === "week") {
       const last = addDays(range.start, 6);
@@ -173,8 +186,9 @@ export function MobileAgenda({
   }
 
   /**
-   * Alta rápida: la hora arranca en la próxima media hora si estamos parados
-   * en el día de hoy, y a las 10:00 si el día visible es otro.
+   * Alta rápida. Si hoy cae dentro de lo que estamos mirando arrancamos en la
+   * próxima media hora; si no, a las 10:00 del primer día del rango. Y si hay
+   * una profesional filtrada, el turno ya sale con esa profesional puesta.
    */
   function handleCreate() {
     const pro =
@@ -182,9 +196,10 @@ export function MobileAgenda({
       activeProfessionals[0];
     if (!pro) return;
 
-    const startsAt = new Date(range.start);
-    if (isSameDay(startsAt, now)) {
-      startsAt.setHours(now.getHours(), now.getMinutes(), 0, 0);
+    const todayInRange = now >= range.start && now < range.end;
+    const startsAt = todayInRange ? new Date(now) : new Date(range.start);
+    if (todayInRange) {
+      startsAt.setSeconds(0, 0);
       const minutes = startsAt.getMinutes();
       startsAt.setMinutes(minutes + ((30 - (minutes % 30)) % 30));
     } else {
@@ -192,6 +207,21 @@ export function MobileAgenda({
     }
     onCreate(startsAt.toISOString(), pro.id);
   }
+
+  /**
+   * Al cambiar de día o de filtro dejamos la lista parada en la hora actual,
+   * que es lo que hace `scrollTime` en la grilla del escritorio. Depende del
+   * día visible y no del reloj, así que no se mueve sola mientras la leen.
+   */
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const nowMarkerRef = useRef<HTMLLIElement | null>(null);
+  const dayKey = format(cursor, "yyyy-MM-dd");
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    const marker = nowMarkerRef.current;
+    if (!scroller || !marker) return;
+    scroller.scrollTop = Math.max(0, marker.offsetTop - 96);
+  }, [dayKey, view, proFilter]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-card">
@@ -318,17 +348,25 @@ export function MobileAgenda({
       ) : null}
 
       {/* ── Lista de turnos ─────────────────────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-y-auto border-t border-border">
+      <div
+        ref={scrollerRef}
+        className="min-h-0 flex-1 overflow-y-auto border-t border-border"
+      >
         {groups.length === 0 ? (
           <div className="px-8 py-14 text-center">
             <p className="text-sm font-medium text-foreground">
-              {proFilter === "all"
-                ? "No hay turnos"
-                : "Sin turnos para esta profesional"}
+              {outsideWindow
+                ? "Fecha fuera de la agenda cargada"
+                : proFilter === "all"
+                  ? "No hay turnos"
+                  : "Sin turnos para esta profesional"}
             </p>
             <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">
-              Tocá &laquo;Nuevo turno&raquo; abajo para agendar
-              {view === "week" ? " en esta semana" : " en este día"}.
+              {outsideWindow
+                ? "Recargá la página para traer los turnos de esta fecha."
+                : `Tocá «Nuevo turno» abajo para agendar ${
+                    view === "week" ? "en esta semana" : "en este día"
+                  }.`}
             </p>
           </div>
         ) : (
@@ -346,6 +384,7 @@ export function MobileAgenda({
                   row.kind === "now" ? (
                     <li
                       key={`now-${group.key}-${index}`}
+                      ref={nowMarkerRef}
                       aria-hidden
                       className="flex items-center gap-2 px-3 py-1"
                     >
@@ -362,7 +401,13 @@ export function MobileAgenda({
                       showProfessional={
                         activeProfessionals.length > 1 && proFilter === "all"
                       }
-                      past={new Date(row.appointment.ends_at) < now}
+                      // Apagamos sólo lo que ya pasó HOY: es el "por acá
+                      // vamos" del día. En una fecha pasada apagar todo
+                      // dejaría la pantalla entera lavada y sin jerarquía.
+                      past={
+                        isSameDay(group.date, now) &&
+                        new Date(row.appointment.ends_at) < now
+                      }
                       onClick={() => onOpenAppointment(row.appointment)}
                     />
                   ),

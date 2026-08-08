@@ -961,56 +961,10 @@
   box-shadow: 0 0 0 2px var(--primary);
 }
 
-/* Vista lista (mobile): filas limpias, alto cómodo para el dedo */
-.zenna-calendar .fc-list {
-  border: none !important;
-}
-
-.zenna-calendar .fc-list-day-cushion {
-  background: var(--muted) !important;
-  font-weight: 600;
-  font-size: 0.8125rem;
-  padding: 0.5rem 0.75rem;
-}
-
-.zenna-calendar .fc-list-event {
-  cursor: pointer;
-}
-
-.zenna-calendar .fc-list-event:hover td {
-  background-color: var(--muted) !important;
-}
-
-.zenna-calendar .fc-list-event-dot {
-  border-width: 6px;
-}
-
-.zenna-calendar .fc-list-event-time {
-  font-weight: 600;
-  font-size: 0.8125rem;
-  white-space: nowrap;
-  width: 1%;
-  padding: 0.75rem 0.5rem !important;
-}
-
-.zenna-calendar .fc-list-event-title {
-  padding: 0.75rem 0.5rem !important;
-  font-size: 0.875rem;
-}
-
-.zenna-calendar .fc-list-empty {
-  padding: 2rem 1rem;
-  color: var(--muted-foreground);
-  font-size: 0.875rem;
-  text-align: center;
-}
-
-@media (max-width: 639px) {
-  .zenna-calendar .fc-event {
-    padding: 0.35rem 0.5rem;
-    min-height: 32px;
-  }
-}
+/*
+ * La vista lista de FullCalendar quedó fuera: abajo de 768px la agenda es
+ * otra pantalla entera (`mobile-agenda.tsx`), no una variante de la grilla.
+ */
 
 @media (prefers-reduced-motion: reduce) {
   *,

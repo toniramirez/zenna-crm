@@ -318,33 +318,31 @@ export function CalendarView({
   // completely untouched.
   const handleEventDidMount = useCallback((arg: EventMountArg) => {
     const resourceId = arg.event.getResources()[0]?.id;
-      const start = arg.event.start;
-      if (!resourceId || !start) return;
-      const startsAtIso = start.toISOString();
+    const start = arg.event.start;
+    if (!resourceId || !start) return;
+    const startsAtIso = start.toISOString();
 
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "zenna-event-add";
-      btn.textContent = "+";
-      btn.title = "Agregar otro turno a esta hora";
-      btn.setAttribute("aria-label", "Agregar otro turno a esta hora");
-      // Stop the gestures FullCalendar binds on the event (drag-to-move on
-      // mousedown, open-turno on click) so the button does its own thing.
-      btn.addEventListener("mousedown", (e) => e.stopPropagation());
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        setDialogMode({
-          type: "create",
-          professionalId: resourceId,
-          startsAt: startsAtIso,
-        });
-        setDialogOpen(true);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "zenna-event-add";
+    btn.textContent = "+";
+    btn.title = "Agregar otro turno a esta hora";
+    btn.setAttribute("aria-label", "Agregar otro turno a esta hora");
+    // Stop the gestures FullCalendar binds on the event (drag-to-move on
+    // mousedown, open-turno on click) so the button does its own thing.
+    btn.addEventListener("mousedown", (e) => e.stopPropagation());
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      setDialogMode({
+        type: "create",
+        professionalId: resourceId,
+        startsAt: startsAtIso,
       });
-      arg.el.appendChild(btn);
-    },
-    [isMobile],
-  );
+      setDialogOpen(true);
+    });
+    arg.el.appendChild(btn);
+  }, []);
 
   const handleEventChange = useCallback(
     async (arg: EventChangeArg) => {
@@ -469,6 +467,36 @@ export function CalendarView({
           Cargá al menos una profesional activa con su horario semanal en el
           menú &ldquo;Profesionales&rdquo; para que aparezca como columna acá.
         </p>
+      </div>
+    );
+  }
+
+  // En teléfono la agenda es otra pantalla, no la misma grilla apretada:
+  // lista de turnos con el mismo lenguaje que la bandeja de WhatsApp.
+  if (isMobile) {
+    return (
+      <div data-bleed className="h-full min-h-0">
+        <MobileAgenda
+          professionals={professionals}
+          appointments={appointments}
+          onOpenAppointment={(appointment) => {
+            setDialogMode({ type: "edit", appointment });
+            setDialogOpen(true);
+          }}
+          onCreate={(startsAt, professionalId) => {
+            setDialogMode({ type: "create", professionalId, startsAt });
+            setDialogOpen(true);
+          }}
+        />
+        <AppointmentDialog
+          open={dialogOpen}
+          onOpenChange={onDialogChange}
+          mode={dialogMode}
+          professionals={professionals}
+          services={services}
+          clients={clients}
+          appointments={appointments}
+        />
       </div>
     );
   }
@@ -599,33 +627,25 @@ export function CalendarView({
       <div className="zenna-calendar min-h-0 flex-1 overflow-y-auto px-2 pb-6 sm:px-4">
         <FullCalendar
           ref={calendarRef}
-          // Force a remount when switching between mobile/desktop so that
-          // `initialView` actually changes — FullCalendar caches the view at
-          // mount and won't switch live otherwise.
-          key={isMobile ? "mobile" : "desktop"}
           plugins={[
             resourceTimeGridPlugin,
             timeGridPlugin,
             interactionPlugin,
-            listPlugin,
           ]}
           schedulerLicenseKey="CC-Attribution-NonCommercial-NoDerivatives"
           locale={esLocale}
           firstDay={1}
           // El toolbar es nuestro: FullCalendar solo dibuja la grilla.
           headerToolbar={false}
-          initialView={view === "week" ? "timeGridWeek" : dayViewName}
+          initialView={
+            view === "week" ? "timeGridWeek" : "resourceTimeGridDay"
+          }
           initialDate={initialDate}
           datesSet={handleDatesSet}
-          noEventsContent={
-            isMobile
-              ? "No hay turnos para este día. Tocá «Nuevo turno» arriba para agendar."
-              : "No hay turnos para este día."
-          }
           allDaySlot={false}
           slotMinTime="08:00:00"
           slotMaxTime="22:00:00"
-          slotDuration={isMobile ? "01:00:00" : "00:30:00"}
+          slotDuration="00:30:00"
           slotLabelInterval="01:00"
           scrollTime={scrollTime}
           slotLabelFormat={{
@@ -642,10 +662,10 @@ export function CalendarView({
           displayEventEnd
           defaultRangeSeparator=" → "
           nowIndicator
-          editable={!isMobile}
-          selectable={!isMobile}
+          editable
+          selectable
           selectMirror
-          eventDurationEditable={!isMobile}
+          eventDurationEditable
           longPressDelay={250}
           selectLongPressDelay={250}
           height="auto"

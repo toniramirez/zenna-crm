@@ -1,6 +1,10 @@
 import { addDays, startOfDay } from "date-fns";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import {
+  WINDOW_DAYS_BACK,
+  WINDOW_DAYS_FORWARD,
+} from "./appointment-utils";
 import { CalendarView } from "./calendar-view";
 import type { AppointmentWithRelations } from "./types";
 
@@ -14,8 +18,8 @@ export const dynamic = "force-dynamic";
  * 2 weeks back + 6 weeks forward = ~8 weeks of context.
  */
 function appointmentWindow(now: Date) {
-  const start = startOfDay(addDays(now, -14));
-  const end = startOfDay(addDays(now, 42));
+  const start = startOfDay(addDays(now, -WINDOW_DAYS_BACK));
+  const end = startOfDay(addDays(now, WINDOW_DAYS_FORWARD));
   return { start, end };
 }
 
