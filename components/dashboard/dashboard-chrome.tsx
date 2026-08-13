@@ -69,10 +69,17 @@ export function DashboardChrome({
           collapsed ? "md:grid-cols-[64px_1fr]" : "md:grid-cols-[232px_1fr]",
         )}
       >
+        {/*
+          Contraído el rail va con px-1.5 y no px-3.5: los 8px que se le
+          descuentan se los queda el contenedor de la navegación como padding
+          propio (ver más abajo), para que el globo de no leídos —que sobresale
+          de la pastilla— no quede cortado. Los ítems no se mueven: todo va
+          centrado y siguen midiendo 36px, a 14px del borde.
+        */}
         <aside
           className={cn(
             "hidden md:flex flex-col bg-sidebar border-r border-sidebar-border",
-            collapsed ? "items-center px-3.5" : "px-3",
+            collapsed ? "items-center px-1.5" : "px-3",
           )}
         >
           <div
@@ -107,10 +114,17 @@ export function DashboardChrome({
             </button>
           </div>
 
+          {/*
+            `overflow-y-auto` también recorta a lo ancho (si un eje deja de ser
+            `visible`, el otro se vuelve `auto`), y el recorte cae en el borde
+            del padding: ese `px-2` es el que deja asomar el globo de no leídos
+            fuera de la pastilla. Son 8px para 6 de globo (4 de desborde + 2 de
+            anillo), así que sobra aire y no queda al filo.
+          */}
           <div
             className={cn(
               "flex-1 min-h-0 overflow-y-auto w-full pt-3",
-              collapsed && "flex justify-center",
+              collapsed && "flex justify-center px-2",
             )}
           >
             <SidebarNav

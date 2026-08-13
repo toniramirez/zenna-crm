@@ -226,7 +226,7 @@ function TabBadge({ count }: { count: number }) {
   return (
     <span className="absolute -top-1 left-1/2 ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.5625rem] font-semibold tabular-nums text-primary-foreground">
       {count > 99 ? "99+" : count}
-      <span className="sr-only"> mensajes sin leer</span>
+      <span className="sr-only"> {count === 1 ? "chat" : "chats"} sin leer</span>
     </span>
   );
 }

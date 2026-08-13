@@ -56,19 +56,23 @@ export function SidebarNav({
               Globo de no leídos. Con el rail contraído se monta encima del
               ícono —es la única forma de que se vea en 36px—; expandido va al
               final de la fila, donde no le compite al texto.
+
+              Verde WhatsApp (`bg-wa`) y no el primario de la marca: es la
+              misma señal que el globo verde de la lista de chats, y en un rail
+              de íconos marrones el verde es lo único que se ve de reojo.
             */}
             {badge > 0 ? (
               compact ? (
                 <span
                   aria-hidden
-                  className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.5625rem] font-semibold tabular-nums text-primary-foreground ring-2 ring-sidebar"
+                  className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-wa px-1 text-[0.5625rem] font-semibold tabular-nums text-white ring-2 ring-sidebar"
                 >
                   {badge > 99 ? "99+" : badge}
                 </span>
               ) : (
                 <span
                   aria-hidden
-                  className="ml-auto inline-flex h-[1.125rem] min-w-[1.125rem] shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[0.625rem] font-semibold tabular-nums text-primary-foreground"
+                  className="ml-auto inline-flex h-[1.125rem] min-w-[1.125rem] shrink-0 items-center justify-center rounded-full bg-wa px-1.5 text-[0.625rem] font-semibold tabular-nums text-white"
                 >
                   {badge > 99 ? "99+" : badge}
                 </span>

@@ -7,7 +7,8 @@
       "Bash(npx next *)",
       "Bash(grep -n \"^export function AppointmentDialog\\\\|^}: Props\\)\\\\|appointments = \\\\[\\\\]\\\\|appointments,$\" app/\\\\\\(dashboard\\\\\\)/turnos/appointment-dialog.tsx)",
       "Bash(npx eslint *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/ --max-time 3)"
     ]
   },
   "enabledMcpjsonServers": [
