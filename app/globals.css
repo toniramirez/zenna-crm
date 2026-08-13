@@ -1155,6 +1155,46 @@
   opacity: 1;
 }
 
+/*
+ * Hermano del "+": le escribe por WhatsApp a la clienta del turno. Mismo
+ * tamaño y mismo gesto (aparece con el hover), corrido a la izquierda para no
+ * pisarlo.
+ */
+.zenna-calendar .fc-event .zenna-event-wa {
+  position: absolute;
+  bottom: 3px;
+  right: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 9999px;
+  background: var(--foreground);
+  color: var(--card);
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  z-index: 3;
+}
+
+.zenna-calendar .fc-event .zenna-event-wa svg {
+  width: 11px;
+  height: 11px;
+}
+
+.zenna-calendar .fc-event:hover .zenna-event-wa,
+.zenna-calendar .fc-event:focus-within .zenna-event-wa {
+  opacity: 0.85;
+}
+
+.zenna-calendar .fc-event .zenna-event-wa:hover {
+  opacity: 1;
+}
+
 .zenna-calendar .fc-license-message {
   display: none !important;
 }

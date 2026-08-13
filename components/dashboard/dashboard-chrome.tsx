@@ -12,6 +12,7 @@ import { MobileTabBar } from "./mobile-tabbar";
 import type { NavItem } from "./nav";
 import { NavSearch } from "./nav-search";
 import { SidebarNav } from "./sidebar-nav";
+import { useInboxUnread } from "./use-inbox-unread";
 import { UserMenu } from "./user-menu";
 
 /**
@@ -48,6 +49,13 @@ export function DashboardChrome({
 
   const showAssistant =
     profile.role === "owner" || profile.role === "receptionist";
+
+  // El número que trae el servidor se congela apenas se navega (el layout no
+  // se vuelve a montar), así que la cuenta sigue viva del lado del cliente.
+  // Es la misma señal en el rail del escritorio y en la barra del teléfono:
+  // desde cualquier sección se ve si hay mensajes esperando.
+  const hasInbox = items.some((item) => item.href === "/crm");
+  const liveUnread = useInboxUnread(unreadCount, hasInbox);
 
   return (
     <MobileChromeProvider value={{ items, email, role: profile.role }}>
@@ -105,7 +113,11 @@ export function DashboardChrome({
               collapsed && "flex justify-center",
             )}
           >
-            <SidebarNav items={items} compact={collapsed} />
+            <SidebarNav
+              items={items}
+              compact={collapsed}
+              badges={{ "/crm": liveUnread }}
+            />
           </div>
 
           <div
@@ -159,7 +171,7 @@ export function DashboardChrome({
           items={items}
           email={email}
           role={profile.role}
-          unreadCount={unreadCount}
+          unreadCount={liveUnread}
         />
 
         <NavSearch

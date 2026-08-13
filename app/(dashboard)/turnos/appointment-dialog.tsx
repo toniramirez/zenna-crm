@@ -6,6 +6,7 @@ import {
   Check,
   ChevronsUpDown,
   Loader2,
+  MessageCircle,
   Plus,
   Trash2,
   UserPlus,
@@ -88,6 +89,11 @@ type Props = {
   // Used by the mobile slot picker to mark busy 30-min slots per pro/day.
   // Optional so the dialog still renders when callers haven't supplied it.
   appointments?: AppointmentWithRelations[];
+  /**
+   * Abre el WhatsApp de la clienta del turno. Opcional: sólo tiene sentido
+   * editando un turno que ya existe.
+   */
+  onMessageClient?: (appointment: AppointmentWithRelations) => void;
 };
 
 function toLocalInput(iso: string): string {
@@ -182,6 +188,7 @@ export function AppointmentDialog({
   services,
   clients,
   appointments = [],
+  onMessageClient,
 }: Props) {
   const editing = mode?.type === "edit";
 
@@ -892,16 +899,29 @@ export function AppointmentDialog({
 
         <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
           {editing ? (
-            <Button
-              type="button"
-              variant="ghost"
-              className="text-destructive hover:text-destructive sm:mr-auto"
-              onClick={onCancelTurno}
-              disabled={isPending}
-            >
-              <Trash2 className="size-4" />
-              Cancelar turno
-            </Button>
+            <div className="flex flex-col-reverse gap-2 sm:mr-auto sm:flex-row">
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-destructive hover:text-destructive"
+                onClick={onCancelTurno}
+                disabled={isPending}
+              >
+                <Trash2 className="size-4" />
+                Cancelar turno
+              </Button>
+              {onMessageClient && mode?.type === "edit" ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => onMessageClient(mode.appointment)}
+                  disabled={isPending}
+                >
+                  <MessageCircle className="size-4" />
+                  WhatsApp
+                </Button>
+              ) : null}
+            </div>
           ) : null}
           <div className="flex gap-2 sm:ml-auto">
             <Button

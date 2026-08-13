@@ -9,6 +9,7 @@ import {
   fetchLatestBaileysVersion,
   makeWASocket,
   proto,
+  WAMessageStubType,
   type WAMessage,
   type WAMessageContent,
   type WAMessageKey,
@@ -477,6 +478,59 @@ async function handleUpsertedMessage(msg: WAMessage) {
   }
 }
 
+/**
+ * Conversación existente de un JID, sin crearla. Se usa para acotar los
+ * cambios sobre un mensaje al chat correcto: el id de WhatsApp es único
+ * dentro de un chat, no globalmente, y el histórico ya tiene repetidos.
+ */
+async function findConversationId(remoteJid: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("channel", "whatsapp")
+    .eq("external_id", remoteJid)
+    .maybeSingle();
+  return data?.id ?? null;
+}
+
+/** "Se eliminó este mensaje" que llega del otro lado. */
+async function applyRemoteRevoke(
+  remoteJid: string | null,
+  externalId: string,
+): Promise<void> {
+  if (!remoteJid) return;
+  const conversationId = await findConversationId(remoteJid);
+  if (!conversationId) return;
+
+  await supabase
+    .from("messages")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("conversation_id", conversationId)
+    .eq("external_id", externalId)
+    .is("revoked_at", null);
+}
+
+/** Edición que llega del otro lado: cambia el texto y deja el sello. */
+async function applyRemoteEdit(
+  remoteJid: string | null,
+  externalId: string,
+  edited: WAMessageContent,
+): Promise<void> {
+  if (!remoteJid) return;
+  const text =
+    edited.conversation ?? edited.extendedTextMessage?.text ?? null;
+  if (!text) return;
+
+  const conversationId = await findConversationId(remoteJid);
+  if (!conversationId) return;
+
+  await supabase
+    .from("messages")
+    .update({ body: text, edited_at: new Date().toISOString() })
+    .eq("conversation_id", conversationId)
+    .eq("external_id", externalId);
+}
+
 // ─────────────────────────────────────────── Outgoing queue poller
 
 type QueuedMessage = {
@@ -488,6 +542,7 @@ type QueuedMessage = {
   media_mime: string | null;
   media_filename: string | null;
   reaction_target_external_id: string | null;
+  forwarded: boolean;
   conversations: { external_id: string; channel: string } | null;
 };
 
@@ -532,6 +587,14 @@ async function sendOutgoing(
     return { id: result?.key.id, content: result?.message ?? null };
   }
 
+  // Sello de "Reenviado". WhatsApp lo dibuja a partir del contextInfo, no de
+  // un tipo de mensaje aparte: una copia con esto puesto se ve exactamente
+  // igual que un reenvío hecho desde el teléfono. Los audios y los stickers
+  // no aceptan contextInfo, así que ahí el sello no va.
+  const forwardedContext = m.forwarded
+    ? { contextInfo: { isForwarded: true, forwardingScore: 1 } }
+    : {};
+
   // Media: download from Storage, send via the right Baileys helper.
   if (m.type !== "text") {
     if (!m.media_url) throw new Error("media message without media_url");
@@ -549,6 +612,7 @@ async function sendOutgoing(
           image: buffer,
           caption,
           mimetype: mime,
+          ...forwardedContext,
         });
         break;
       case "video":
@@ -556,6 +620,7 @@ async function sendOutgoing(
           video: buffer,
           caption,
           mimetype: mime,
+          ...forwardedContext,
         });
         break;
       case "audio":
@@ -576,6 +641,7 @@ async function sendOutgoing(
           document: buffer,
           fileName: fileName ?? "archivo",
           mimetype: mime ?? "application/octet-stream",
+          ...forwardedContext,
         });
         if (caption && caption.trim().length > 0) {
           await currentSock.sendMessage(jid, { text: caption });
@@ -594,7 +660,10 @@ async function sendOutgoing(
 
   // Plain text
   if (!m.body) throw new Error("text message without body");
-  const result = await currentSock.sendMessage(jid, { text: m.body });
+  const result = await currentSock.sendMessage(jid, {
+    text: m.body,
+    ...forwardedContext,
+  });
   return { id: result?.key.id, content: result?.message ?? null };
 }
 
@@ -619,10 +688,13 @@ async function pollOutgoing() {
   const { data: queued, error } = await supabase
     .from("messages")
     .select(
-      "id, conversation_id, type, body, media_url, media_mime, media_filename, reaction_target_external_id, conversations!inner(external_id, channel)",
+      "id, conversation_id, type, body, media_url, media_mime, media_filename, reaction_target_external_id, forwarded, conversations!inner(external_id, channel)",
     )
     .eq("status", "queued")
     .eq("direction", "outbound")
+    // Un mensaje al que le cancelaron el envío antes de que saliera queda
+    // 'queued' con `revoked_at` puesto: es la forma de que no salga nunca.
+    .is("revoked_at", null)
     .order("sent_at")
     .limit(10);
 
@@ -654,7 +726,7 @@ async function pollOutgoing() {
       // via `getMessage` later (the linked-device "Esperando este mensaje"
       // fix). Encoded with protobuf so Uint8Array fields survive the
       // round-trip through JSONB.
-      await supabase
+      const { data: saved } = await supabase
         .from("messages")
         .update({
           status: "sent",
@@ -664,8 +736,20 @@ async function pollOutgoing() {
             ? { b64: encodeWaMessageContent(content) }
             : null,
         })
-        .eq("id", m.id);
+        .eq("id", m.id)
+        .select("revoked_at")
+        .maybeSingle();
       console.log("→ sent", m.type, m.id, "to", conv.external_id);
+
+      // Cancelaron el envío mientras el mensaje estaba saliendo: llegó igual,
+      // así que lo borramos del otro lado en el acto. Sin esto la bandeja lo
+      // muestra eliminado y en el teléfono de la clienta queda para siempre.
+      if (saved?.revoked_at && externalId) {
+        await currentSock?.sendMessage(conv.external_id, {
+          delete: { remoteJid: conv.external_id, id: externalId, fromMe: true },
+        });
+        console.log("→ cancelado sobre la hora, eliminado para todos", m.id);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (isTransientSendError(msg)) {
@@ -693,6 +777,116 @@ async function pollOutgoing() {
 }
 
 setInterval(() => void pollOutgoing(), 2000);
+
+// ─────────────────────────────────────────── Editar / eliminar
+
+type QueuedOp = {
+  id: string;
+  message_id: string;
+  op: string;
+  body: string | null;
+  messages: { external_id: string | null } | null;
+  conversations: { external_id: string; channel: string } | null;
+};
+
+/**
+ * Cola de operaciones sobre mensajes ya mandados: editar el texto y eliminar
+ * para todos. Va aparte de `pollOutgoing` porque no son mensajes nuevos —no
+ * llevan burbuja ni tocan la vista previa del chat— sino cambios sobre uno
+ * que ya existe de los dos lados.
+ *
+ * La bandeja ya dejó el mensaje editado/eliminado en la base antes de encolar
+ * esto (igual que WhatsApp Web, que cambia la burbuja en el acto): acá sólo
+ * falta que se entere el teléfono de la clienta.
+ */
+async function pollMessageOps() {
+  if (!isSocketAlive()) return;
+
+  const { data: pending, error } = await supabase
+    .from("message_ops")
+    .select(
+      "id, message_id, op, body, messages!inner(external_id), conversations!inner(external_id, channel)",
+    )
+    .eq("status", "queued")
+    .order("created_at")
+    .limit(10);
+
+  if (error) {
+    console.error("[ops] select error:", error);
+    return;
+  }
+  if (!pending || pending.length === 0) return;
+
+  for (const op of pending as unknown as QueuedOp[]) {
+    const conv = op.conversations;
+    if (!conv || conv.channel !== "whatsapp") continue;
+
+    const { data: claim } = await supabase
+      .from("message_ops")
+      .update({ status: "sending" })
+      .eq("id", op.id)
+      .eq("status", "queued")
+      .select("id")
+      .maybeSingle();
+    if (!claim) continue;
+
+    try {
+      // Igual que en `sendOutgoing`: si el socket se cayó entre el fetch y
+      // ahora, esto es un error transitorio y no una operación inválida.
+      if (!currentSock) throw new Error("no_sock");
+
+      const externalId = op.messages?.external_id ?? null;
+      const key = externalId
+        ? { remoteJid: conv.external_id, id: externalId, fromMe: true }
+        : null;
+
+      if (!key) {
+        // Nunca llegó a salir (se canceló mientras estaba en la cola). No hay
+        // nada que borrar ni editar del otro lado: la operación ya se cumplió
+        // con el `revoked_at` que puso la bandeja.
+        console.log("→ op sin destino remoto, nada que hacer", op.id);
+      } else if (op.op === "revoke") {
+        await currentSock.sendMessage(conv.external_id, { delete: key });
+        console.log("→ eliminado para todos", op.message_id);
+      } else if (op.op === "edit") {
+        if (!op.body) throw new Error("edit sin texto");
+        await currentSock.sendMessage(conv.external_id, {
+          text: op.body,
+          edit: key,
+        });
+        console.log("→ editado", op.message_id);
+      } else {
+        throw new Error(`operación desconocida: ${op.op}`);
+      }
+
+      await supabase
+        .from("message_ops")
+        .update({ status: "done", processed_at: new Date().toISOString() })
+        .eq("id", op.id);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (isTransientSendError(msg)) {
+        console.warn("→ op diferida (conexión caída)", op.id, msg);
+        await supabase
+          .from("message_ops")
+          .update({ status: "queued" })
+          .eq("id", op.id);
+        return;
+      }
+      console.error("→ op falló", op.id, msg);
+      await supabase
+        .from("message_ops")
+        .update({
+          status: "failed",
+          error: msg.slice(0, 500),
+          processed_at: new Date().toISOString(),
+        })
+        .eq("id", op.id);
+    }
+  }
+}
+
+setInterval(() => void pollMessageOps(), 2000);
 
 // Automation tick — runs every 60s. Independent of pollOutgoing since
 // automations just enqueue messages that the regular poller picks up.
@@ -859,6 +1053,20 @@ async function connect() {
         const externalId = u.key.id;
         if (!externalId) continue;
         const update = u.update;
+
+        // Eliminado para todos y edición llegan por acá, ya sea porque los
+        // hizo la clienta o porque los hicimos nosotros desde el teléfono del
+        // salón. Baileys traduce el protocolMessage a este evento.
+        if (update.messageStubType === WAMessageStubType.REVOKE) {
+          await applyRemoteRevoke(u.key.remoteJid ?? null, externalId);
+          continue;
+        }
+        const edited = update.message?.editedMessage?.message;
+        if (edited) {
+          await applyRemoteEdit(u.key.remoteJid ?? null, externalId, edited);
+          continue;
+        }
+
         if (typeof update.status === "number") {
           const statusMap: Record<number, "sent" | "delivered" | "read"> = {
             2: "sent",

@@ -2,7 +2,14 @@
 
 import { addDays, format, isSameDay, startOfDay, startOfWeek } from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  MessageCircle,
+  Plus,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -29,6 +36,8 @@ type Props = {
   appointments: AppointmentWithRelations[];
   onOpenAppointment: (appointment: AppointmentWithRelations) => void;
   onCreate: (startsAtIso: string, professionalId: string) => void;
+  /** Abre el WhatsApp de la clienta del turno. */
+  onMessageClient: (appointment: AppointmentWithRelations) => void;
 };
 
 type Row =
@@ -65,6 +74,7 @@ export function MobileAgenda({
   appointments,
   onOpenAppointment,
   onCreate,
+  onMessageClient,
 }: Props) {
   // Este árbol sólo se monta en el cliente (el padre lo decide con
   // matchMedia), así que podemos leer el reloj al inicializar el estado.
@@ -413,6 +423,7 @@ export function MobileAgenda({
                         new Date(row.appointment.ends_at) < now
                       }
                       onClick={() => onOpenAppointment(row.appointment)}
+                      onMessage={() => onMessageClient(row.appointment)}
                     />
                   ),
                 )}
@@ -497,12 +508,14 @@ function AppointmentRow({
   showProfessional,
   past,
   onClick,
+  onMessage,
 }: {
   appointment: AppointmentWithRelations;
   professional: ProfessionalRow | undefined;
   showProfessional: boolean;
   past: boolean;
   onClick: () => void;
+  onMessage: () => void;
 }) {
   const start = new Date(appointment.starts_at);
   const end = new Date(appointment.ends_at);
@@ -513,12 +526,12 @@ function AppointmentRow({
   const tone = STATUS_TONE[appointment.status];
 
   return (
-    <li>
+    <li className="flex items-stretch">
       <button
         type="button"
         onClick={onClick}
         className={cn(
-          "flex w-full items-stretch gap-3 pl-3 pr-3 text-left transition-opacity active:bg-muted/60",
+          "flex min-w-0 flex-1 items-stretch gap-3 pl-3 text-left transition-opacity active:bg-muted/60",
           past && !dropped && "opacity-60",
         )}
       >
@@ -600,6 +613,20 @@ function AppointmentRow({
             </span>
           ) : null}
         </span>
+      </button>
+
+      {/*
+        Escribirle por WhatsApp, en su propia columna y no encima de la fila:
+        acá el dedo elige entre "abrir el turno" y "mandarle un mensaje", y dos
+        blancos que se pisan terminan siempre en el toque equivocado.
+      */}
+      <button
+        type="button"
+        onClick={onMessage}
+        aria-label={`Mandarle un WhatsApp a ${appointment.clients?.full_name ?? "la clienta"}`}
+        className="flex w-12 shrink-0 items-center justify-center border-b border-border text-muted-foreground active:bg-muted/60 [li:last-child_&]:border-b-0"
+      >
+        <MessageCircle className="size-5" strokeWidth={1.75} />
       </button>
     </li>
   );

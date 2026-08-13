@@ -4,20 +4,27 @@ import { format, isToday, isYesterday } from "date-fns";
 import { es } from "date-fns/locale";
 import {
   ArrowLeft,
+  Ban,
   CalendarPlus,
   Check,
   CheckCheck,
+  ChevronDown,
   CircleAlert,
   Clock,
   CornerDownRight,
   FileText,
+  Forward,
   Hourglass,
   Lock,
   MessageCircle,
   MoreHorizontal,
   MoreVertical,
+  Pencil,
+  Pin,
+  PinOff,
   Search,
   Send,
+  X,
 } from "lucide-react";
 import {
   useEffect,
@@ -30,6 +37,12 @@ import {
 import { toast } from "sonner";
 import { MobileChromeAccount } from "@/components/dashboard/mobile-chrome";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,8 +50,10 @@ import { onOpenConversation } from "@/lib/push/open-conversation";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
+  editMessageAction,
   markConversationReadAction,
   sendMessageAction,
+  togglePinConversationAction,
 } from "./actions";
 import type {
   AppointmentWithRelations,
@@ -49,7 +64,9 @@ import type {
 import { ChatAvatar } from "./chat-avatar";
 import { ChatTagsBar } from "./chat-tags-bar";
 import type { ClientTag, PaymentMethod, QuickReply } from "./config-types";
+import { ForwardDialog } from "./forward-dialog";
 import { MediaInput } from "./media-input";
+import { MessageActions } from "./message-actions";
 import { MessageContent } from "./message-content";
 import { NewTurnoDialog } from "./new-turno-dialog";
 import { PresupuestoDialog } from "./presupuesto-dialog";
@@ -234,6 +251,10 @@ export function CrmView({
   const [query, setQuery] = useState("");
   const [newTurnoOpen, setNewTurnoOpen] = useState(false);
   const [presupuestoOpen, setPresupuestoOpen] = useState(false);
+  /** Mensaje que se está editando; el campo de escritura pasa a modo edición. */
+  const [editing, setEditing] = useState<MessageRow | null>(null);
+  /** Mensaje elegido para reenviar; abre el selector de chats. */
+  const [forwarding, setForwarding] = useState<MessageRow | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLInputElement | null>(null);
 
@@ -250,6 +271,7 @@ export function CrmView({
         .from("conversations")
         .select("*, clients ( id, full_name, phone, tags )")
         .eq("archived", false)
+        .order("pinned_at", { ascending: false, nullsFirst: false })
         .order("last_message_at", { ascending: false, nullsFirst: false })
         .limit(100);
       if (!cancelled && data) setConversations(data as ConversationWithClient[]);
@@ -380,6 +402,19 @@ export function CrmView({
     composerRef.current?.focus();
   }, [selectedId]);
 
+  // Cambiar de chat cancela una edición a medias: ese texto pertenecía al
+  // mensaje de otra conversación y mandarlo acá sería un accidente. Se ajusta
+  // durante el render y no en un efecto para que la cinta de "Editando" no
+  // llegue a dibujarse sobre el chat nuevo.
+  const [lastSelectedId, setLastSelectedId] = useState(selectedId);
+  if (selectedId !== lastSelectedId) {
+    setLastSelectedId(selectedId);
+    if (editing) {
+      setEditing(null);
+      setDraft("");
+    }
+  }
+
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     const el = scrollRef.current;
@@ -387,11 +422,18 @@ export function CrmView({
     el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  // Al entrar en modo edición el cursor va al campo, con el texto viejo ya
+  // cargado. Va en un efecto y no en el handler del menú: mientras el menú
+  // sigue montado su trampa de foco lo devuelve a la fuerza.
+  useEffect(() => {
+    if (editing) composerRef.current?.focus();
+  }, [editing]);
+
   const selected = conversations.find((c) => c.id === selectedId) ?? null;
 
   const filteredConversations = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return conversations.filter((c) => {
+    const matching = conversations.filter((c) => {
       if (statusFilter === "unread" && c.unread_count <= 0) return false;
       if (statusFilter === "awaiting" && !c.awaiting_reply) return false;
       if (statusFilter === "answered" && c.awaiting_reply) return false;
@@ -412,6 +454,22 @@ export function CrmView({
         if (!haystack.includes(needle)) return false;
       }
       return true;
+    });
+
+    // Los fijados van arriba de todo, entre ellos por cuándo se fijaron. El
+    // orden se rehace acá y no sólo en la consulta porque la lista también se
+    // actualiza en caliente (realtime y el parche optimista del "fijar").
+    return [...matching].sort((a, b) => {
+      const pinA = a.pinned_at ? new Date(a.pinned_at).getTime() : 0;
+      const pinB = b.pinned_at ? new Date(b.pinned_at).getTime() : 0;
+      if (pinA !== pinB) return pinB - pinA;
+      const lastA = a.last_message_at
+        ? new Date(a.last_message_at).getTime()
+        : 0;
+      const lastB = b.last_message_at
+        ? new Date(b.last_message_at).getTime()
+        : 0;
+      return lastB - lastA;
     });
   }, [conversations, statusFilter, tagFilter, query]);
 
@@ -446,11 +504,71 @@ export function CrmView({
   const filtersActive =
     statusFilter !== "all" || tagFilter.length > 0 || query.trim().length > 0;
 
+  /**
+   * Fijar / desfijar. El parche local va primero: la fila salta arriba en el
+   * acto y el refetch de la suscripción confirma después. Si el servidor
+   * rechaza, se vuelve a como estaba.
+   */
+  function togglePin(conversation: ConversationWithClient) {
+    const previous = conversation.pinned_at;
+    const next = previous ? null : new Date().toISOString();
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === conversation.id ? { ...c, pinned_at: next } : c,
+      ),
+    );
+
+    void (async () => {
+      const result = await togglePinConversationAction(
+        conversation.id,
+        next !== null,
+      );
+      if (result.error) {
+        toast.error(result.error);
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === conversation.id ? { ...c, pinned_at: previous } : c,
+          ),
+        );
+      }
+    })();
+  }
+
+  function startEdit(message: MessageRow) {
+    setEditing(message);
+    setDraft(message.body ?? "");
+  }
+
+  function cancelEdit() {
+    setEditing(null);
+    setDraft("");
+    composerRef.current?.focus();
+  }
+
   function handleSend(e: React.FormEvent) {
     e.preventDefault();
     if (!selected) return;
     const text = draft.trim();
     if (!text) return;
+
+    // Modo edición: el campo no manda un mensaje nuevo, reescribe el que está
+    // enganchado arriba. Igual que en WhatsApp, el Enter confirma la edición.
+    if (editing) {
+      const target = editing;
+      setDraft("");
+      setEditing(null);
+      composerRef.current?.focus();
+      startTransition(async () => {
+        const result = await editMessageAction(target.id, text);
+        if (result.error) {
+          toast.error(result.error);
+          // Devolvemos el texto y el modo edición: el mensaje sigue como estaba.
+          setEditing(target);
+          setDraft(text);
+        }
+      });
+      return;
+    }
 
     // Vaciamos el campo y devolvemos el foco en el acto: en un chat se escribe
     // en ráfagas y esperar la respuesta del servidor para poder seguir tipeando
@@ -688,8 +806,9 @@ export function CrmView({
                 const showPhoneInList =
                   phone && (c.clients?.full_name || c.display_name);
                 const wait = c.awaiting_reply ? waitState(c, now) : null;
+                const pinned = !!c.pinned_at;
                 return (
-                  <li key={c.id}>
+                  <li key={c.id} className="group/row relative">
                     <button
                       type="button"
                       onClick={() => setSelectedId(c.id)}
@@ -721,7 +840,13 @@ export function CrmView({
                         La separación entre filas va acá y no en el <li>: así
                         la línea arranca después del avatar, como en WhatsApp.
                       */}
-                      <div className="min-w-0 flex-1 border-b border-[var(--wa-divider)] pb-2.5 [li:last-child_&]:border-b-0">
+                      {/*
+                        En el teléfono el botón del menú vive siempre visible
+                        sobre el borde derecho, así que la fila le reserva su
+                        lugar. En escritorio aparece con el hover y no hace
+                        falta el hueco.
+                      */}
+                      <div className="min-w-0 flex-1 border-b border-[var(--wa-divider)] pb-2.5 pr-7 md:pr-0 [li:last-child_&]:border-b-0">
                         <div className="flex items-baseline justify-between gap-2">
                           <span
                             className={cn(
@@ -751,11 +876,20 @@ export function CrmView({
                           <span className="truncate text-[0.8125rem] text-[var(--wa-text-2)]">
                             {c.last_message_preview ?? "Sin mensajes"}
                           </span>
-                          {unread ? (
-                            <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[var(--wa-badge)] px-1.5 text-[0.6875rem] font-medium tabular-nums text-[var(--wa-badge-text)]">
-                              {c.unread_count > 99 ? "99+" : c.unread_count}
-                            </span>
-                          ) : null}
+                          <span className="flex shrink-0 items-center gap-1.5">
+                            {pinned ? (
+                              <Pin
+                                role="img"
+                                aria-label="Chat fijado"
+                                className="size-3.5 -rotate-45 text-[var(--wa-text-3)]"
+                              />
+                            ) : null}
+                            {unread ? (
+                              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--wa-badge)] px-1.5 text-[0.6875rem] font-medium tabular-nums text-[var(--wa-badge-text)]">
+                                {c.unread_count > 99 ? "99+" : c.unread_count}
+                              </span>
+                            ) : null}
+                          </span>
                         </div>
                         {(c.awaiting_reply ||
                           (c.clients?.tags?.length ?? 0) > 0) && (
@@ -808,6 +942,42 @@ export function CrmView({
                         )}
                       </div>
                     </button>
+
+                    {/*
+                      Menú de la fila, el del chevron de WhatsApp Web. Va como
+                      hermano del <button> y no adentro: un botón dentro de
+                      otro no es HTML válido y el click se pelearía entre los
+                      dos. Se apoya sobre el borde derecho, donde no tapa el
+                      nombre ni la vista previa.
+                    */}
+                    <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-70 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100 has-[[data-state=open]]:opacity-100 md:opacity-0">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label={`Opciones de ${title}`}
+                            className="flex size-6 items-center justify-center rounded-full bg-[var(--wa-panel)]/80 text-[var(--wa-icon)] backdrop-blur-sm hover:bg-[var(--wa-hover)]"
+                          >
+                            <ChevronDown className="size-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-44">
+                          <DropdownMenuItem onSelect={() => togglePin(c)}>
+                            {pinned ? (
+                              <>
+                                <PinOff className="size-4" />
+                                Desfijar chat
+                              </>
+                            ) : (
+                              <>
+                                <Pin className="size-4" />
+                                Fijar chat
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </li>
                 );
               })}
@@ -993,49 +1163,101 @@ export function CrmView({
                   <MessagesRender
                     messages={messages}
                     conversationId={selected.id}
+                    channel={selected.channel}
+                    onEdit={startEdit}
+                    onForward={setForwarding}
                   />
                 )}
               </div>
             </div>
 
-            <form
-              onSubmit={handleSend}
-              className="wa-composer flex shrink-0 items-center gap-1.5 bg-[var(--wa-composer)] p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:gap-2 sm:px-4 md:pb-2"
-            >
-              <MediaInput
-                conversationId={selected.id}
-                disabled={isPending}
-              />
-              <QuickReplyPicker
-                replies={quickReplies}
-                onSelect={(body) =>
-                  setDraft((d) => (d.trim() ? `${d} ${body}` : body))
-                }
-                disabled={isPending}
-              />
+            <div className="shrink-0 bg-[var(--wa-composer)]">
               {/*
-                A propósito no se deshabilita mientras se envía: `disabled`
-                le saca el foco al input y obliga a volver a clickear para
-                escribir el mensaje siguiente.
+                Cinta de edición: mientras está enganchada, el campo de abajo
+                reescribe ese mensaje en vez de mandar uno nuevo. Es la misma
+                señal que usa WhatsApp Web para que nadie se confunda de gesto.
               */}
-              <Input
-                ref={composerRef}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="Escribí un mensaje"
-                autoComplete="off"
-                className="min-w-0 flex-1 border-transparent bg-[var(--wa-composer-field)] text-[var(--wa-text)] placeholder:text-[var(--wa-text-2)]"
-              />
-              <Button
-                type="submit"
-                disabled={draft.trim().length === 0}
-                size="icon"
-                className="shrink-0 rounded-full bg-[var(--wa-accent)] text-white hover:bg-[var(--wa-accent-strong)]"
+              {editing ? (
+                <div className="flex items-center gap-2 border-b border-[var(--wa-divider)] px-3 py-2 sm:px-4">
+                  <Pencil className="size-4 shrink-0 text-[var(--wa-accent-strong)]" />
+                  <div className="min-w-0 flex-1 leading-tight">
+                    <div className="text-[0.8125rem] font-medium text-[var(--wa-accent-strong)]">
+                      Editando mensaje
+                    </div>
+                    <div className="truncate text-[0.8125rem] text-[var(--wa-text-2)]">
+                      {editing.body}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={cancelEdit}
+                    aria-label="Cancelar la edición"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full text-[var(--wa-icon)] hover:bg-[var(--wa-hover)]"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+              ) : null}
+
+              <form
+                onSubmit={handleSend}
+                className="wa-composer flex items-center gap-1.5 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:gap-2 sm:px-4 md:pb-2"
               >
-                <Send className="size-4" />
-                <span className="sr-only">Enviar</span>
-              </Button>
-            </form>
+                {/* Editando no se adjuntan archivos: WhatsApp sólo deja
+                    cambiar el texto de un mensaje ya mandado. */}
+                {editing ? null : (
+                  <>
+                    <MediaInput
+                      conversationId={selected.id}
+                      disabled={isPending}
+                    />
+                    <QuickReplyPicker
+                      replies={quickReplies}
+                      onSelect={(body) =>
+                        setDraft((d) => (d.trim() ? `${d} ${body}` : body))
+                      }
+                      disabled={isPending}
+                    />
+                  </>
+                )}
+                {/*
+                  A propósito no se deshabilita mientras se envía: `disabled`
+                  le saca el foco al input y obliga a volver a clickear para
+                  escribir el mensaje siguiente.
+                */}
+                <Input
+                  ref={composerRef}
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape" && editing) {
+                      e.preventDefault();
+                      cancelEdit();
+                    }
+                  }}
+                  placeholder={
+                    editing ? "Editá el mensaje" : "Escribí un mensaje"
+                  }
+                  autoComplete="off"
+                  className="min-w-0 flex-1 border-transparent bg-[var(--wa-composer-field)] text-[var(--wa-text)] placeholder:text-[var(--wa-text-2)]"
+                />
+                <Button
+                  type="submit"
+                  disabled={draft.trim().length === 0}
+                  size="icon"
+                  className="shrink-0 rounded-full bg-[var(--wa-accent)] text-white hover:bg-[var(--wa-accent-strong)]"
+                >
+                  {editing ? (
+                    <Check className="size-4" />
+                  ) : (
+                    <Send className="size-4" />
+                  )}
+                  <span className="sr-only">
+                    {editing ? "Guardar la edición" : "Enviar"}
+                  </span>
+                </Button>
+              </form>
+            </div>
           </>
         )}
       </section>
@@ -1057,6 +1279,16 @@ export function CrmView({
         services={bookingServices}
         paymentMethods={paymentMethods}
       />
+
+      <ForwardDialog
+        message={forwarding}
+        conversations={conversations}
+        currentConversationId={selectedId}
+        titleOf={conversationTitle}
+        onOpenChange={(open) => {
+          if (!open) setForwarding(null);
+        }}
+      />
     </div>
   );
 }
@@ -1064,9 +1296,15 @@ export function CrmView({
 function MessagesRender({
   messages,
   conversationId,
+  channel,
+  onEdit,
+  onForward,
 }: {
   messages: MessageRow[];
   conversationId: string;
+  channel: string;
+  onEdit: (message: MessageRow) => void;
+  onForward: (message: MessageRow) => void;
 }) {
   // Index by external_id so we can resolve "this message replies to X"
   const byExternalId = new Map<string, MessageRow>();
@@ -1144,6 +1382,9 @@ function MessagesRender({
             key={it.m.id}
             message={it.m}
             conversationId={conversationId}
+            channel={channel}
+            onEdit={onEdit}
+            onForward={onForward}
             tail={it.tail}
             replyTo={
               it.m.reply_to_external_id
@@ -1201,22 +1442,39 @@ function ReplyPreview({
 function Bubble({
   message,
   conversationId,
+  channel,
   replyTo,
   reactions,
   tail,
+  onEdit,
+  onForward,
 }: {
   message: MessageRow;
   conversationId: string;
+  channel: string;
   replyTo: MessageRow | null;
   reactions: Record<string, number> | null;
   /** Primer mensaje de la tanda: es el que lleva el piquito. */
   tail: boolean;
+  onEdit: (message: MessageRow) => void;
+  onForward: (message: MessageRow) => void;
 }) {
   const isOutbound = message.direction === "outbound";
-  const isMedia = message.type !== "text" && !!message.media_url;
+  const revoked = !!message.revoked_at;
+  const isMedia = !revoked && message.type !== "text" && !!message.media_url;
   // We can only react to messages that have been confirmed by WhatsApp
   // (i.e. they have an external_id we can reference in the reaction key).
-  const canReact = !!message.external_id;
+  const canReact = !!message.external_id && !revoked;
+
+  const actions = (
+    <MessageActions
+      message={message}
+      channel={channel}
+      alignEnd={isOutbound}
+      onEdit={() => onEdit(message)}
+      onForward={() => onForward(message)}
+    />
+  );
 
   return (
     <div
@@ -1226,12 +1484,17 @@ function Bubble({
       )}
     >
       {/* Picker on the outbound side — left of bubble */}
-      {isOutbound && canReact ? (
-        <ReactionPicker
-          conversationId={conversationId}
-          targetExternalId={message.external_id!}
-          alignRight
-        />
+      {isOutbound ? (
+        <>
+          {actions}
+          {canReact ? (
+            <ReactionPicker
+              conversationId={conversationId}
+              targetExternalId={message.external_id!}
+              alignRight
+            />
+          ) : null}
+        </>
       ) : null}
 
       <div
@@ -1242,21 +1505,48 @@ function Bubble({
             : "bg-[var(--wa-bubble-in)]",
           // El piquito recorta la esquina superior del lado que corresponde.
           tail && (isOutbound ? "wa-tail-out rounded-tr-none" : "wa-tail-in rounded-tl-none"),
-          message.status === "failed" && "bg-red-50 ring-1 ring-red-200",
+          !revoked && message.status === "failed" && "bg-red-50 ring-1 ring-red-200",
           isMedia && "px-2 pt-2 pb-1.5",
         )}
       >
-        {replyTo ? (
-          <ReplyPreview message={replyTo} isOutbound={isOutbound} />
-        ) : null}
-        <MessageContent message={message} />
+        {revoked ? (
+          /*
+            El mensaje eliminado no se borra de la conversación: deja el hueco
+            con el aviso, igual que WhatsApp. La hora se queda para que el
+            hilo no pierda el ritmo de la charla.
+          */
+          <div className="flex items-center gap-1.5 pr-1 text-sm italic text-[var(--wa-text-2)]">
+            <Ban className="size-3.5 shrink-0" />
+            {isOutbound
+              ? "Eliminaste este mensaje"
+              : "Se eliminó este mensaje"}
+          </div>
+        ) : (
+          <>
+            {message.forwarded ? (
+              <div className="mb-0.5 flex items-center gap-1 text-[0.75rem] italic text-[var(--wa-text-2)]">
+                <Forward className="size-3" />
+                Reenviado
+              </div>
+            ) : null}
+            {replyTo ? (
+              <ReplyPreview message={replyTo} isOutbound={isOutbound} />
+            ) : null}
+            <MessageContent message={message} />
+          </>
+        )}
         <div className="mt-0.5 flex items-center justify-end gap-1 text-[var(--wa-meta)]">
+          {message.edited_at && !revoked ? (
+            <span className="text-[0.6875rem] italic">editado</span>
+          ) : null}
           <span className="text-[0.6875rem] tabular-nums">
             {format(new Date(message.sent_at), "HH:mm")}
           </span>
-          {isOutbound ? <StatusIcon status={message.status} /> : null}
+          {isOutbound && !revoked ? (
+            <StatusIcon status={message.status} />
+          ) : null}
         </div>
-        {message.status === "failed" && message.error ? (
+        {!revoked && message.status === "failed" && message.error ? (
           <div
             className="mt-0.5 text-[0.6875rem] text-destructive"
             title={message.error}
@@ -1265,7 +1555,7 @@ function Bubble({
           </div>
         ) : null}
 
-        {reactions ? (
+        {reactions && !revoked ? (
           <ReactionsPill
             counts={reactions}
             className={cn(
@@ -1276,11 +1566,16 @@ function Bubble({
         ) : null}
       </div>
 
-      {!isOutbound && canReact ? (
-        <ReactionPicker
-          conversationId={conversationId}
-          targetExternalId={message.external_id!}
-        />
+      {!isOutbound ? (
+        <>
+          {canReact ? (
+            <ReactionPicker
+              conversationId={conversationId}
+              targetExternalId={message.external_id!}
+            />
+          ) : null}
+          {actions}
+        </>
       ) : null}
     </div>
   );

@@ -552,6 +552,7 @@ export type Database = {
           id: string
           last_message_at: string | null
           last_message_preview: string | null
+          pinned_at: string | null
           unread_count: number
           updated_at: string
           wa_phone: string | null
@@ -568,6 +569,7 @@ export type Database = {
           id?: string
           last_message_at?: string | null
           last_message_preview?: string | null
+          pinned_at?: string | null
           unread_count?: number
           updated_at?: string
           wa_phone?: string | null
@@ -584,6 +586,7 @@ export type Database = {
           id?: string
           last_message_at?: string | null
           last_message_preview?: string | null
+          pinned_at?: string | null
           unread_count?: number
           updated_at?: string
           wa_phone?: string | null
@@ -758,6 +761,67 @@ export type Database = {
         }
         Relationships: []
       }
+      message_ops: {
+        Row: {
+          body: string | null
+          conversation_id: string
+          created_at: string
+          created_by: string | null
+          error: string | null
+          id: string
+          message_id: string
+          op: string
+          processed_at: string | null
+          status: string
+        }
+        Insert: {
+          body?: string | null
+          conversation_id: string
+          created_at?: string
+          created_by?: string | null
+          error?: string | null
+          id?: string
+          message_id: string
+          op: string
+          processed_at?: string | null
+          status?: string
+        }
+        Update: {
+          body?: string | null
+          conversation_id?: string
+          created_at?: string
+          created_by?: string | null
+          error?: string | null
+          id?: string
+          message_id?: string
+          op?: string
+          processed_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_ops_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_ops_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_ops_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           body: string | null
@@ -765,9 +829,11 @@ export type Database = {
           created_at: string
           delivered_at: string | null
           direction: Database["public"]["Enums"]["message_direction"]
+          edited_at: string | null
           error: string | null
           external_id: string | null
           failed_at: string | null
+          forwarded: boolean
           id: string
           media_filename: string | null
           media_mime: string | null
@@ -775,6 +841,7 @@ export type Database = {
           reaction_target_external_id: string | null
           read_at: string | null
           reply_to_external_id: string | null
+          revoked_at: string | null
           sent_at: string
           sent_by: string | null
           status: Database["public"]["Enums"]["message_status"]
@@ -790,9 +857,11 @@ export type Database = {
           created_at?: string
           delivered_at?: string | null
           direction: Database["public"]["Enums"]["message_direction"]
+          edited_at?: string | null
           error?: string | null
           external_id?: string | null
           failed_at?: string | null
+          forwarded?: boolean
           id?: string
           media_filename?: string | null
           media_mime?: string | null
@@ -800,6 +869,7 @@ export type Database = {
           reaction_target_external_id?: string | null
           read_at?: string | null
           reply_to_external_id?: string | null
+          revoked_at?: string | null
           sent_at?: string
           sent_by?: string | null
           status?: Database["public"]["Enums"]["message_status"]
@@ -815,9 +885,11 @@ export type Database = {
           created_at?: string
           delivered_at?: string | null
           direction?: Database["public"]["Enums"]["message_direction"]
+          edited_at?: string | null
           error?: string | null
           external_id?: string | null
           failed_at?: string | null
+          forwarded?: boolean
           id?: string
           media_filename?: string | null
           media_mime?: string | null
@@ -825,6 +897,7 @@ export type Database = {
           reaction_target_external_id?: string | null
           read_at?: string | null
           reply_to_external_id?: string | null
+          revoked_at?: string | null
           sent_at?: string
           sent_by?: string | null
           status?: Database["public"]["Enums"]["message_status"]

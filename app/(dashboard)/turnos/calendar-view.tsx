@@ -52,6 +52,7 @@ import type {
   ProfessionalRow,
   ServiceRow,
 } from "./types";
+import { WhatsAppDialog } from "./whatsapp-dialog";
 
 type ServiceCategory = Database["public"]["Enums"]["service_category"];
 
@@ -131,6 +132,20 @@ export function CalendarView({
   );
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [view, setView] = useState<"day" | "week">("day");
+  /** Turno cuya clienta va a recibir un WhatsApp. */
+  const [messaging, setMessaging] = useState<AppointmentWithRelations | null>(
+    null,
+  );
+
+  // Los turnos se leen desde el botón que inyectamos en cada tarjeta de
+  // FullCalendar. Va por ref para que el callback de montaje no cambie de
+  // identidad en cada render: si cambia, FullCalendar vuelve a montar todos
+  // los eventos de la grilla. Se sincroniza en un efecto —no durante el
+  // render— y eso alcanza: el botón lo lee recién cuando alguien lo toca.
+  const appointmentsRef = useRef(appointments);
+  useEffect(() => {
+    appointmentsRef.current = appointments;
+  }, [appointments]);
 
   // Rango visible que nos informa FullCalendar. Es la fuente de verdad del
   // título, de los totales y del resaltado del date-picker: así el toolbar
@@ -321,6 +336,7 @@ export function CalendarView({
     const start = arg.event.start;
     if (!resourceId || !start) return;
     const startsAtIso = start.toISOString();
+    const appointmentId = arg.event.id;
 
     const btn = document.createElement("button");
     btn.type = "button";
@@ -342,6 +358,27 @@ export function CalendarView({
       setDialogOpen(true);
     });
     arg.el.appendChild(btn);
+
+    // Segundo botón, al lado del "+": escribirle a la clienta por WhatsApp
+    // sin salir de la agenda. El ícono va como SVG a mano porque esto se
+    // inyecta en el DOM de FullCalendar, fuera del árbol de React.
+    const wa = document.createElement("button");
+    wa.type = "button";
+    wa.className = "zenna-event-wa";
+    wa.title = "Mandarle un WhatsApp a la clienta";
+    wa.setAttribute("aria-label", "Mandarle un WhatsApp a la clienta");
+    wa.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>';
+    wa.addEventListener("mousedown", (e) => e.stopPropagation());
+    wa.addEventListener("click", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const found = appointmentsRef.current.find(
+        (a) => a.id === appointmentId,
+      );
+      if (found) setMessaging(found);
+    });
+    arg.el.appendChild(wa);
   }, []);
 
   const handleEventChange = useCallback(
@@ -380,6 +417,16 @@ export function CalendarView({
       setDialogMode(null);
       router.refresh();
     }
+  }
+
+  /**
+   * Del turno abierto al WhatsApp de la clienta. El diálogo del turno se
+   * cierra primero: dos modales apilados dejan el foco atrapado en el de
+   * abajo y el de arriba no se puede cerrar con Escape.
+   */
+  function openMessaging(appointment: AppointmentWithRelations) {
+    onDialogChange(false);
+    setMessaging(appointment);
   }
 
   // Abre el diálogo de alta con la próxima media hora redonda como default.
@@ -487,6 +534,7 @@ export function CalendarView({
             setDialogMode({ type: "create", professionalId, startsAt });
             setDialogOpen(true);
           }}
+          onMessageClient={setMessaging}
         />
         <AppointmentDialog
           open={dialogOpen}
@@ -496,6 +544,13 @@ export function CalendarView({
           services={services}
           clients={clients}
           appointments={appointments}
+          onMessageClient={openMessaging}
+        />
+        <WhatsAppDialog
+          appointment={messaging}
+          onOpenChange={(open) => {
+            if (!open) setMessaging(null);
+          }}
         />
       </div>
     );
@@ -717,6 +772,14 @@ export function CalendarView({
         services={services}
         clients={clients}
         appointments={appointments}
+        onMessageClient={openMessaging}
+      />
+
+      <WhatsAppDialog
+        appointment={messaging}
+        onOpenChange={(open) => {
+          if (!open) setMessaging(null);
+        }}
       />
     </div>
   );

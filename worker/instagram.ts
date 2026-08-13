@@ -210,6 +210,9 @@ async function pollOutgoing(): Promise<void> {
     .eq("status", "queued")
     .eq("direction", "outbound")
     .eq("conversations.channel", "instagram")
+    // Envío cancelado desde la bandeja antes de salir: queda 'queued' con
+    // `revoked_at` puesto para que nunca se mande.
+    .is("revoked_at", null)
     .order("sent_at")
     .limit(BATCH_SIZE);
 

@@ -57,6 +57,8 @@ export default async function CrmPage({ searchParams }: Props) {
       .from("conversations")
       .select("*, clients ( id, full_name, phone, tags )")
       .eq("archived", false)
+      // Los chats fijados van arriba de todo, como en WhatsApp.
+      .order("pinned_at", { ascending: false, nullsFirst: false })
       .order("last_message_at", { ascending: false, nullsFirst: false })
       .limit(100),
     supabase.from("client_tags").select("*").order("active", { ascending: false }).order("name"),
