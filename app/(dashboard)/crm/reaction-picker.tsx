@@ -1,6 +1,6 @@
 "use client";
 
-import { SmilePlus } from "lucide-react";
+import { Plus, SmilePlus } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { sendReactionAction } from "./actions";
+import { EmojiPanel } from "./emoji-picker";
 
 const QUICK_REACTIONS = ["❤️", "👍", "😂", "😮", "😢", "🙏"];
 
@@ -24,10 +25,19 @@ export function ReactionPicker({
   alignRight?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  /** El "+" cambia las seis de siempre por el catálogo completo. */
+  const [expanded, setExpanded] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  function handleOpenChange(next: boolean) {
+    setOpen(next);
+    // Cerrado vuelve a las rápidas: la próxima reacción arranca de cero.
+    if (!next) setExpanded(false);
+  }
 
   function react(emoji: string) {
     setOpen(false);
+    setExpanded(false);
     startTransition(async () => {
       const result = await sendReactionAction({
         conversationId,
@@ -39,7 +49,7 @@ export function ReactionPicker({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -59,18 +69,40 @@ export function ReactionPicker({
         align={alignRight ? "end" : "start"}
         side="top"
         sideOffset={4}
-        className="w-auto p-1 flex gap-0.5"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        className={cn(
+          expanded
+            ? "w-[min(21rem,calc(100vw-1.5rem))] p-0"
+            : "w-auto p-1 flex gap-0.5",
+        )}
       >
-        {QUICK_REACTIONS.map((emoji) => (
-          <button
-            key={emoji}
-            type="button"
-            onClick={() => react(emoji)}
-            className="size-9 rounded-md hover:bg-muted text-xl leading-none transition-transform hover:scale-110"
-          >
-            {emoji}
-          </button>
-        ))}
+        {expanded ? (
+          <EmojiPanel onSelect={react} />
+        ) : (
+          <>
+            {QUICK_REACTIONS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => react(emoji)}
+                className="wa-emoji size-9 rounded-md hover:bg-muted text-xl leading-none transition-transform hover:scale-110"
+              >
+                {emoji}
+              </button>
+            ))}
+            {/* Igual que en WhatsApp: el "+" abre el resto del teclado de
+                emojis sin sacar de encima el mensaje que se está reaccionando. */}
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              aria-label="Más emojis"
+              title="Más emojis"
+              className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+            >
+              <Plus className="size-4" />
+            </button>
+          </>
+        )}
       </PopoverContent>
     </Popover>
   );

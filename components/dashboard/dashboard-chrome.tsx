@@ -39,7 +39,7 @@ export function DashboardChrome({
   items: NavItem[];
   profile: { role: AppRole };
   email: string;
-  /** No leídos de la bandeja, para el globo de la pestaña Chats. */
+  /** Chats sin leer de la bandeja, para el globo de la pestaña Chats. */
   unreadCount?: number;
   children: ReactNode;
 }) {
@@ -53,7 +53,7 @@ export function DashboardChrome({
   // El número que trae el servidor se congela apenas se navega (el layout no
   // se vuelve a montar), así que la cuenta sigue viva del lado del cliente.
   // Es la misma señal en el rail del escritorio y en la barra del teléfono:
-  // desde cualquier sección se ve si hay mensajes esperando.
+  // desde cualquier sección se ve cuántos chats hay esperando.
   const hasInbox = items.some((item) => item.href === "/crm");
   const liveUnread = useInboxUnread(unreadCount, hasInbox);
 

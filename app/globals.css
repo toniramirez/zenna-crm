@@ -846,6 +846,20 @@
   box-shadow: none;
 }
 
+/*
+ * Emojis del selector. Se pide la fuente de emojis del sistema antes que la
+ * de la app: si no, los que tienen versión en blanco y negro (❤️, ✂️, ⚠️)
+ * salen dibujados como texto en algunas plataformas y la grilla queda
+ * despareja. Va fuera de `.wa-scope` porque el popover se monta en un portal,
+ * afuera del árbol de la bandeja.
+ */
+.wa-emoji {
+  font-family:
+    "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla",
+    "EmojiOne Color", "Android Emoji", sans-serif;
+  line-height: 1;
+}
+
 /* ── Barra de pestañas del teléfono ───────────────────────────────────────
  * La navegación de la app en el celular es esta barra, no el rail ni el menú
  * hamburguesa: pastilla flotante apoyada abajo, con el ítem activo marcado

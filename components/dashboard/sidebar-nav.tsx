@@ -19,7 +19,7 @@ export function SidebarNav({
   items: NavItem[];
   onNavigate?: () => void;
   compact?: boolean;
-  /** Contadores por href. Hoy sólo los mensajes sin leer de la bandeja. */
+  /** Contadores por href. Hoy sólo los chats sin leer de la bandeja. */
   badges?: Record<string, number>;
 }) {
   const pathname = usePathname();
@@ -33,7 +33,7 @@ export function SidebarNav({
         const badge = badges?.[item.href] ?? 0;
         const label =
           badge > 0
-            ? `${item.label}, ${badge} sin leer`
+            ? `${item.label}, ${badge} ${badge === 1 ? "chat" : "chats"} sin leer`
             : item.label;
         return (
           <Link

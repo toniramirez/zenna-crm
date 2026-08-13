@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { countInboxUnread } from "@/lib/inbox-unread";
 import { createClient } from "@/lib/supabase/client";
 
 /**
- * Mensajes sin leer de toda la bandeja, en vivo.
+ * Chats sin leer de la bandeja, en vivo.
+ *
+ * Cuenta conversaciones, no mensajes: el globo dice cuántas charlas hay sin
+ * abrir, que es lo que se ve en la lista como globos verdes.
  *
  * El layout del dashboard cuenta los no leídos una vez, en el servidor, pero
  * el layout no se vuelve a renderizar al navegar entre secciones: sin esto el
@@ -37,13 +41,9 @@ export function useInboxUnread(initial: number, enabled: boolean): number {
     let cancelled = false;
 
     async function refetch() {
-      const { data } = await supabase
-        .from("conversations")
-        .select("unread_count")
-        .eq("archived", false)
-        .gt("unread_count", 0);
-      if (cancelled || !data) return;
-      setCount(data.reduce((total, row) => total + row.unread_count, 0));
+      const next = await countInboxUnread(supabase);
+      if (cancelled) return;
+      setCount(next);
     }
 
     const channel = supabase

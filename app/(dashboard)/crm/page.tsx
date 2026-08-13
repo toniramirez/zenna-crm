@@ -1,5 +1,6 @@
 import { addDays, startOfDay } from "date-fns";
 import { requireRole } from "@/lib/auth";
+import { INBOX_LIMIT } from "@/lib/inbox-unread";
 import { createClient } from "@/lib/supabase/server";
 import type { AppointmentWithRelations } from "../turnos/types";
 import type {
@@ -60,7 +61,7 @@ export default async function CrmPage({ searchParams }: Props) {
       // Los chats fijados van arriba de todo, como en WhatsApp.
       .order("pinned_at", { ascending: false, nullsFirst: false })
       .order("last_message_at", { ascending: false, nullsFirst: false })
-      .limit(100),
+      .limit(INBOX_LIMIT),
     supabase.from("client_tags").select("*").order("active", { ascending: false }).order("name"),
     supabase.from("quick_replies").select("*").order("active", { ascending: false }).order("label"),
     supabase.from("automation_flows").select("*").order("active", { ascending: false }).order("name"),

@@ -5,7 +5,9 @@
       "Bash(git commit *)",
       "Bash(git --no-pager log --oneline -3)",
       "Bash(npx next *)",
-      "Bash(grep -n \"^export function AppointmentDialog\\\\|^}: Props\\)\\\\|appointments = \\\\[\\\\]\\\\|appointments,$\" app/\\\\\\(dashboard\\\\\\)/turnos/appointment-dialog.tsx)"
+      "Bash(grep -n \"^export function AppointmentDialog\\\\|^}: Props\\)\\\\|appointments = \\\\[\\\\]\\\\|appointments,$\" app/\\\\\\(dashboard\\\\\\)/turnos/appointment-dialog.tsx)",
+      "Bash(npx eslint *)",
+      "Bash(npm run *)"
     ]
   },
   "enabledMcpjsonServers": [

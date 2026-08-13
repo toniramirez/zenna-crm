@@ -64,6 +64,7 @@ import type {
 import { ChatAvatar } from "./chat-avatar";
 import { ChatTagsBar } from "./chat-tags-bar";
 import type { ClientTag, PaymentMethod, QuickReply } from "./config-types";
+import { EmojiPicker } from "./emoji-picker";
 import { ForwardDialog } from "./forward-dialog";
 import { MediaInput } from "./media-input";
 import { MessageActions } from "./message-actions";
@@ -257,6 +258,12 @@ export function CrmView({
   const [forwarding, setForwarding] = useState<MessageRow | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLInputElement | null>(null);
+  /**
+   * Dónde va a caer el próximo emoji. Se guarda al abrir el selector porque
+   * ahí el campo pierde el foco y, con él, la selección visible: sin esto los
+   * emojis se irían siempre al final aunque el cursor estuviera en el medio.
+   */
+  const caretRef = useRef<{ start: number; end: number } | null>(null);
 
   // Hace envejecer sola la etiqueta "Esperando hace 5 h", sin depender de que
   // llegue un mensaje nuevo que provoque el re-render.
@@ -543,6 +550,44 @@ export function CrmView({
     setEditing(null);
     setDraft("");
     composerRef.current?.focus();
+  }
+
+  /**
+   * Al abrir el selector anotamos dónde estaba el cursor; al cerrarlo se lo
+   * devolvemos al campo, después del último emoji insertado, para poder
+   * seguir escribiendo sin volver a clickear.
+   */
+  function handleEmojiOpenChange(open: boolean) {
+    const el = composerRef.current;
+    if (open) {
+      caretRef.current = {
+        start: el?.selectionStart ?? draft.length,
+        end: el?.selectionEnd ?? draft.length,
+      };
+      return;
+    }
+    if (!el) return;
+    const pos = caretRef.current?.start ?? el.value.length;
+    caretRef.current = null;
+    // Un cuadro después: mientras el popover sigue montado su trampa de foco
+    // se lo lleva de vuelta al botón, igual que pasa con el menú de mensaje.
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(pos, pos);
+    });
+  }
+
+  function insertEmoji(emoji: string) {
+    // Sin posición anotada (el selector se abrió sin haber tocado el campo) el
+    // emoji va al final, que es lo que uno espera. Si había texto seleccionado
+    // lo reemplaza, igual que si se tipeara encima.
+    const { start, end } = caretRef.current ?? {
+      start: draft.length,
+      end: draft.length,
+    };
+    const after = start + emoji.length;
+    caretRef.current = { start: after, end: after };
+    setDraft((d) => d.slice(0, start) + emoji + d.slice(end));
   }
 
   function handleSend(e: React.FormEvent) {
@@ -1220,6 +1265,12 @@ export function CrmView({
                     />
                   </>
                 )}
+                {/* Los emojis sí se ofrecen editando: cambiar el texto de un
+                    mensaje incluye poder agregarle una carita. */}
+                <EmojiPicker
+                  onSelect={insertEmoji}
+                  onOpenChange={handleEmojiOpenChange}
+                />
                 {/*
                   A propósito no se deshabilita mientras se envía: `disabled`
                   le saca el foco al input y obliga a volver a clickear para
