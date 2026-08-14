@@ -137,7 +137,25 @@ async function checkCommands() {
     return;
   }
 
-  if (data.state === "reconnect_requested" && !isSocketAlive() && !connecting) {
+  if (data.state === "reconnect_requested") {
+    if (connecting) return;
+
+    // El socket ya está sano: la orden llegó porque la UI lo veía caído (un
+    // latido viejo, por ejemplo). Antes este caso se ignoraba en silencio y
+    // como el heartbeat sólo toca `updated_at`, la fila quedaba en
+    // 'reconnect_requested' para siempre: spinner de "Reconectando…" eterno
+    // sobre una sesión que en realidad andaba. Resincronizamos y listo.
+    if (isSocketAlive()) {
+      console.log("🔄 Reconexión pedida, pero el socket está vivo. Resincronizando estado.");
+      await updateStatus({
+        state: "connected",
+        qr: null,
+        phone_number: currentSock?.user?.id ?? null,
+        last_error: null,
+      });
+      return;
+    }
+
     console.log("🔄 Reconexión solicitada desde la UI. Redialando...");
     // Puede quedar un socket zombi: el objeto sigue ahí con `user` cargado
     // pero el WebSocket ya está cerrado. Antes el guard era `!currentSock`, así
@@ -692,6 +710,11 @@ async function pollOutgoing() {
     )
     .eq("status", "queued")
     .eq("direction", "outbound")
+    // Filtrar por canal ACÁ y no sólo en el loop. Sin esto la consulta traía
+    // los 10 más viejos de cualquier canal y los de Instagram —que este worker
+    // saltea— se comían la ventana entera: había 12 mensajes de IG trabados
+    // desde el 8/8 y ningún mensaje de WhatsApp volvía a salir nunca.
+    .eq("conversations.channel", "whatsapp")
     // Un mensaje al que le cancelaron el envío antes de que saliera queda
     // 'queued' con `revoked_at` puesto: es la forma de que no salga nunca.
     .is("revoked_at", null)
@@ -808,6 +831,9 @@ async function pollMessageOps() {
       "id, message_id, op, body, messages!inner(external_id), conversations!inner(external_id, channel)",
     )
     .eq("status", "queued")
+    // Mismo bloqueo de cabecera que en `pollOutgoing`: si las 10 ops más viejas
+    // son de otro canal, las de WhatsApp no se procesan nunca.
+    .eq("conversations.channel", "whatsapp")
     .order("created_at")
     .limit(10);
 
@@ -969,6 +995,19 @@ async function connect() {
       if (connection === "close") {
         const reason = (lastDisconnect?.error as Boom)?.output?.statusCode;
         const loggedOut = reason === DisconnectReason.loggedOut;
+
+        // El cierre puede llegar tarde, de un socket que ya reemplazamos. Si no
+        // es el socket vigente, no tocamos nada: antes esto ponía
+        // `currentSock = null` con el socket nuevo vivo (los pollers se
+        // frenaban y la UI lo veía caído) y encima disparaba otro connect(),
+        // dejando dos sockets sobre las mismas creds peleándose — de ahí las
+        // rachas de 428/440/503 en los logs.
+        if (currentSock !== sock) {
+          console.log(
+            `Cierre de un socket viejo (${reason ?? "?"}). Ignorado: ya hay otro activo.`,
+          );
+          return;
+        }
         currentSock = null;
 
         if (loggedOut && !loggingOut) {
