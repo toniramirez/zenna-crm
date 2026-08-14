@@ -12,7 +12,8 @@
       "Bash(cp /tmp/claude-1000/-workspaces-zenna-crm/7d35fe9d-b8e7-42dc-bd10-e0eb4fb16f89/scratchpad/diag.mjs /workspaces/zenna-crm/.diag.mjs)",
       "Bash(npx tsx *)",
       "Bash(git -C /workspaces/zenna-crm diff --stat)",
-      "Bash(git -C /workspaces/zenna-crm diff worker/baileys.ts)"
+      "Bash(git -C /workspaces/zenna-crm diff worker/baileys.ts)",
+      "Bash(node -e ' *)"
     ]
   },
   "enabledMcpjsonServers": [

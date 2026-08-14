@@ -35,6 +35,21 @@ import type { Database } from "@/types/database.types";
 const POLL_INTERVAL_MS = 2_000;
 const BATCH_SIZE = 10;
 
+/**
+ * A partir de acá un mensaje encolado ya no se manda: se marca fallido.
+ *
+ * Un worker apagado no frena la bandeja —la recepción sigue escribiendo y los
+ * mensajes se siguen encolando—, así que al volver tenía que salir todo junto.
+ * Pasó de verdad: estuvo caído desde el 8/8 y se juntaron 16 mensajes para 7
+ * clientas distintas; el más viejo, de seis días. Que lleguen todos de golpe
+ * una semana tarde es peor que no mandarlos.
+ *
+ * Seis horas es el punto medio: aguanta cualquier corte razonable dentro de una
+ * jornada (un reinicio, un deploy, la PC que se colgó a la mañana) sin tirar
+ * nada, y corta antes de que un mensaje llegue fuera de contexto.
+ */
+const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
+
 /** Ventana estándar de Messenger: 24 h desde el último mensaje de la persona. */
 const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -65,6 +80,7 @@ const supabase: SupabaseClient<Database> = createClient<Database>(
 type QueuedMessage = {
   id: string;
   conversation_id: string;
+  created_at: string;
   type: Database["public"]["Enums"]["message_type"];
   body: string | null;
   media_url: string | null;
@@ -205,7 +221,7 @@ async function pollOutgoing(): Promise<void> {
   const { data: queued, error } = await supabase
     .from("messages")
     .select(
-      "id, conversation_id, type, body, media_url, media_mime, media_filename, reaction_target_external_id, conversations!inner(external_id, channel)",
+      "id, conversation_id, created_at, type, body, media_url, media_mime, media_filename, reaction_target_external_id, conversations!inner(external_id, channel)",
     )
     .eq("status", "queued")
     .eq("direction", "outbound")
@@ -226,15 +242,41 @@ async function pollOutgoing(): Promise<void> {
     const conversation = m.conversations;
     if (!conversation || conversation.channel !== "instagram") continue;
 
+    // Demasiado viejo para mandarlo (ver STALE_AFTER_MS). Queda 'failed' con
+    // el motivo a la vista en la bandeja, así la recepción se entera de que
+    // ese mensaje nunca llegó en vez de descubrirlo por la respuesta.
+    const ageMs = Date.now() - new Date(m.created_at).getTime();
+    if (ageMs > STALE_AFTER_MS) {
+      const hours = Math.floor(ageMs / 3_600_000);
+      await supabase
+        .from("messages")
+        .update({
+          status: "failed",
+          error: `No se envió: quedó encolado ${hours} h porque el worker de Instagram estaba caído.`,
+          failed_at: new Date().toISOString(),
+        })
+        .eq("id", m.id)
+        .eq("status", "queued");
+      console.warn(`→ IG descartado por viejo (${hours} h)`, m.id);
+      continue;
+    }
+
     // Claim optimista: el UPDATE condicionado a status='queued' garantiza que
     // solo un worker se quede con el mensaje aunque haya varias instancias.
-    const { data: claim } = await supabase
+    const { data: claim, error: claimError } = await supabase
       .from("messages")
       .update({ status: "sending" })
       .eq("id", m.id)
       .eq("status", "queued")
       .select("id")
       .maybeSingle();
+    // Sin `claim` puede ser que otra instancia se lo llevó (normal) o que el
+    // UPDATE falló (no lo es). Distinguirlos importa: un claim que falla en
+    // silencio deja el mensaje encolado para siempre y sin rastro de por qué.
+    if (claimError) {
+      console.error("[instagram] no pudimos reclamar", m.id, claimError.message);
+      continue;
+    }
     if (!claim) continue;
 
     try {
