@@ -1,5 +1,6 @@
 "use client";
 
+import { Zap } from "lucide-react";
 import { InstagramIcon } from "@/components/icons/instagram";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -33,6 +34,7 @@ export function ChatAvatar({
 }) {
   const url = useSignedUrl(avatarPath ?? null);
   const isInstagram = channel === "instagram";
+  const isCloudApi = channel === "whatsapp_cloud";
 
   // El badge escala con el avatar para que se lea igual en la lista (48px)
   // que en el encabezado del chat (36px).
@@ -52,6 +54,21 @@ export function ChatAvatar({
           title="Instagram"
         >
           <InstagramIcon
+            className="text-white"
+            style={{ width: badgeSize * 0.6, height: badgeSize * 0.6 }}
+          />
+        </span>
+      ) : null}
+
+      {/* El canal oficial se distingue del WhatsApp del QR (que va sin
+          badge): mismo lugar que el de Instagram, en verde y con un rayo. */}
+      {isCloudApi ? (
+        <span
+          className="absolute -bottom-0.5 -right-0.5 grid place-items-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 ring-2 ring-background"
+          style={{ width: badgeSize, height: badgeSize }}
+          title="WhatsApp API"
+        >
+          <Zap
             className="text-white"
             style={{ width: badgeSize * 0.6, height: badgeSize * 0.6 }}
           />

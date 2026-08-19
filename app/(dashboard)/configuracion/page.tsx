@@ -8,8 +8,15 @@ import {
 } from "@/lib/instagram/config";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import {
+  appSecrets as waCloudAppSecrets,
+  loadAccount as loadWaCloudAccount,
+  toPublicAccount as toPublicWaCloudAccount,
+  verifyToken as waCloudVerifyToken,
+} from "@/lib/whatsapp-cloud/config";
 import { InstagramPanel } from "./instagram-panel";
 import { NotificationsPanel } from "./notifications-panel";
+import { WhatsappCloudPanel, type TemplateSlim } from "./whatsapp-cloud-panel";
 import { WhatsappPanel } from "./whatsapp-panel";
 import type { Database } from "@/types/database.types";
 
@@ -22,16 +29,16 @@ type Status = Database["public"]["Tables"]["whatsapp_status"]["Row"];
  * Se prefiere la variable de entorno (en Railway es la del dominio del deploy);
  * si no está, se deduce de los headers del request.
  */
-async function resolveWebhookUrl(): Promise<string> {
+async function resolveWebhookUrl(path: string): Promise<string> {
   const configured = process.env.NEXT_PUBLIC_APP_URL;
   if (configured) {
-    return `${configured.replace(/\/$/, "")}/api/instagram/webhook`;
+    return `${configured.replace(/\/$/, "")}${path}`;
   }
 
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const proto = h.get("x-forwarded-proto") ?? "https";
-  return `${proto}://${host}/api/instagram/webhook`;
+  return `${proto}://${host}${path}`;
 }
 
 export default async function ConfiguracionPage() {
@@ -54,7 +61,22 @@ export default async function ConfiguracionPage() {
   const account = serviceKeyConfigured
     ? await loadAccount(createServiceClient())
     : null;
-  const webhookUrl = await resolveWebhookUrl();
+  const webhookUrl = await resolveWebhookUrl("/api/instagram/webhook");
+
+  // Misma lógica para la Cloud API: la tabla de credenciales es service_role-
+  // only, y sin la key el panel se degrada a mostrar el aviso.
+  const waCloudAccount = serviceKeyConfigured
+    ? await loadWaCloudAccount(createServiceClient())
+    : null;
+  const waCloudWebhookUrl = await resolveWebhookUrl("/api/whatsapp/webhook");
+
+  // El caché de plantillas sí se lee con el cliente normal: tiene política de
+  // SELECT para usuarios logueados (no guarda nada sensible).
+  const { data: waTemplates } = await supabase
+    .from("whatsapp_templates")
+    .select("id, name, language, status, category")
+    .order("status")
+    .order("name");
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -63,6 +85,14 @@ export default async function ConfiguracionPage() {
       <section className="space-y-3">
         <h2 className="text-base font-semibold tracking-tight">Integraciones</h2>
         <WhatsappPanel initialStatus={(status as Status | null) ?? null} />
+        <WhatsappCloudPanel
+          account={toPublicWaCloudAccount(waCloudAccount)}
+          templates={(waTemplates as TemplateSlim[] | null) ?? []}
+          webhookUrl={waCloudWebhookUrl}
+          verifyTokenConfigured={Boolean(waCloudVerifyToken())}
+          appSecretConfigured={waCloudAppSecrets().length > 0}
+          serviceKeyConfigured={serviceKeyConfigured}
+        />
         <InstagramPanel
           account={toPublicAccount(account)}
           webhookUrl={webhookUrl}

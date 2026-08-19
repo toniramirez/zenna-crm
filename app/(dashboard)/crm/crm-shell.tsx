@@ -15,6 +15,7 @@ import type {
   ProfessionalRow,
   ServiceRow,
 } from "../turnos/types";
+import type { WhatsappTemplateRow } from "@/lib/whatsapp-cloud/templates";
 import type {
   AutomationFlow,
   ClientTag,
@@ -40,6 +41,7 @@ export function CrmShell({
   initialSelectedId,
   tags,
   quickReplies,
+  waTemplates,
   flows,
   services,
   bookingServices,
@@ -54,6 +56,7 @@ export function CrmShell({
   initialSelectedId: string | null;
   tags: ClientTag[];
   quickReplies: QuickReply[];
+  waTemplates: WhatsappTemplateRow[];
   flows: AutomationFlow[];
   services: ServiceSlim[];
   bookingServices: ServiceRow[];
@@ -87,6 +90,7 @@ export function CrmShell({
           initialConversations={conversations}
           initialSelectedId={initialSelectedId}
           quickReplies={quickReplies.filter((q) => q.active)}
+          waTemplates={waTemplates}
           allTags={tags}
           bookingServices={bookingServices}
           professionals={professionals}

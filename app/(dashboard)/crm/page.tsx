@@ -2,6 +2,7 @@ import { addDays, startOfDay } from "date-fns";
 import { requireRole } from "@/lib/auth";
 import { INBOX_LIMIT } from "@/lib/inbox-unread";
 import { createClient } from "@/lib/supabase/server";
+import type { WhatsappTemplateRow } from "@/lib/whatsapp-cloud/templates";
 import type { AppointmentWithRelations } from "../turnos/types";
 import type {
   AutomationFlow,
@@ -53,6 +54,7 @@ export default async function CrmPage({ searchParams }: Props) {
     appointmentsResult,
     paymentMethodsResult,
     outreachResult,
+    waTemplatesResult,
   ] = await Promise.all([
     supabase
       .from("conversations")
@@ -115,6 +117,13 @@ export default async function CrmPage({ searchParams }: Props) {
       )
       .order("status", { ascending: true }) // 'pending' < 'sent' < 'dismissed' alphabetically; pending shows first
       .order("generated_at", { ascending: false }),
+    // Plantillas de la Cloud API para el selector del chat. Solo las
+    // aprobadas: son las únicas que Meta acepta enviar.
+    supabase
+      .from("whatsapp_templates")
+      .select("*")
+      .eq("status", "APPROVED")
+      .order("name"),
   ]);
 
   // La bandeja va a sangre, como en el diseño de referencia: sin padding del
@@ -129,6 +138,9 @@ export default async function CrmPage({ searchParams }: Props) {
         initialSelectedId={c ?? null}
         tags={(tagsResult.data as ClientTag[] | null) ?? []}
         quickReplies={(repliesResult.data as QuickReply[] | null) ?? []}
+        waTemplates={
+          (waTemplatesResult.data as WhatsappTemplateRow[] | null) ?? []
+        }
         flows={(flowsResult.data as AutomationFlow[] | null) ?? []}
         services={(servicesSlimResult.data as ServiceSlim[] | null) ?? []}
         bookingServices={servicesFullResult.data ?? []}

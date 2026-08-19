@@ -3,7 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import type { Database } from "@/types/database.types";
+import {
+  buildTemplatePayload,
+  componentsOf,
+  renderTemplatePreview,
+  templateSendability,
+  type TemplateVariableValues,
+} from "@/lib/whatsapp-cloud/templates";
+import type { Database, Json } from "@/types/database.types";
 
 export type ActionState = {
   error?: string;
@@ -116,6 +123,89 @@ export async function sendReactionAction(args: {
     return { error: "No pudimos enviar la reacción." };
   }
 
+  return { success: true };
+}
+
+/**
+ * Encola una plantilla aprobada de la Cloud API (canal `whatsapp_cloud`).
+ *
+ * La fila queda como un texto normal —`body` es la vista previa renderizada,
+ * que es lo que muestra la burbuja— más `wa_template`, el payload que el
+ * worker manda tal cual a Meta. Es el único tipo de mensaje que Meta acepta
+ * fuera de la ventana de 24 h, así que no se chequea ventana acá.
+ */
+export async function sendTemplateMessageAction(args: {
+  conversationId: string;
+  templateId: string;
+  values: TemplateVariableValues;
+}): Promise<ActionState> {
+  const ctx = await requireRole(["owner", "receptionist"]);
+
+  const supabase = await createClient();
+
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("id, channel")
+    .eq("id", args.conversationId)
+    .maybeSingle();
+  if (!conversation) return { error: "No encontramos la conversación." };
+  if (conversation.channel !== "whatsapp_cloud") {
+    return { error: "Las plantillas solo van por el canal de WhatsApp API." };
+  }
+
+  const { data: template } = await supabase
+    .from("whatsapp_templates")
+    .select("*")
+    .eq("id", args.templateId)
+    .maybeSingle();
+  if (!template) return { error: "No encontramos la plantilla." };
+  if (template.status.toUpperCase() !== "APPROVED") {
+    return { error: "Esa plantilla no está aprobada por Meta." };
+  }
+
+  const components = componentsOf(template);
+  const sendable = templateSendability(components, template.category);
+  if (!sendable.ok) return { error: sendable.reason };
+
+  // Meta rechaza parámetros con saltos de línea, tabs o más de 4 espacios
+  // seguidos (error 132000): se normaliza todo el espacio en blanco.
+  const clean = (values: Record<string, string>) =>
+    Object.fromEntries(
+      Object.entries(values).map(([k, v]) => [k, v.replace(/\s+/g, " ").trim()]),
+    );
+  const values: TemplateVariableValues = {
+    header: clean(args.values.header ?? {}),
+    body: clean(args.values.body ?? {}),
+  };
+
+  let payload;
+  try {
+    payload = buildTemplatePayload({
+      name: template.name,
+      language: template.language,
+      components,
+      values,
+    });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+
+  const { error } = await supabase.from("messages").insert({
+    conversation_id: args.conversationId,
+    direction: "outbound",
+    type: "text",
+    body: renderTemplatePreview(components, values),
+    wa_template: payload as unknown as Json,
+    status: "queued",
+    sent_by: ctx.userId,
+  });
+
+  if (error) {
+    console.error("[crm] sendTemplate error:", error);
+    return { error: "No pudimos encolar la plantilla." };
+  }
+
+  revalidatePath("/crm");
   return { success: true };
 }
 
@@ -250,6 +340,18 @@ export async function deleteMessageAction(
   // Sin external_id nunca salió: alcanza con marcarlo, no hay nada que borrar
   // del otro lado.
   const alreadySent = !!message.external_id;
+
+  // En la Cloud API no existe el revoke: si el worker ya lo está mandando,
+  // cancelar acá solo taparía en la bandeja un mensaje que la clienta va a
+  // recibir igual. En Baileys sí se permite — el worker manda el `delete`
+  // remoto si el envío se le adelantó.
+  if (
+    !alreadySent &&
+    message.conversations?.channel === "whatsapp_cloud" &&
+    message.status === "sending"
+  ) {
+    return { error: "El mensaje ya se está enviando: no llegamos a cancelarlo." };
+  }
 
   if (alreadySent) {
     if (message.conversations?.channel !== "whatsapp") {

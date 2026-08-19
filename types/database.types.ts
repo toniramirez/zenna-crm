@@ -850,6 +850,7 @@ export type Database = {
           type: Database["public"]["Enums"]["message_type"]
           updated_at: string
           wa_content: Json | null
+          wa_template: Json | null
         }
         Insert: {
           body?: string | null
@@ -878,6 +879,7 @@ export type Database = {
           type?: Database["public"]["Enums"]["message_type"]
           updated_at?: string
           wa_content?: Json | null
+          wa_template?: Json | null
         }
         Update: {
           body?: string | null
@@ -906,6 +908,7 @@ export type Database = {
           type?: Database["public"]["Enums"]["message_type"]
           updated_at?: string
           wa_content?: Json | null
+          wa_template?: Json | null
         }
         Relationships: [
           {
@@ -1323,6 +1326,54 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_cloud_accounts: {
+        Row: {
+          access_token: string | null
+          account_id: string
+          created_at: string
+          display_phone_number: string | null
+          last_connected_at: string | null
+          last_error: string | null
+          phone_number_id: string | null
+          quality_rating: string | null
+          state: string
+          templates_synced_at: string | null
+          updated_at: string
+          verified_name: string | null
+          waba_id: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          account_id?: string
+          created_at?: string
+          display_phone_number?: string | null
+          last_connected_at?: string | null
+          last_error?: string | null
+          phone_number_id?: string | null
+          quality_rating?: string | null
+          state?: string
+          templates_synced_at?: string | null
+          updated_at?: string
+          verified_name?: string | null
+          waba_id?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          account_id?: string
+          created_at?: string
+          display_phone_number?: string | null
+          last_connected_at?: string | null
+          last_error?: string | null
+          phone_number_id?: string | null
+          quality_rating?: string | null
+          state?: string
+          templates_synced_at?: string | null
+          updated_at?: string
+          verified_name?: string | null
+          waba_id?: string | null
+        }
+        Relationships: []
+      }
       whatsapp_sessions: {
         Row: {
           key: string
@@ -1370,6 +1421,45 @@ export type Database = {
           qr?: string | null
           session_id?: string
           state?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      whatsapp_templates: {
+        Row: {
+          category: string | null
+          components: Json
+          created_at: string
+          id: string
+          language: string
+          meta_id: string | null
+          name: string
+          status: string
+          synced_at: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          components?: Json
+          created_at?: string
+          id?: string
+          language: string
+          meta_id?: string | null
+          name: string
+          status?: string
+          synced_at?: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          components?: Json
+          created_at?: string
+          id?: string
+          language?: string
+          meta_id?: string | null
+          name?: string
+          status?: string
+          synced_at?: string
           updated_at?: string
         }
         Relationships: []

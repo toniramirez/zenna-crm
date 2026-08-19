@@ -21,6 +21,9 @@ const PUBLIC_PATHS = [
   "/register",
   "/auth",
   "/api/instagram/webhook",
+  // Mismo caso que el de Instagram: lo llama Meta con la firma HMAC como
+  // única credencial (ver app/api/whatsapp/webhook/route.ts).
+  "/api/whatsapp/webhook",
   "/api/push/subscribe",
   "/privacidad",
   "/terminos",

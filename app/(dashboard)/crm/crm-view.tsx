@@ -49,6 +49,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { onOpenConversation } from "@/lib/push/open-conversation";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import type { WhatsappTemplateRow } from "@/lib/whatsapp-cloud/templates";
 import {
   editMessageAction,
   markConversationReadAction,
@@ -73,6 +74,7 @@ import { NewTurnoDialog } from "./new-turno-dialog";
 import { PresupuestoDialog } from "./presupuesto-dialog";
 import { QuickReplyPicker } from "./quick-reply-picker";
 import { ReactionPicker, ReactionsPill } from "./reaction-picker";
+import { TemplatePicker } from "./template-picker";
 import type { ConversationWithClient, MessageRow } from "./types";
 
 type StatusFilter = "all" | "unread" | "awaiting" | "answered";
@@ -99,6 +101,10 @@ function digitsToPretty(digits: string | null | undefined): string | null {
  */
 function conversationPhone(c: ConversationWithClient): string | null {
   if (c.channel === "instagram") return digitsToPretty(c.clients?.phone);
+  // En la Cloud API el external_id ya son los dígitos del número, sin sufijo.
+  if (c.channel === "whatsapp_cloud") {
+    return digitsToPretty(c.external_id) ?? digitsToPretty(c.wa_phone);
+  }
   if (isLidJid(c.external_id)) return digitsToPretty(c.wa_phone);
   const digits = c.external_id.split("@")[0]?.replace(/\D/g, "") ?? "";
   return digitsToPretty(digits) ?? digitsToPretty(c.wa_phone);
@@ -218,6 +224,7 @@ export function CrmView({
   initialConversations,
   initialSelectedId,
   quickReplies = [],
+  waTemplates = [],
   allTags = [],
   bookingServices = [],
   professionals = [],
@@ -229,6 +236,8 @@ export function CrmView({
   initialConversations: ConversationWithClient[];
   initialSelectedId: string | null;
   quickReplies?: QuickReply[];
+  /** Plantillas aprobadas de la Cloud API, para el canal `whatsapp_cloud`. */
+  waTemplates?: WhatsappTemplateRow[];
   allTags?: ClientTag[];
   bookingServices?: ServiceRow[];
   professionals?: ProfessionalRow[];
@@ -437,6 +446,36 @@ export function CrmView({
   }, [editing]);
 
   const selected = conversations.find((c) => c.id === selectedId) ?? null;
+
+  /**
+   * Ventana de servicio de la Cloud API: 24 h desde el último mensaje de la
+   * clienta. Cerrada, Meta solo acepta plantillas — el composer cambia de
+   * modo. `now` en null (server render) la da por abierta para no romper la
+   * hidratación; el worker igual corta cualquier envío fuera de ventana.
+   *
+   * Las reacciones no cuentan: para Meta la ventana la abre un mensaje real,
+   * no un emoji sobre uno nuestro (misma regla que aplica el worker).
+   */
+  const CLOUD_WINDOW_MS = 24 * 60 * 60 * 1000;
+  const lastInboundAt = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.direction === "inbound" && m.type !== "reaction") return m.sent_at;
+    }
+    return null;
+  }, [messages]);
+  // El fetch de mensajes corta en 500 filas: con la página llena no podemos
+  // saber cuál fue el último entrante de verdad, y bloquear el composer por
+  // un dato incompleto sería peor — se lo damos por abierto y el worker,
+  // que mira la conversación entera, corta lo que esté fuera de ventana.
+  const messagesMaybeTruncated = messages.length >= 500;
+  const cloudWindowClosed =
+    selected?.channel === "whatsapp_cloud" &&
+    !loadingMessages &&
+    !messagesMaybeTruncated &&
+    now !== null &&
+    (!lastInboundAt ||
+      now - new Date(lastInboundAt).getTime() > CLOUD_WINDOW_MS);
 
   const filteredConversations = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -1244,6 +1283,31 @@ export function CrmView({
                 </div>
               ) : null}
 
+              {cloudWindowClosed ? (
+                /*
+                  Ventana de 24 h cerrada (solo canal WhatsApp API): Meta va a
+                  rechazar cualquier texto libre, así que en vez de dejar
+                  escribir un mensaje condenado, el composer se convierte en el
+                  camino que sí funciona — mandar una plantilla.
+                */
+                <div className="flex items-center gap-3 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-4 md:pb-3">
+                  <Hourglass className="size-4 shrink-0 text-[var(--wa-text-2)]" />
+                  <p className="min-w-0 flex-1 text-[0.8125rem] leading-snug text-[var(--wa-text-2)]">
+                    Pasaron más de 24 h del último mensaje de la clienta.
+                    {waTemplates.some(
+                      (t) => t.status.toUpperCase() === "APPROVED",
+                    )
+                      ? " Para reabrir la conversación mandá una plantilla."
+                      : " Necesitás una plantilla aprobada en Meta para reabrirla (se sincronizan desde Configuración)."}
+                  </p>
+                  <TemplatePicker
+                    templates={waTemplates}
+                    conversationId={selected.id}
+                    disabled={isPending}
+                    prominent
+                  />
+                </div>
+              ) : (
               <form
                 onSubmit={handleSend}
                 className="wa-composer flex items-center gap-1.5 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:gap-2 sm:px-4 md:pb-2"
@@ -1263,6 +1327,13 @@ export function CrmView({
                       }
                       disabled={isPending}
                     />
+                    {selected.channel === "whatsapp_cloud" ? (
+                      <TemplatePicker
+                        templates={waTemplates}
+                        conversationId={selected.id}
+                        disabled={isPending}
+                      />
+                    ) : null}
                   </>
                 )}
                 {/* Los emojis sí se ofrecen editando: cambiar el texto de un
@@ -1308,6 +1379,7 @@ export function CrmView({
                   </span>
                 </Button>
               </form>
+              )}
             </div>
           </>
         )}

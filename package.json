@@ -11,6 +11,8 @@
     "worker:start": "tsx worker/baileys.ts",
     "worker:instagram": "tsx watch worker/instagram.ts",
     "worker:instagram:start": "tsx worker/instagram.ts",
+    "worker:wpp-api": "tsx watch worker/whatsapp-cloud.ts",
+    "worker:wpp-api:start": "tsx worker/whatsapp-cloud.ts",
     "export": "tsx scripts/export-data.ts"
   },
   "dependencies": {

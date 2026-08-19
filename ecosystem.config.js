@@ -47,5 +47,18 @@ module.exports = {
       restart_delay: 5000,
       env: { NODE_ENV: "production" },
     },
+    {
+      // Cola de salida de la WhatsApp Cloud API (canal oficial, convive con
+      // Baileys). Mismo esquema que el de Instagram: solo HTTPS salientes;
+      // los entrantes y los acuses llegan al webhook de Next.
+      name: "zenna-wpp-api",
+      script: "node_modules/tsx/dist/cli.mjs",
+      args: "worker/whatsapp-cloud.ts",
+      cwd: __dirname,
+      autorestart: true,
+      max_memory_restart: "300M",
+      restart_delay: 5000,
+      env: { NODE_ENV: "production" },
+    },
   ],
 };

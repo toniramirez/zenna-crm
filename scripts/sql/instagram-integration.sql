@@ -15,12 +15,16 @@
 -- 1 ─── channel: aceptar 'instagram' ──────────────────────────────────────
 -- `channel` es text con default 'whatsapp'. Si hay un CHECK viejo que solo
 -- permitía 'whatsapp', lo reemplazamos.
+-- La lista incluye 'whatsapp_cloud' (canal de whatsapp-cloud-api.sql) a
+-- propósito: las dos migraciones recrean este mismo constraint, y si esta
+-- llevara la lista corta, re-correrla después de la otra le rompería el
+-- canal a la Cloud API en silencio. Ambas convergen al mismo estado.
 alter table public.conversations
   drop constraint if exists conversations_channel_check;
 
 alter table public.conversations
   add constraint conversations_channel_check
-  check (channel in ('whatsapp', 'instagram'));
+  check (channel in ('whatsapp', 'instagram', 'whatsapp_cloud'));
 
 -- 2 ─── unicidad por canal + id externo ───────────────────────────────────
 -- El webhook hace get-or-create por (channel, external_id). Sin este índice

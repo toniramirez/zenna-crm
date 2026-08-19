@@ -72,7 +72,13 @@ export function MessageActions({
   const isOutbound = message.direction === "outbound";
   const revoked = !!message.revoked_at;
   const canEdit = canEditMessage(message, channel);
-  const canDelete = isOutbound && !revoked;
+  // Sin external_id nunca salió: el botón es "cancelar envío" y vale en
+  // cualquier canal. "Eliminar para todos" en cambio solo existe en el
+  // WhatsApp de Baileys — ni la Cloud API ni Instagram permiten revocar, y
+  // ofrecerlo para que el server lo rechace después de confirmar es peor.
+  const neverSent = !message.external_id;
+  const canDelete =
+    isOutbound && !revoked && (neverSent || channel === "whatsapp");
   const canCopy = !revoked && !!message.body?.trim();
   const canForward =
     !revoked &&
@@ -80,10 +86,6 @@ export function MessageActions({
     (message.type === "text"
       ? !!message.body?.trim()
       : !!message.media_url);
-
-  // Sin external_id nunca salió: el botón es "cancelar envío" y no hace falta
-  // confirmar nada, no lo vio nadie.
-  const neverSent = !message.external_id;
 
   if (!canEdit && !canDelete && !canCopy && !canForward) return null;
 
