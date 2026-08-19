@@ -193,6 +193,18 @@ setInterval(() => void checkCommands(), 3000);
  * Sólo tocamos `updated_at`: no pisamos `state` para no atropellar un
  * logout_requested / reconnect_requested que la UI acabe de escribir.
  */
+/**
+ * Último momento en que WhatsApp nos habló (mensaje, recibo o apertura de
+ * conexión). Sirve para distinguir "no hay nada que recibir" de "el socket
+ * quedó sordo": el WebSocket puede seguir abierto —y el heartbeat, en verde—
+ * mientras el servidor dejó de rutearnos los mensajes.
+ */
+let lastTrafficAt = Date.now();
+
+function markTraffic() {
+  lastTrafficAt = Date.now();
+}
+
 const HEARTBEAT_MS = 30_000;
 
 async function heartbeat() {
