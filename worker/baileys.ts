@@ -214,6 +214,70 @@ async function heartbeat() {
 
 setInterval(() => void heartbeat(), HEARTBEAT_MS);
 
+/**
+ * Vigía del socket sordo.
+ *
+ * Baileys ya se encarga del caso "se cortó la red": pinguea cada 30s y cierra
+ * si el servidor deja de contestar. Lo que no detecta nadie es el otro caso,
+ * el que dejó al salón sin mensajes: el WebSocket sigue abierto, los pings se
+ * contestan —así que el CRM muestra "Conectado"— pero WhatsApp dejó de
+ * rutearle los mensajes a esta sesión. Desde afuera se ve como un silencio
+ * total que no termina nunca.
+ *
+ * Ante ese silencio la única salida es rediscar. Solo se hace en el horario
+ * en que el salón tiene movimiento: de madrugada no hay nada que recibir y
+ * reconectar cada 20 minutos sería ruido puro.
+ */
+const SILENCE_MS = 20 * 60_000;
+const SALON_TZ = "America/Argentina/Cordoba";
+const ACTIVE_FROM_HOUR = 8;
+const ACTIVE_TO_HOUR = 22;
+
+function salonHour(): number {
+  const hour = new Intl.DateTimeFormat("es-AR", {
+    timeZone: SALON_TZ,
+    hour: "numeric",
+    hour12: false,
+  }).format(new Date());
+  return Number(hour);
+}
+
+async function silenceWatchdog() {
+  if (connecting || loggingOut || !isSocketAlive()) return;
+  if (Date.now() - lastTrafficAt < SILENCE_MS) return;
+
+  const hour = salonHour();
+  if (hour < ACTIVE_FROM_HOUR || hour >= ACTIVE_TO_HOUR) return;
+
+  const minutes = Math.round((Date.now() - lastTrafficAt) / 60_000);
+  console.warn(
+    `⚠️  ${minutes} min sin un solo mensaje con el socket abierto. Rediscando por las dudas.`,
+  );
+  await updateStatus({
+    state: "connecting",
+    qr: null,
+    last_error: `Sin tráfico por ${minutes} min: reconexión preventiva`,
+  });
+
+  // Se cierra sin tocar `currentSock`: el handler de `connection.update`
+  // compara el socket que se cae contra el vigente para no atropellar una
+  // reconexión ajena, así que tiene que seguir siendo este. Él pone
+  // `currentSock = null` y redisca a los 2s.
+  try {
+    currentSock?.end(
+      new Boom("Sin tráfico", {
+        statusCode: DisconnectReason.connectionLost,
+      }),
+    );
+  } catch {
+    // ya estaba muerto
+  }
+  // Para no volver a entrar acá enseguida si la reconexión demora.
+  markTraffic();
+}
+
+setInterval(() => void silenceWatchdog(), 5 * 60_000);
+
 // ─────────────────────────────────────────── Helpers (CRM ingest)
 
 function jidPhoneDigits(jid: string): string {
@@ -1037,6 +1101,9 @@ async function pollOutgoing() {
         .select("revoked_at")
         .maybeSingle();
       console.log("→ sent", m.type, m.id, "to", conv.external_id);
+      // Si WhatsApp nos aceptó un envío, la sesión anda: no hace falta que el
+      // vigía redisque aunque no esté entrando nada.
+      markTraffic();
 
       // Cancelaron el envío mientras el mensaje estaba saliendo: llegó igual,
       // así que lo borramos del otro lado en el acto. Sin esto la bandeja lo
@@ -1257,6 +1324,7 @@ async function connect() {
 
       if (connection === "open") {
         console.log(`✓ Conectado como ${sock.user?.id ?? "?"}`);
+        markTraffic();
         // Suelto: completar los chats sin número no puede demorar el arranque.
         void reconcileOrphanLidConversations(sock).catch((err) =>
           console.error("[identidad] reconciliación fallida:", err),
@@ -1351,6 +1419,7 @@ async function connect() {
     });
 
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
+      markTraffic();
       // 'notify' = mensaje que entra en vivo.
       // 'append' = mensaje que WhatsApp tenía encolado y nos entrega al
       //            reconectar (Baileys lo marca así cuando el nodo trae
@@ -1379,6 +1448,7 @@ async function connect() {
     // Some Baileys events surface reactions via a dedicated channel.
     // Listening to both means we don't lose any depending on protocol path.
     sock.ev.on("messages.reaction", async (reactions) => {
+      markTraffic();
       for (const r of reactions) {
         try {
           await storeInboundReaction({
@@ -1397,6 +1467,7 @@ async function connect() {
     });
 
     sock.ev.on("messages.update", async (updates) => {
+      markTraffic();
       for (const u of updates) {
         const externalId = u.key.id;
         if (!externalId) continue;
