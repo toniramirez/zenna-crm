@@ -7,9 +7,11 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   DisconnectReason,
   fetchLatestBaileysVersion,
+  jidNormalizedUser,
   makeWASocket,
   proto,
   WAMessageStubType,
+  type Contact,
   type WAMessage,
   type WAMessageContent,
   type WAMessageKey,
@@ -232,7 +234,7 @@ async function getOrCreateConversation(
 
   const { data: existing } = await supabase
     .from("conversations")
-    .select("id, avatar_path, display_name, wa_phone")
+    .select("id, avatar_path, display_name, wa_phone, client_id")
     .eq("channel", "whatsapp")
     .eq("external_id", externalId)
     .maybeSingle();
@@ -248,6 +250,12 @@ async function getOrCreateConversation(
     // Backfill wa_phone the first time WhatsApp shares senderPn for a LID.
     if (phoneDigits && phoneDigits !== existing.wa_phone) {
       patch.wa_phone = phoneDigits;
+    }
+    // Con el teléfono recién aparecido ya se puede enganchar la ficha: la
+    // conversación pudo haber nacido de un `@lid` pelado, sin número.
+    if (phoneDigits && !existing.client_id) {
+      const clientId = await findClientIdByPhone(phoneDigits);
+      if (clientId) patch.client_id = clientId;
     }
     if (Object.keys(patch).length > 0) {
       await supabase
@@ -269,17 +277,7 @@ async function getOrCreateConversation(
     return existing.id;
   }
 
-  let clientId: string | null = null;
-  if (phoneDigits) {
-    const last8 = phoneDigits.slice(-8);
-    const { data: client } = await supabase
-      .from("clients")
-      .select("id")
-      .ilike("phone", `%${last8}%`)
-      .limit(1)
-      .maybeSingle();
-    clientId = client?.id ?? null;
-  }
+  const clientId = phoneDigits ? await findClientIdByPhone(phoneDigits) : null;
 
   const { data: created, error } = await supabase
     .from("conversations")
@@ -311,6 +309,266 @@ async function getOrCreateConversation(
   }
 
   return created.id;
+}
+
+// ─────────────────────────────────────────── Identidad del contacto
+
+/**
+ * Datos de identidad que WhatsApp comparte por fuera de los mensajes: la
+ * agenda del teléfono (app-state sync), el aviso de "compartí mi número" y
+ * los cambios de foto de perfil.
+ *
+ * Hace falta porque el mensaje solo trae nombre y teléfono cuando es
+ * ENTRANTE: si la conversación nació del eco de un mensaje nuestro (el salón
+ * contesta desde el teléfono un chat que el worker nunca vio entrar), el
+ * `@lid` queda sin `pushName` ni `senderPn` y la ficha se muestra como
+ * "Contacto sin nombre", sin número ni foto.
+ */
+type ContactIdentity = Partial<Contact>;
+
+/** JID normalizado (sin sufijo de dispositivo), o null si no sirve. */
+function normalizeJid(jid: string | null | undefined): string | null {
+  if (!jid) return null;
+  try {
+    const normalized = jidNormalizedUser(jid);
+    return normalized || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Todos los JIDs con los que WhatsApp puede nombrar a un mismo contacto. */
+function identityJids(contact: ContactIdentity): string[] {
+  const jids = [contact.id, contact.lid, contact.jid]
+    .map(normalizeJid)
+    .filter((j): j is string => !!j);
+  return [...new Set(jids)];
+}
+
+/** Teléfono del contacto: solo los JIDs `@s.whatsapp.net` lo llevan. */
+function identityPhoneDigits(jids: string[]): string | null {
+  for (const jid of jids) {
+    if (!jid.endsWith("@s.whatsapp.net")) continue;
+    const digits = jidPhoneDigits(jid);
+    if (digits.length >= 8) return digits;
+  }
+  return null;
+}
+
+/**
+ * Nombre a mostrar. `name` es el de la agenda del salón y gana sobre el
+ * `notify`, que es el que la clienta se puso a sí misma.
+ */
+function identityName(contact: ContactIdentity): string | null {
+  const name =
+    contact.name?.trim() ||
+    contact.notify?.trim() ||
+    contact.verifiedName?.trim();
+  return name || null;
+}
+
+async function findClientIdByPhone(
+  phoneDigits: string,
+): Promise<string | null> {
+  const last8 = phoneDigits.slice(-8);
+  if (last8.length < 8) return null;
+  const { data } = await supabase
+    .from("clients")
+    .select("id")
+    .ilike("phone", `%${last8}%`)
+    .limit(1)
+    .maybeSingle();
+  return data?.id ?? null;
+}
+
+/**
+ * Vuelca sobre las conversaciones ya guardadas lo que WhatsApp nos cuenta de
+ * los contactos. Va en lote porque el sync inicial puede traer la agenda
+ * entera de una: una sola consulta por tanda en vez de una por contacto.
+ */
+async function applyContactIdentities(
+  contacts: ContactIdentity[],
+): Promise<void> {
+  // Un mismo contacto puede llegar con su `@lid` y su `@s.whatsapp.net`: los
+  // indexamos por cada JID para poder encontrarlo mire por donde mire la
+  // conversación guardada.
+  const byJid = new Map<
+    string,
+    { name: string | null; phoneDigits: string | null; pictureChanged: boolean }
+  >();
+
+  for (const contact of contacts) {
+    const jids = identityJids(contact);
+    if (jids.length === 0) continue;
+    const entry = {
+      name: identityName(contact),
+      phoneDigits: identityPhoneDigits(jids),
+      // 'changed' cuando la clienta cambió la foto; 'removed' cuando la sacó.
+      pictureChanged: contact.imgUrl === "changed",
+    };
+    if (!entry.name && !entry.phoneDigits && !entry.pictureChanged) continue;
+    for (const jid of jids) {
+      const prev = byJid.get(jid);
+      byJid.set(jid, {
+        name: entry.name ?? prev?.name ?? null,
+        phoneDigits: entry.phoneDigits ?? prev?.phoneDigits ?? null,
+        pictureChanged: entry.pictureChanged || !!prev?.pictureChanged,
+      });
+    }
+  }
+
+  const jids = [...byJid.keys()];
+  if (jids.length === 0) return;
+
+  // Postgrest arma la query en la URL: en tandas para no pasarnos de largo.
+  const CHUNK = 100;
+  for (let i = 0; i < jids.length; i += CHUNK) {
+    const chunk = jids.slice(i, i + CHUNK);
+    const { data: convs, error } = await supabase
+      .from("conversations")
+      .select("id, external_id, display_name, wa_phone, avatar_path, client_id")
+      .eq("channel", "whatsapp")
+      .in("external_id", chunk);
+    if (error) {
+      console.error("[contacts] lookup error:", error.message);
+      continue;
+    }
+
+    for (const conv of convs ?? []) {
+      const entry = byJid.get(conv.external_id);
+      if (!entry) continue;
+
+      const patch: Database["public"]["Tables"]["conversations"]["Update"] = {};
+      if (entry.name && entry.name !== conv.display_name) {
+        patch.display_name = entry.name;
+      }
+      if (entry.phoneDigits && entry.phoneDigits !== conv.wa_phone) {
+        patch.wa_phone = entry.phoneDigits;
+      }
+      // Recién con el teléfono podemos enganchar la ficha de la clienta.
+      if (!conv.client_id && (patch.wa_phone || conv.wa_phone)) {
+        const clientId = await findClientIdByPhone(
+          (patch.wa_phone || conv.wa_phone) as string,
+        );
+        if (clientId) patch.client_id = clientId;
+      }
+
+      if (Object.keys(patch).length > 0) {
+        const { error: updateError } = await supabase
+          .from("conversations")
+          .update(patch)
+          .eq("id", conv.id);
+        if (updateError) {
+          console.error("[contacts] update error:", updateError.message);
+          continue;
+        }
+      }
+
+      // Solo se pide la foto cuando hay motivo: cambió, o recién aparece el
+      // teléfono (un JID nuevo para probar). Si no, cada mensaje entrante
+      // dispararía otro pedido para los perfiles con la foto en privado.
+      const shouldFetchAvatar =
+        entry.pictureChanged || (!conv.avatar_path && !!patch.wa_phone);
+      if (shouldFetchAvatar && currentSock) {
+        void fetchAndStoreAvatar(
+          supabase,
+          currentSock,
+          conv.external_id,
+          conv.id,
+          entry.phoneDigits ?? conv.wa_phone,
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Recupera el teléfono de las conversaciones `@lid` que quedaron sin número.
+ *
+ * WhatsApp no ofrece el camino inverso (de `@lid` a teléfono), pero sí el de
+ * ida: le preguntamos por los teléfonos que ya conocemos —fichas de clientas
+ * y conversaciones con número— y nos devuelve el `@lid` de cada uno. Los que
+ * coinciden con una conversación huérfana la completan: número, ficha y foto.
+ *
+ * Corre una sola vez por arranque del worker y solo si hay huérfanas.
+ */
+const USYNC_BATCH = 20;
+let reconciledThisRun = false;
+
+async function reconcileOrphanLidConversations(sock: WASocket): Promise<void> {
+  if (reconciledThisRun) return;
+  reconciledThisRun = true;
+
+  const { data: orphans } = await supabase
+    .from("conversations")
+    .select("external_id")
+    .eq("channel", "whatsapp")
+    .like("external_id", "%@lid")
+    .is("wa_phone", null);
+  if (!orphans?.length) return;
+
+  const orphanLids = new Set(orphans.map((o) => o.external_id));
+
+  const phones = new Set<string>();
+  const addPhone = (raw: string | null | undefined) => {
+    const digits = raw?.replace(/\D/g, "") ?? "";
+    if (digits.length >= 8) phones.add(digits);
+  };
+
+  const [{ data: clients }, { data: known }] = await Promise.all([
+    supabase.from("clients").select("phone").not("phone", "is", null),
+    supabase
+      .from("conversations")
+      .select("wa_phone")
+      .eq("channel", "whatsapp")
+      .not("wa_phone", "is", null),
+  ]);
+  for (const c of clients ?? []) addPhone(c.phone);
+  for (const c of known ?? []) addPhone(c.wa_phone);
+  if (phones.size === 0) return;
+
+  console.log(
+    `[identidad] ${orphanLids.size} chats sin número; consultando ${phones.size} teléfonos conocidos...`,
+  );
+
+  const matches: ContactIdentity[] = [];
+  const list = [...phones];
+  for (let i = 0; i < list.length; i += USYNC_BATCH) {
+    const batch = list.slice(i, i + USYNC_BATCH);
+    try {
+      const results = await sock.onWhatsApp(
+        ...batch.map((digits) => `${digits}@s.whatsapp.net`),
+      );
+      for (const result of results ?? []) {
+        const lid = normalizeJid(
+          typeof result.lid === "string" ? result.lid : null,
+        );
+        if (!lid || !orphanLids.has(lid)) continue;
+        matches.push({
+          id: lid,
+          lid,
+          jid: normalizeJid(result.jid) ?? undefined,
+        });
+      }
+    } catch (err) {
+      console.warn(
+        "[identidad] consulta onWhatsApp fallida:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+    // Pausa corta entre tandas: es una consulta al servidor de WhatsApp por
+    // cada una y no hay apuro, esto corre en segundo plano.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+
+  if (matches.length === 0) {
+    console.log(
+      "[identidad] ningún chat sin número coincidió con un teléfono conocido.",
+    );
+    return;
+  }
+  await applyContactIdentities(matches);
+  console.log(`[identidad] ${matches.length} chats completados con su número.`);
 }
 
 function extractMessageBody(msg: WAMessage): string | null {
@@ -407,10 +665,14 @@ async function handleUpsertedMessage(msg: WAMessage) {
     if (existing) return;
   }
 
+  // Ni el nombre ni el teléfono del stanza sirven cuando el mensaje es
+  // nuestro: `pushName` es el del salón y `senderPn` también — es el número
+  // de quien manda, no el del chat. Tomarlo escribiría el teléfono del salón
+  // en la ficha de la clienta.
   const conversationId = await getOrCreateConversation(
     remoteJid,
     fromMe ? null : (msg.pushName ?? null),
-    msg.key.senderPn ?? null,
+    fromMe ? null : (msg.key.senderPn ?? null),
   );
   if (!conversationId) return;
 
@@ -983,6 +1245,10 @@ async function connect() {
 
       if (connection === "open") {
         console.log(`✓ Conectado como ${sock.user?.id ?? "?"}`);
+        // Suelto: completar los chats sin número no puede demorar el arranque.
+        void reconcileOrphanLidConversations(sock).catch((err) =>
+          console.error("[identidad] reconciliación fallida:", err),
+        );
         await updateStatus({
           state: "connected",
           qr: null,
@@ -1039,6 +1305,37 @@ async function connect() {
           setTimeout(() => void connect(), 2000);
         }
       }
+    });
+
+    // Agenda del teléfono y cambios de perfil. Es la única vía por la que
+    // llega el nombre (y el teléfono detrás de un `@lid`) de un chat que
+    // nunca nos entró un mensaje: sin esto quedan como "Contacto sin nombre".
+    sock.ev.on("contacts.upsert", (contacts) => {
+      void applyContactIdentities(contacts).catch((err) =>
+        console.error("[contacts.upsert] error:", err),
+      );
+    });
+
+    sock.ev.on("contacts.update", (contacts) => {
+      void applyContactIdentities(contacts).catch((err) =>
+        console.error("[contacts.update] error:", err),
+      );
+    });
+
+    // El sync inicial trae la agenda entera de una.
+    sock.ev.on("messaging-history.set", ({ contacts }) => {
+      if (!contacts?.length) return;
+      void applyContactIdentities(contacts).catch((err) =>
+        console.error("[messaging-history.set] error:", err),
+      );
+    });
+
+    // WhatsApp avisa el número real detrás de un `@lid` cuando la clienta
+    // comparte su teléfono con el salón.
+    sock.ev.on("chats.phoneNumberShare", ({ lid, jid }) => {
+      void applyContactIdentities([{ id: lid, lid, jid }]).catch((err) =>
+        console.error("[chats.phoneNumberShare] error:", err),
+      );
     });
 
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
