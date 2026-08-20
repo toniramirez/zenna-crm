@@ -33,11 +33,14 @@ function decodeWaMessageContent(b64: string): WAMessageContent {
   const buf = Buffer.from(b64, "base64");
   return proto.Message.decode(buf);
 }
+import baileysLogger from "@whiskeysockets/baileys/lib/Utils/logger.js";
+import type { ILogger } from "@whiskeysockets/baileys/lib/Utils/logger.js";
 import qrcode from "qrcode-terminal";
 import { notifyInboundMessage } from "@/lib/push/send";
 import type { Database } from "@/types/database.types";
 import { processAutomations, processInboundAutomations } from "./automations";
 import { downloadAndStoreMedia, fetchAndStoreAvatar } from "./media";
+import { processInboundReview } from "./reviews";
 import { useSupabaseAuthState } from "./supabase-auth";
 import { transcribeAndStore } from "./transcribe";
 
@@ -277,6 +280,81 @@ async function silenceWatchdog() {
 }
 
 setInterval(() => void silenceWatchdog(), 5 * 60_000);
+
+/**
+ * Detector de sesión rota.
+ *
+ * Cuando el Signal entre este dispositivo y otro de la misma cuenta se
+ * desincroniza, WhatsApp sigue entregando los mensajes pero ninguno se puede
+ * descifrar ("No matching sessions found" / "Key used already or never
+ * filled"). Baileys pide reintento, el servidor reenvía, vuelve a fallar: la
+ * cola de offline no avanza nunca y al CRM no le entra un solo mensaje, con
+ * el socket conectado y sin un error a la vista.
+ *
+ * De eso no se sale rediscando —la sesión es la que está rota— así que lo
+ * único útil es que se vea: queda escrito en `last_error` para que la UI
+ * pida volver a escanear el QR.
+ */
+const DECRYPT_FAIL_WINDOW_MS = 5 * 60_000;
+const DECRYPT_FAIL_THRESHOLD = 15;
+const SESSION_BROKEN_ERROR =
+  "La sesión no puede descifrar los mensajes que entran. Hay que volver a vincular el teléfono escaneando el QR.";
+
+let decryptFailures: number[] = [];
+let sessionBrokenReported = false;
+
+function noteDecryptFailure() {
+  const now = Date.now();
+  decryptFailures = decryptFailures.filter(
+    (at) => now - at < DECRYPT_FAIL_WINDOW_MS,
+  );
+  decryptFailures.push(now);
+  if (decryptFailures.length < DECRYPT_FAIL_THRESHOLD || sessionBrokenReported) {
+    return;
+  }
+  sessionBrokenReported = true;
+  console.error(
+    `❌ ${decryptFailures.length} mensajes seguidos que no se pueden descifrar. ${SESSION_BROKEN_ERROR}`,
+  );
+  void updateStatus({ last_error: SESSION_BROKEN_ERROR });
+}
+
+/** Entró un mensaje de verdad: la sesión descifra, se limpia el aviso. */
+function noteDecryptSuccess() {
+  decryptFailures = [];
+  if (!sessionBrokenReported) return;
+  sessionBrokenReported = false;
+  console.log("✓ Volvieron a entrar mensajes descifrados.");
+  void updateStatus({ last_error: null });
+}
+
+/**
+ * Los fallos de descifrado no llegan por ningún evento: Baileys solo los
+ * escribe en su logger. Lo envolvemos para contarlos sin perder el log.
+ */
+function watchfulLogger(): ILogger {
+  const base = baileysLogger.child({ class: "baileys" }) as unknown as ILogger;
+  const wrap = (level: "trace" | "debug" | "info" | "warn" | "error") => {
+    return (obj: unknown, msg?: string) => {
+      if (msg === "failed to decrypt message") noteDecryptFailure();
+      base[level](obj, msg);
+    };
+  };
+  return {
+    get level() {
+      return base.level;
+    },
+    set level(value: string) {
+      base.level = value;
+    },
+    child: () => watchfulLogger(),
+    trace: wrap("trace"),
+    debug: wrap("debug"),
+    info: wrap("info"),
+    warn: wrap("warn"),
+    error: wrap("error"),
+  };
+}
 
 // ─────────────────────────────────────────── Helpers (CRM ingest)
 
@@ -773,6 +851,9 @@ async function handleUpsertedMessage(msg: WAMessage) {
   const ctxInfo = msg.message?.extendedTextMessage?.contextInfo;
   const replyToExternalId = ctxInfo?.stanzaId ?? null;
 
+  // Llegó un mensaje entero: la sesión descifra bien.
+  noteDecryptSuccess();
+
   const { data: inserted, error } = await supabase
     .from("messages")
     .insert({
@@ -817,12 +898,25 @@ async function handleUpsertedMessage(msg: WAMessage) {
   // outbound echoes don't qualify — automations should react to real
   // incoming text/media only.
   if (!fromMe && inserted?.id) {
-    void processInboundAutomations(
-      supabase,
-      conversationId,
-      inserted.id,
-      new Date(sentAt),
-    );
+    // La encuesta de reseña va primero y puede quedarse con el mensaje: si
+    // este "5" era la respuesta al puntaje, ya se le contestó y dejar correr
+    // además el flujo de reactivación mandaría dos mensajes encimados.
+    void (async () => {
+      const consumed = await processInboundReview(
+        supabase,
+        conversationId,
+        mediaResult?.caption ?? textBody ?? null,
+        new Date(sentAt),
+      );
+      if (consumed) return;
+
+      await processInboundAutomations(
+        supabase,
+        conversationId,
+        inserted.id,
+        new Date(sentAt),
+      );
+    })();
 
     // Aviso al teléfono. Va suelto a propósito: si el push falla, el mensaje
     // ya quedó guardado y la bandeja lo muestra igual.
@@ -1279,6 +1373,7 @@ async function connect() {
       version,
       auth: state,
       syncFullHistory: false,
+      logger: watchfulLogger(),
       // Answer retry-receipts from peer devices that failed to decrypt one
       // of our messages (typically the user's own primary phone, when
       // multi-device session drift means our linked-device copy doesn't

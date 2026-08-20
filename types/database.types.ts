@@ -216,8 +216,14 @@ export type Database = {
           active: boolean
           created_at: string
           id: string
+          kind: string
           message_body: string
           name: string
+          review_google_url: string | null
+          review_reply_high: string | null
+          review_reply_low: string | null
+          review_reply_mid: string | null
+          review_salon_name: string | null
           service_filter_ids: string[]
           trigger: Database["public"]["Enums"]["automation_trigger"]
           trigger_offset_minutes: number
@@ -227,8 +233,14 @@ export type Database = {
           active?: boolean
           created_at?: string
           id?: string
+          kind?: string
           message_body: string
           name: string
+          review_google_url?: string | null
+          review_reply_high?: string | null
+          review_reply_low?: string | null
+          review_reply_mid?: string | null
+          review_salon_name?: string | null
           service_filter_ids?: string[]
           trigger: Database["public"]["Enums"]["automation_trigger"]
           trigger_offset_minutes?: number
@@ -238,8 +250,14 @@ export type Database = {
           active?: boolean
           created_at?: string
           id?: string
+          kind?: string
           message_body?: string
           name?: string
+          review_google_url?: string | null
+          review_reply_high?: string | null
+          review_reply_low?: string | null
+          review_reply_mid?: string | null
+          review_salon_name?: string | null
           service_filter_ids?: string[]
           trigger?: Database["public"]["Enums"]["automation_trigger"]
           trigger_offset_minutes?: number
@@ -1290,6 +1308,116 @@ export type Database = {
         }
         Relationships: []
       }
+      review_requests: {
+        Row: {
+          answered_at: string | null
+          appointment_id: string
+          asked_at: string
+          case_notes: string | null
+          case_status: string
+          client_id: string | null
+          conversation_id: string | null
+          created_at: string
+          feedback: string | null
+          feedback_at: string | null
+          flow_id: string
+          id: string
+          question_message_id: string | null
+          reply_message_id: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          score: number | null
+        }
+        Insert: {
+          answered_at?: string | null
+          appointment_id: string
+          asked_at?: string
+          case_notes?: string | null
+          case_status?: string
+          client_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          feedback?: string | null
+          feedback_at?: string | null
+          flow_id: string
+          id?: string
+          question_message_id?: string | null
+          reply_message_id?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          score?: number | null
+        }
+        Update: {
+          answered_at?: string | null
+          appointment_id?: string
+          asked_at?: string
+          case_notes?: string | null
+          case_status?: string
+          client_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          feedback?: string | null
+          feedback_at?: string | null
+          flow_id?: string
+          id?: string
+          question_message_id?: string | null
+          reply_message_id?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          score?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_requests_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_requests_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_requests_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "automation_flows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_requests_question_message_id_fkey"
+            columns: ["question_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_requests_reply_message_id_fkey"
+            columns: ["reply_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_requests_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       services: {
         Row: {
           active: boolean
@@ -1486,6 +1614,7 @@ export type Database = {
       automation_trigger:
         | "before_appointment"
         | "after_appointment"
+        | "after_payment"
         | "on_inbound_after_inactivity"
       commission_status: "pending" | "paid"
       expense_category:
@@ -1670,6 +1799,7 @@ export const Constants = {
       automation_trigger: [
         "before_appointment",
         "after_appointment",
+        "after_payment",
         "on_inbound_after_inactivity",
       ],
       commission_status: ["pending", "paid"],

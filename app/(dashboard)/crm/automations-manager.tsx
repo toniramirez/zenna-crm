@@ -7,9 +7,11 @@ import {
   Pencil,
   Plus,
   Power,
+  Star,
   Trash2,
   Zap,
 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -52,6 +54,7 @@ import {
   TRIGGER_LABEL,
   TRIGGERS,
 } from "@/lib/validations/crm-config";
+import { REVIEW_CASE_THRESHOLD } from "@/lib/reviews";
 import { cn } from "@/lib/utils";
 import {
   createFlowAction,
@@ -59,6 +62,7 @@ import {
   updateFlowAction,
 } from "./config-actions";
 import type { AutomationFlow, ServiceSlim } from "./config-types";
+import { ReviewFlowDialog } from "./review-flow-dialog";
 
 // Convert mins → { value, unit } for friendly editor
 function fromMinutes(mins: number): { value: number; unit: "min" | "h" | "d" } {
@@ -83,6 +87,13 @@ export function AutomationsManager({
 }) {
   const [editing, setEditing] = useState<AutomationFlow | null>(null);
   const [open, setOpen] = useState(false);
+  // El pedido de reseña tiene su propio editor, así que también su propio
+  // estado: abrir uno mientras el otro está montado con otro flujo cargado
+  // mezclaría los formularios.
+  const [reviewEditing, setReviewEditing] = useState<AutomationFlow | null>(
+    null,
+  );
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [, startTransition] = useTransition();
 
   const serviceById = useMemo(
@@ -95,8 +106,17 @@ export function AutomationsManager({
     setOpen(true);
   }
   function openEdit(flow: AutomationFlow) {
+    if (flow.kind === "review") {
+      setReviewEditing(flow);
+      setReviewOpen(true);
+      return;
+    }
     setEditing(flow);
     setOpen(true);
+  }
+  function openCreateReview() {
+    setReviewEditing(null);
+    setReviewOpen(true);
   }
 
   function handleDelete(flow: AutomationFlow) {
@@ -110,17 +130,23 @@ export function AutomationsManager({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-start justify-between gap-2">
         <p className="text-sm text-muted-foreground max-w-2xl">
           Mensajes automáticos vinculados a turnos. Configurás &quot;cuándo&quot;
-          (antes o después del turno) y &quot;a quiénes&quot; (todas las clientas
-          o solo las que reservaron ciertos servicios). El worker dispara los
-          envíos cada minuto.
+          (antes del turno, después, o después de cobrarlo) y &quot;a
+          quiénes&quot; (todas las clientas o solo las que reservaron ciertos
+          servicios). El worker dispara los envíos cada minuto.
         </p>
-        <Button onClick={openCreate} size="sm">
-          <Plus className="size-4" />
-          Nuevo flujo
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button onClick={openCreateReview} size="sm" variant="outline">
+            <Star className="size-4" />
+            Pedido de reseña
+          </Button>
+          <Button onClick={openCreate} size="sm">
+            <Plus className="size-4" />
+            Nuevo flujo
+          </Button>
+        </div>
       </div>
 
       {flows.length === 0 ? (
@@ -144,7 +170,12 @@ export function AutomationsManager({
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{f.name}</div>
+                  <div className="flex items-center gap-1.5 font-medium">
+                    {f.kind === "review" ? (
+                      <Star className="size-3.5 shrink-0 text-gold" />
+                    ) : null}
+                    <span className="truncate">{f.name}</span>
+                  </div>
                   <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground flex-wrap">
                     <AlarmClock className="size-3" />
                     <span>
@@ -197,6 +228,27 @@ export function AutomationsManager({
                 {f.message_body}
               </div>
 
+              {f.kind === "review" ? (
+                <div className="text-xs text-muted-foreground">
+                  Responde sola según el puntaje. Un{" "}
+                  <strong className="text-foreground">5</strong> lleva a Google;{" "}
+                  <strong className="text-foreground">
+                    {REVIEW_CASE_THRESHOLD} o menos
+                  </strong>{" "}
+                  abre un caso en{" "}
+                  <Link href="/resenas" className="underline">
+                    Reseñas
+                  </Link>
+                  .
+                  {f.review_google_url ? null : (
+                    <span className="text-destructive">
+                      {" "}
+                      Falta cargar el link de Google.
+                    </span>
+                  )}
+                </div>
+              ) : null}
+
               <div className="flex items-center justify-end gap-1">
                 <Button
                   type="button"
@@ -226,6 +278,13 @@ export function AutomationsManager({
         open={open}
         onOpenChange={setOpen}
         flow={editing}
+        services={services}
+      />
+
+      <ReviewFlowDialog
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        flow={reviewEditing}
         services={services}
       />
     </div>
@@ -417,7 +476,9 @@ function FlowDialog({
                   ? "antes del inicio del turno"
                   : form.watch("trigger") === "after_appointment"
                     ? "después de que termine el turno"
-                    : "de inactividad mínima entre mensajes entrantes (las conversaciones nuevas siempre disparan)"}
+                    : form.watch("trigger") === "after_payment"
+                      ? "después de que se cobre el turno"
+                      : "de inactividad mínima entre mensajes entrantes (las conversaciones nuevas siempre disparan)"}
                 .
               </p>
             </div>

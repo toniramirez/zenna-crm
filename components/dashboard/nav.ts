@@ -10,6 +10,7 @@ import {
   Scissors,
   Settings,
   Sparkles,
+  Star,
   Users,
 } from "lucide-react";
 import type { AppRole } from "@/lib/auth";
@@ -29,6 +30,7 @@ const ICONS = {
   trending: BarChart3,
   academy: GraduationCap,
   sparkles: Sparkles,
+  star: Star,
   settings: Settings,
 } as const;
 
@@ -82,6 +84,12 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/caja",
     label: "Caja",
     iconName: "wallet",
+    roles: ["owner", "receptionist"],
+  },
+  {
+    href: "/resenas",
+    label: "Reseñas",
+    iconName: "star",
     roles: ["owner", "receptionist"],
   },
   {

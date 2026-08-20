@@ -8,6 +8,8 @@ import {
   clientTagSchema,
   paymentMethodSchema,
   quickReplySchema,
+  reviewFlowSchema,
+  type ReviewFlowInput,
 } from "@/lib/validations/crm-config";
 import { fieldErrorsFromZod } from "@/lib/zod-helpers";
 
@@ -228,6 +230,83 @@ export async function deleteFlowAction(id: string): Promise<ActionState> {
     .delete()
     .eq("id", id);
   if (error) return { error: "No pudimos eliminar el flujo." };
+  revalidatePath("/crm");
+  return { success: true };
+}
+
+// ──────────────────── Flujo de reseña ────────────────────
+// Misma tabla que los flujos comunes, con `kind='review'`. Tiene acciones
+// propias porque el formulario es otro: guarda tres respuestas por puntaje y
+// el trigger no se elige (siempre es el cobro del turno).
+
+function parseReviewFlow(formData: FormData) {
+  const ids = formData.get("serviceFilterIds");
+  const serviceFilterIds =
+    typeof ids === "string" && ids.length > 0
+      ? ids.split(",").filter((s) => s.length > 0)
+      : [];
+
+  return reviewFlowSchema.safeParse({
+    name: formData.get("name"),
+    triggerOffsetMinutes: Number(formData.get("triggerOffsetMinutes") ?? 0),
+    serviceFilterIds,
+    salonName: formData.get("salonName") ?? "",
+    googleUrl: formData.get("googleUrl") ?? "",
+    question: formData.get("question"),
+    replyHigh: formData.get("replyHigh"),
+    replyMid: formData.get("replyMid"),
+    replyLow: formData.get("replyLow"),
+    active: formData.get("active") === "true",
+  });
+}
+
+function reviewFlowRow(data: ReviewFlowInput) {
+  return {
+    name: data.name.trim(),
+    kind: "review",
+    trigger: "after_payment" as const,
+    trigger_offset_minutes: data.triggerOffsetMinutes,
+    service_filter_ids: data.serviceFilterIds,
+    message_body: data.question,
+    review_salon_name: data.salonName?.trim() || null,
+    review_google_url: data.googleUrl?.trim() || null,
+    review_reply_high: data.replyHigh,
+    review_reply_mid: data.replyMid,
+    review_reply_low: data.replyLow,
+    active: data.active,
+  };
+}
+
+export async function createReviewFlowAction(
+  formData: FormData,
+): Promise<ActionState> {
+  await requireRole("owner");
+  const parsed = parseReviewFlow(formData);
+  if (!parsed.success) return { fieldErrors: fieldErrorsFromZod(parsed) };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("automation_flows")
+    .insert(reviewFlowRow(parsed.data));
+  if (error) return { error: "No pudimos crear el pedido de reseña." };
+  revalidatePath("/crm");
+  return { success: true };
+}
+
+export async function updateReviewFlowAction(
+  id: string,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireRole("owner");
+  const parsed = parseReviewFlow(formData);
+  if (!parsed.success) return { fieldErrors: fieldErrorsFromZod(parsed) };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("automation_flows")
+    .update(reviewFlowRow(parsed.data))
+    .eq("id", id);
+  if (error) return { error: "No pudimos guardar los cambios." };
   revalidatePath("/crm");
   return { success: true };
 }

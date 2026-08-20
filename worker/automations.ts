@@ -3,6 +3,7 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { renderTemplate } from "@/lib/validations/crm-config";
 import type { Database } from "@/types/database.types";
+import { fireReviewForAppointment } from "./reviews";
 
 type AutomationFlow =
   Database["public"]["Tables"]["automation_flows"]["Row"];
@@ -29,6 +30,13 @@ type AppointmentRow = {
 
 const TICK_WINDOW_MS = 60_000;
 
+const APPOINTMENT_SELECT = `
+  id, client_id, starts_at, ends_at,
+  clients ( full_name, phone ),
+  professionals ( full_name ),
+  appointment_services ( service_id, services ( name ) )
+`;
+
 /**
  * Run one pass over all active automation flows. Per flow:
  *   1. Find appointments whose trigger time falls in the last 60s window.
@@ -37,6 +45,10 @@ const TICK_WINDOW_MS = 60_000;
  *      `automation_executions` row (unique on flow+appointment, so duplicates
  *      from overlapping ticks are silently dropped).
  *   4. If claimed, render the message and enqueue it like any other outbound.
+ *
+ * Los flujos de reseña (`kind='review'`) comparten los pasos 1 y 2 pero
+ * reclaman su turno en `review_requests`, porque la pregunta que mandan espera
+ * respuesta. Ver worker/reviews.ts.
  */
 export async function processAutomations(
   supabase: SupabaseClient<Database>,
@@ -46,14 +58,22 @@ export async function processAutomations(
     .from("automation_flows")
     .select("*")
     .eq("active", true)
-    .in("trigger", ["before_appointment", "after_appointment"]);
+    .in("trigger", [
+      "before_appointment",
+      "after_appointment",
+      "after_payment",
+    ]);
   if (!flows || flows.length === 0) return;
 
   for (const flow of flows) {
     try {
       const matches = await findMatchingAppointments(supabase, flow, now);
       for (const apt of matches) {
-        await fireForAppointment(supabase, flow, apt, now);
+        if (flow.kind === "review") {
+          await fireReviewForAppointment(supabase, flow, apt);
+        } else {
+          await fireForAppointment(supabase, flow, apt, now);
+        }
       }
     } catch (err) {
       console.error(
@@ -220,6 +240,11 @@ async function findMatchingAppointments(
   now: Date,
 ): Promise<AppointmentRow[]> {
   const offsetMs = flow.trigger_offset_minutes * 60_000;
+
+  if (flow.trigger === "after_payment") {
+    return findPaidAppointments(supabase, flow, now, offsetMs);
+  }
+
   let lo: Date;
   let hi: Date;
   let column: "starts_at" | "ends_at";
@@ -238,14 +263,7 @@ async function findMatchingAppointments(
 
   const { data, error } = await supabase
     .from("appointments")
-    .select(
-      `
-      id, client_id, starts_at, ends_at,
-      clients ( full_name, phone ),
-      professionals ( full_name ),
-      appointment_services ( service_id, services ( name ) )
-    `,
-    )
+    .select(APPOINTMENT_SELECT)
     .gte(column, lo.toISOString())
     .lt(column, hi.toISOString())
     .not("status", "in", '("cancelled","no_show")');
@@ -255,8 +273,61 @@ async function findMatchingAppointments(
     return [];
   }
 
-  const rows = (data ?? []) as unknown as AppointmentRow[];
+  return applyServiceFilter(flow, (data ?? []) as unknown as AppointmentRow[]);
+}
 
+/**
+ * Turnos cobrados hace `offset`. Se entra por `payments` y no por
+ * `appointments` porque el cobro no deja fecha en el turno: un turno del
+ * martes que se cobró el jueves tiene que disparar el jueves.
+ *
+ * Un cobro son varias filas de `payments` (una por método) insertadas en la
+ * misma transacción, así que la lista se deduplica por turno antes de salir.
+ * Aun así el único de la tabla de destino es la garantía real: dos cobros
+ * parciales en momentos distintos caerían en ventanas distintas.
+ */
+async function findPaidAppointments(
+  supabase: SupabaseClient<Database>,
+  flow: AutomationFlow,
+  now: Date,
+  offsetMs: number,
+): Promise<AppointmentRow[]> {
+  const lo = new Date(now.getTime() - offsetMs - TICK_WINDOW_MS);
+  const hi = new Date(now.getTime() - offsetMs);
+
+  const { data: paid, error: payErr } = await supabase
+    .from("payments")
+    .select("appointment_id")
+    .gte("paid_at", lo.toISOString())
+    .lt("paid_at", hi.toISOString());
+
+  if (payErr) {
+    console.error("[automations] payments query error:", payErr.message);
+    return [];
+  }
+
+  const appointmentIds = [...new Set((paid ?? []).map((p) => p.appointment_id))];
+  if (appointmentIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("appointments")
+    .select(APPOINTMENT_SELECT)
+    .in("id", appointmentIds)
+    .not("status", "in", '("cancelled","no_show")');
+
+  if (error) {
+    console.error("[automations] appointments query error:", error.message);
+    return [];
+  }
+
+  return applyServiceFilter(flow, (data ?? []) as unknown as AppointmentRow[]);
+}
+
+/** Sin servicios elegidos el flujo aplica a cualquier turno. */
+function applyServiceFilter(
+  flow: AutomationFlow,
+  rows: AppointmentRow[],
+): AppointmentRow[] {
   if (flow.service_filter_ids.length === 0) return rows;
 
   return rows.filter((apt) =>

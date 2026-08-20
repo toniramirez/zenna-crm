@@ -41,6 +41,7 @@ export type QuickReplyInput = z.infer<typeof quickReplySchema>;
 export type AutomationTrigger =
   | "before_appointment"
   | "after_appointment"
+  | "after_payment"
   | "on_inbound_after_inactivity";
 
 export const TRIGGERS: {
@@ -49,6 +50,7 @@ export const TRIGGERS: {
 }[] = [
   { value: "before_appointment", label: "Antes del turno" },
   { value: "after_appointment", label: "Después del turno" },
+  { value: "after_payment", label: "Después de cobrar el turno" },
   {
     value: "on_inbound_after_inactivity",
     label: "Mensaje entrante tras inactividad",
@@ -58,6 +60,7 @@ export const TRIGGERS: {
 export const TRIGGER_LABEL: Record<AutomationTrigger, string> = {
   before_appointment: "Antes del turno",
   after_appointment: "Después del turno",
+  after_payment: "Después de cobrar",
   on_inbound_after_inactivity: "Mensaje entrante",
 };
 
@@ -65,7 +68,11 @@ export const TRIGGER_LABEL: Record<AutomationTrigger, string> = {
 export const APPOINTMENT_TRIGGERS: AutomationTrigger[] = [
   "before_appointment",
   "after_appointment",
+  "after_payment",
 ];
+
+/** Los dos editores del panel: texto simple, o encuesta de reseña. */
+export type AutomationKind = "message" | "review";
 
 export const automationFlowSchema = z
   .object({
@@ -76,6 +83,7 @@ export const automationFlowSchema = z
     trigger: z.enum([
       "before_appointment",
       "after_appointment",
+      "after_payment",
       "on_inbound_after_inactivity",
     ] as const),
     triggerOffsetMinutes: z
@@ -132,6 +140,80 @@ export const TEMPLATE_VARIABLES = [
   { key: "fecha", label: "Fecha (10 may)" },
   { key: "hora", label: "Hora (14:30)" },
   { key: "profesional", label: "Profesional" },
+] as const;
+
+// ──────────────── Flujo de reseña ────────────────
+
+/**
+ * El flujo de reseña es una fila de `automation_flows` con `kind='review'`,
+ * no una tabla aparte: comparte nombre, activo, offset y filtro por servicio
+ * con los flujos comunes, y agrega la pregunta (que va en `message_body`) más
+ * las tres respuestas por puntaje.
+ *
+ * El trigger es siempre `after_payment` — la encuesta se manda cuando el turno
+ * ya se cobró, que es cuando la clienta terminó de vivir la experiencia — así
+ * que no se elige en el formulario.
+ */
+export const reviewFlowSchema = z.object({
+  name: z
+    .string()
+    .min(2, "El nombre es muy corto.")
+    .max(120, "El nombre es muy largo."),
+  triggerOffsetMinutes: z
+    .number()
+    .int("Tiene que ser un número entero.")
+    .min(0, "El offset no puede ser negativo.")
+    .max(525600, "El offset es demasiado grande."),
+  serviceFilterIds: z.array(z.string().uuid()),
+  salonName: z
+    .string()
+    .max(120, "El nombre del salón es muy largo.")
+    .optional()
+    .or(z.literal("")),
+  googleUrl: z
+    .string()
+    .trim()
+    .url("Tiene que ser un link válido (https://…).")
+    .max(500, "El link es demasiado largo.")
+    .optional()
+    .or(z.literal("")),
+  question: z
+    .string()
+    .min(2, "La pregunta es muy corta.")
+    .max(4000, "La pregunta es demasiado larga."),
+  replyHigh: z
+    .string()
+    .min(2, "La respuesta es muy corta.")
+    .max(4000, "La respuesta es demasiado larga."),
+  replyMid: z
+    .string()
+    .min(2, "La respuesta es muy corta.")
+    .max(4000, "La respuesta es demasiado larga."),
+  replyLow: z
+    .string()
+    .min(2, "La respuesta es muy corta.")
+    .max(4000, "La respuesta es demasiado larga."),
+  active: z.boolean(),
+});
+
+export type ReviewFlowInput = z.infer<typeof reviewFlowSchema>;
+
+/** Variables de la pregunta: todo lo del turno más el nombre del salón. */
+export const REVIEW_QUESTION_VARIABLES = [
+  { key: "nombre", label: "Nombre de la clienta" },
+  { key: "salon", label: "Nombre del salón" },
+  { key: "servicio", label: "Servicios del turno" },
+  { key: "profesional", label: "Profesional" },
+] as const;
+
+/**
+ * Variables de las respuestas. `link` solo tiene sentido acá: es el link de
+ * Google al que mandamos a quien puntuó 5.
+ */
+export const REVIEW_REPLY_VARIABLES = [
+  { key: "nombre", label: "Nombre de la clienta" },
+  { key: "salon", label: "Nombre del salón" },
+  { key: "link", label: "Link de reseña" },
 ] as const;
 
 // ──────────────── Payment methods ────────────────
