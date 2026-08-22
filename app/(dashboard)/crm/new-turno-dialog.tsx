@@ -4,14 +4,10 @@ import type {
   DateSelectArg,
   EventInput,
 } from "@fullcalendar/core";
-import esLocale from "@fullcalendar/core/locales/es";
-import interactionPlugin from "@fullcalendar/interaction";
-import FullCalendar from "@fullcalendar/react";
-import resourceTimeGridPlugin from "@fullcalendar/resource-timegrid";
-import timeGridPlugin from "@fullcalendar/timegrid";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { CalendarClock, Loader2, UserPlus } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -109,6 +105,25 @@ function toDateInput(iso: string): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+
+/*
+ * La mini-agenda comparte el módulo de la grilla con /turnos, y se baja recién
+ * cuando este diálogo la va a dibujar: en el teléfono nunca —abajo de 640px se
+ * reemplaza por un select de profesional y un campo de fecha y hora— y en el
+ * escritorio recién al abrir "Nuevo turno". Sin esto, todo `@fullcalendar/*`
+ * viajaba dentro del chunk de la bandeja y lo pagaba cada apertura del chat.
+ */
+const FcGrid = dynamic(
+  () => import("../turnos/fc-grid").then((m) => m.FcGrid),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[460px] items-center justify-center">
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      </div>
+    ),
+  },
+);
 
 const OPEN_HOUR = 8;
 const CLOSE_HOUR = 22;
@@ -514,14 +529,8 @@ export function NewTurnoDialog({
                   «Profesionales» para poder agendar.
                 </div>
               ) : (
-                <FullCalendar
-                  plugins={[
-                    resourceTimeGridPlugin,
-                    timeGridPlugin,
-                    interactionPlugin,
-                  ]}
+                <FcGrid
                   schedulerLicenseKey="CC-Attribution-NonCommercial-NoDerivatives"
-                  locale={esLocale}
                   firstDay={1}
                   initialView="resourceTimeGridDay"
                   headerToolbar={{

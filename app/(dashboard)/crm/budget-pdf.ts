@@ -1,7 +1,11 @@
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+// jsPDF + autoTable son ~600 KB sin comprimir: el peso más grande de toda la
+// bandeja, y sólo hace falta cuando alguien exporta un presupuesto. Van como
+// `import type` acá arriba (los tipos se borran al compilar) y se cargan de
+// verdad con `import()` adentro de `buildBudgetPdf`, así el chunk de /crm no
+// los arrastra en cada apertura del chat.
+import type jsPDF from "jspdf";
 import { applySurcharge } from "@/lib/validations/budgets";
 
 // Brand palette — kept inline rather than from CSS vars since jsPDF needs
@@ -162,7 +166,12 @@ function drawCenteredSpacedText(
 export async function buildBudgetPdf(
   payload: BudgetPdfPayload,
 ): Promise<Blob> {
-  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const [{ default: JsPDF }, { default: autoTable }] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+  ]);
+
+  const doc = new JsPDF({ unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const marginX = 22;

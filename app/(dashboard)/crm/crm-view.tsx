@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -48,6 +49,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { onOpenConversation } from "@/lib/push/open-conversation";
 import { createClient } from "@/lib/supabase/client";
+import { useVisiblePoll } from "@/lib/use-visible-poll";
 import { cn } from "@/lib/utils";
 import type { WhatsappTemplateRow } from "@/lib/whatsapp-cloud/templates";
 import {
@@ -279,57 +281,66 @@ export function CrmView({
   const now = useMinuteClock();
 
   // Subscribe to conversation changes (new conversations, last_message_at updates)
+  const refetchConversations = useCallback(async () => {
+    const { data } = await supabase
+      .from("conversations")
+      .select("*, clients ( id, full_name, phone, tags )")
+      .eq("archived", false)
+      .order("pinned_at", { ascending: false, nullsFirst: false })
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(100);
+    if (data) setConversations(data as ConversationWithClient[]);
+  }, [supabase]);
+
   useEffect(() => {
-    let cancelled = false;
-
-    async function refetch() {
-      const { data } = await supabase
-        .from("conversations")
-        .select("*, clients ( id, full_name, phone, tags )")
-        .eq("archived", false)
-        .order("pinned_at", { ascending: false, nullsFirst: false })
-        .order("last_message_at", { ascending: false, nullsFirst: false })
-        .limit(100);
-      if (!cancelled && data) setConversations(data as ConversationWithClient[]);
-    }
-
     const channel = supabase
       .channel("crm-conversations")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "conversations" },
-        () => void refetch(),
+        () => void refetchConversations(),
       )
       .subscribe();
 
-    const pollId = setInterval(() => void refetch(), 5000);
-
     return () => {
-      cancelled = true;
-      clearInterval(pollId);
       void supabase.removeChannel(channel);
     };
-  }, [supabase]);
+  }, [supabase, refetchConversations]);
 
-  // Load messages for selected conversation + subscribe to its inserts/updates
+  /*
+   * Respaldo de la lista. Era cada 5 s y sin condiciones: 100 conversaciones
+   * con su clienta adentro, en bucle, aunque la app estuviera en el bolsillo.
+   * Ahora sólo corre con la pantalla a la vista y el intervalo puede ser
+   * cómodo, porque quien trae la novedad rápido es el realtime de arriba y la
+   * vuelta desde segundo plano la cubre el refetch del propio hook.
+   */
+  useVisiblePoll(refetchConversations, 20_000);
+
+  /*
+   * Refetch de los mensajes del chat abierto. El chat que corresponde se lee
+   * de un ref y no de la clausura: así el poll de respaldo puede ser un hook
+   * estable y, si alguien cambia de conversación mientras la respuesta viaja,
+   * la comparación de abajo la descarta en vez de pintar los mensajes del
+   * chat anterior sobre el nuevo.
+   */
+  const selectedIdRef = useRef(selectedId);
   useEffect(() => {
-    if (!selectedId) {
-      setMessages([]);
-      return;
-    }
-    // Capture into a const so TS narrows it inside the inner closures —
-    // outer narrowing doesn't propagate through async function boundaries.
-    const sid: string = selectedId;
-    let cancelled = false;
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
-    async function refetch(initial = false) {
+  const refetchMessages = useCallback(
+    async (initial = false) => {
+      const sid = selectedIdRef.current;
+      if (!sid) return;
+
       const { data } = await supabase
         .from("messages")
         .select("*")
         .eq("conversation_id", sid)
         .order("sent_at", { ascending: true })
         .limit(500);
-      if (cancelled || !data) return;
+
+      if (!data || selectedIdRef.current !== sid) return;
       const fetched = data as MessageRow[];
       if (initial) {
         setMessages(fetched);
@@ -350,11 +361,30 @@ export function CrmView({
         }
         return prev;
       });
+    },
+    [supabase],
+  );
+
+  /*
+   * Respaldo del chat abierto. Eran las 500 filas del chat cada 3 segundos,
+   * de fondo, para siempre: la consulta más cara de la app corriendo veinte
+   * veces por minuto aunque el realtime ya hubiera traído todo. Ahora corre
+   * con la pantalla a la vista, y al volver de segundo plano —donde el
+   * websocket se muere y antes había que esperar el tick— refetchea sola.
+   */
+  useVisiblePoll(refetchMessages, 10_000, Boolean(selectedId));
+
+  // Load messages for selected conversation + subscribe to its inserts/updates
+  useEffect(() => {
+    if (!selectedId) {
+      setMessages([]);
+      return;
     }
+    let cancelled = false;
 
     setLoadingMessages(true);
     void (async () => {
-      await refetch(true);
+      await refetchMessages(true);
       if (cancelled) return;
       setLoadingMessages(false);
       void markConversationReadAction(selectedId);
@@ -396,14 +426,11 @@ export function CrmView({
       )
       .subscribe();
 
-    const pollId = setInterval(() => void refetch(false), 3000);
-
     return () => {
       cancelled = true;
-      clearInterval(pollId);
       void supabase.removeChannel(channel);
     };
-  }, [selectedId, supabase]);
+  }, [selectedId, supabase, refetchMessages]);
 
   // Toque en una notificación con la bandeja ya abierta. El id llega por el
   // puente del service worker y no por la URL: `selectedId` es estado de React

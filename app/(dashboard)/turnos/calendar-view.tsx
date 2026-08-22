@@ -8,11 +8,7 @@ import type {
   EventInput,
   EventMountArg,
 } from "@fullcalendar/core";
-import esLocale from "@fullcalendar/core/locales/es";
-import interactionPlugin from "@fullcalendar/interaction";
-import FullCalendar from "@fullcalendar/react";
-import resourceTimeGridPlugin from "@fullcalendar/resource-timegrid";
-import timeGridPlugin from "@fullcalendar/timegrid";
+import type FullCalendar from "@fullcalendar/react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import {
@@ -22,6 +18,7 @@ import {
   Plus,
   Users as UsersIcon,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -53,6 +50,19 @@ import type {
   ServiceRow,
 } from "./types";
 import { WhatsAppDialog } from "./whatsapp-dialog";
+
+/*
+ * La grilla se baja aparte (ver ./fc-grid). En el teléfono no se pide nunca:
+ * `CalendarView` devuelve `MobileAgenda` antes de llegar a renderizarla. En el
+ * escritorio el toolbar dibuja primero y la grilla entra apenas llega su chunk.
+ *
+ * `ssr: false` porque FullCalendar mide el DOM al montar: prerenderizarla en
+ * el servidor sólo agrega HTML que se descarta en la hidratación.
+ */
+const FcGrid = dynamic(() => import("./fc-grid").then((m) => m.FcGrid), {
+  ssr: false,
+  loading: () => <div className="h-full min-h-0" aria-hidden />,
+});
 
 type ServiceCategory = Database["public"]["Enums"]["service_category"];
 
@@ -680,15 +690,9 @@ export function CalendarView({
 
       {/* ── Agenda ──────────────────────────────────────────────────── */}
       <div className="zenna-calendar min-h-0 flex-1 overflow-y-auto px-2 pb-6 sm:px-4">
-        <FullCalendar
-          ref={calendarRef}
-          plugins={[
-            resourceTimeGridPlugin,
-            timeGridPlugin,
-            interactionPlugin,
-          ]}
+        <FcGrid
+          calendarRef={calendarRef}
           schedulerLicenseKey="CC-Attribution-NonCommercial-NoDerivatives"
-          locale={esLocale}
           firstDay={1}
           // El toolbar es nuestro: FullCalendar solo dibuja la grilla.
           headerToolbar={false}

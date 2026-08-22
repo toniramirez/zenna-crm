@@ -47,7 +47,6 @@ export default async function CrmPage({ searchParams }: Props) {
     tagsResult,
     repliesResult,
     flowsResult,
-    servicesSlimResult,
     servicesFullResult,
     professionalsResult,
     clientsResult,
@@ -67,12 +66,10 @@ export default async function CrmPage({ searchParams }: Props) {
     supabase.from("client_tags").select("*").order("active", { ascending: false }).order("name"),
     supabase.from("quick_replies").select("*").order("active", { ascending: false }).order("label"),
     supabase.from("automation_flows").select("*").order("active", { ascending: false }).order("name"),
-    supabase
-      .from("services")
-      .select("id, name, category")
-      .eq("active", true)
-      .order("category")
-      .order("name"),
+    // Una sola vuelta a `services`: antes iban dos consultas a la misma tabla
+    // con el mismo filtro y el mismo orden —una con las tres columnas que usa
+    // la configuración y otra con la fila entera para el diálogo de turno— y
+    // las dos listas viajaban al cliente. La versión corta se recorta abajo.
     supabase
       .from("services")
       .select("*")
@@ -126,6 +123,13 @@ export default async function CrmPage({ searchParams }: Props) {
       .order("name"),
   ]);
 
+  const bookingServices = servicesFullResult.data ?? [];
+  const servicesSlim: ServiceSlim[] = bookingServices.map((s) => ({
+    id: s.id,
+    name: s.name,
+    category: s.category,
+  }));
+
   // La bandeja va a sangre, como en el diseño de referencia: sin padding del
   // <main> y sin encabezado de página propio.
   return (
@@ -142,8 +146,8 @@ export default async function CrmPage({ searchParams }: Props) {
           (waTemplatesResult.data as WhatsappTemplateRow[] | null) ?? []
         }
         flows={(flowsResult.data as AutomationFlow[] | null) ?? []}
-        services={(servicesSlimResult.data as ServiceSlim[] | null) ?? []}
-        bookingServices={servicesFullResult.data ?? []}
+        services={servicesSlim}
+        bookingServices={bookingServices}
         professionals={professionalsResult.data ?? []}
         clients={clientsResult.data ?? []}
         appointments={

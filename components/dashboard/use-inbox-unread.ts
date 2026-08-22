@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { countInboxUnread } from "@/lib/inbox-unread";
 import { createClient } from "@/lib/supabase/client";
+import { useVisiblePoll } from "@/lib/use-visible-poll";
 
 /**
  * Chats sin leer de la bandeja, en vivo.
@@ -19,8 +20,13 @@ import { createClient } from "@/lib/supabase/client";
  * un poll de respaldo por si la suscripción se cae (pasa al volver de segundo
  * plano en el teléfono). El poll es lento a propósito — es una consulta que
  * corre en toda la app, no sólo en /crm.
+ *
+ * Un minuto y no veinte segundos porque el poll ya no es el que trae la
+ * novedad: el realtime la trae en el momento, y `useVisiblePoll` refetchea
+ * solo al volver a la app, que es el único hueco que el realtime deja. Lo que
+ * queda es el respaldo de una suscripción caída con la app abierta y quieta.
  */
-const POLL_MS = 20_000;
+const POLL_MS = 60_000;
 
 export function useInboxUnread(initial: number, enabled: boolean): number {
   const [count, setCount] = useState(initial);
@@ -34,17 +40,17 @@ export function useInboxUnread(initial: number, enabled: boolean): number {
     setCount(initial);
   }
 
+  // Un solo cliente para el hook: `createClient()` adentro del efecto lo
+  // recreaba en cada corrida y con él la suscripción.
+  const supabase = useMemo(() => createClient(), []);
+
+  const refetch = useCallback(async () => {
+    if (!enabled) return;
+    setCount(await countInboxUnread(supabase));
+  }, [enabled, supabase]);
+
   useEffect(() => {
     if (!enabled) return;
-
-    const supabase = createClient();
-    let cancelled = false;
-
-    async function refetch() {
-      const next = await countInboxUnread(supabase);
-      if (cancelled) return;
-      setCount(next);
-    }
 
     const channel = supabase
       .channel("inbox-unread")
@@ -55,15 +61,14 @@ export function useInboxUnread(initial: number, enabled: boolean): number {
       )
       .subscribe();
 
-    const pollId = setInterval(() => void refetch(), POLL_MS);
     void refetch();
 
     return () => {
-      cancelled = true;
-      clearInterval(pollId);
       void supabase.removeChannel(channel);
     };
-  }, [enabled]);
+  }, [enabled, refetch, supabase]);
+
+  useVisiblePoll(refetch, POLL_MS, enabled);
 
   return count;
 }
