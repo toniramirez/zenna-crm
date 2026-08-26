@@ -7,7 +7,9 @@ import {
   REVIEW_FEEDBACK_WINDOW_MINUTES,
   reviewBucket,
 } from "@/lib/reviews";
+import { buildFlowMessage } from "@/lib/automations/message";
 import { renderTemplate } from "@/lib/validations/crm-config";
+import { resolveCloudConversation } from "@/lib/whatsapp-cloud/conversations";
 import type { Database } from "@/types/database.types";
 
 type AutomationFlow = Database["public"]["Tables"]["automation_flows"]["Row"];
@@ -15,7 +17,7 @@ type AutomationFlow = Database["public"]["Tables"]["automation_flows"]["Row"];
 type ReviewAppointment = {
   id: string;
   client_id: string;
-  clients: { full_name: string } | null;
+  clients: { full_name: string; phone?: string | null } | null;
   professionals: { full_name: string } | null;
   appointment_services: { services: { name: string } | null }[];
 };
@@ -35,17 +37,21 @@ export async function fireReviewForAppointment(
   flow: AutomationFlow,
   apt: ReviewAppointment,
 ) {
-  // Igual que las automatizaciones comunes: solo WhatsApp propio. Instagram
-  // tiene ventana de 24 h y la Cloud API exige plantilla aprobada fuera de
-  // ella, así que una encuesta espontánea rebotaría.
-  const { data: conv } = await supabase
-    .from("conversations")
-    .select("id")
-    .eq("client_id", apt.client_id)
-    .eq("channel", "whatsapp")
-    .maybeSingle();
-
-  if (!conv) return;
+  // Igual que las automatizaciones comunes: sale por el número nuevo (Cloud
+  // API) y nunca por Instagram ni por el número viejo. La encuesta se manda
+  // horas después de cobrar el turno, así que casi siempre cae FUERA de la
+  // ventana de 24 h: para que llegue, el flujo tiene que estar en modo
+  // plantilla. En modo texto libre solo alcanza a quien escribió hace poco, y
+  // por eso ahí no se abre un chat que no exista.
+  const wantsTemplate = flow.send_mode === "template";
+  const resolved = await resolveCloudConversation(supabase, {
+    clientId: apt.client_id,
+    phone: apt.clients?.phone ?? null,
+    displayName: apt.clients?.full_name ?? null,
+    createIfMissing: wantsTemplate,
+  });
+  const conversationId = resolved.conversationId;
+  if (!conversationId) return;
 
   const { data: request, error: reqErr } = await supabase
     .from("review_requests")
@@ -53,7 +59,7 @@ export async function fireReviewForAppointment(
       flow_id: flow.id,
       appointment_id: apt.id,
       client_id: apt.client_id,
-      conversation_id: conv.id,
+      conversation_id: conversationId,
     })
     .select("id")
     .single();
@@ -74,7 +80,7 @@ export async function fireReviewForAppointment(
     .filter(Boolean)
     .join(" + ");
 
-  const body = renderTemplate(flow.message_body, {
+  const built = await buildFlowMessage(supabase, flow, {
     nombre: apt.clients?.full_name?.split(" ")[0] ?? "",
     salon: flow.review_salon_name ?? "",
     servicio: services || "tu turno",
@@ -84,13 +90,25 @@ export async function fireReviewForAppointment(
     hora: "",
   });
 
+  if (!built.ok) {
+    // Sin pregunta no hay encuesta: se borra la fila para que el próximo tick
+    // lo reintente cuando la plantilla vuelva a estar aprobada.
+    await supabase.from("review_requests").delete().eq("id", request.id);
+    console.error(
+      `[reviews] no pudimos armar la pregunta del flujo ${flow.id}:`,
+      built.error,
+    );
+    return;
+  }
+
   const { data: msg, error: msgErr } = await supabase
     .from("messages")
     .insert({
-      conversation_id: conv.id,
+      conversation_id: conversationId,
       direction: "outbound",
       type: "text",
-      body,
+      body: built.content.body,
+      wa_template: built.content.wa_template,
       status: "queued",
     })
     .select("id")

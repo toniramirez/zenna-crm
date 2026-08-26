@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
+import { WA_CLOUD_CHANNEL, WA_LEGACY_CHANNEL } from "@/lib/channels";
 import { createClient } from "@/lib/supabase/server";
+import { resolveCloudConversation } from "@/lib/whatsapp-cloud/conversations";
 import {
   buildTemplatePayload,
   componentsOf,
@@ -149,7 +151,7 @@ export async function sendTemplateMessageAction(args: {
     .eq("id", args.conversationId)
     .maybeSingle();
   if (!conversation) return { error: "No encontramos la conversación." };
-  if (conversation.channel !== "whatsapp_cloud") {
+  if (conversation.channel !== WA_CLOUD_CHANNEL) {
     return { error: "Las plantillas solo van por el canal de WhatsApp API." };
   }
 
@@ -271,8 +273,11 @@ export async function editMessageAction(
   if (message.type !== "text") {
     return { error: "WhatsApp solo deja editar mensajes de texto." };
   }
-  if (message.conversations?.channel !== "whatsapp") {
-    return { error: "Editar mensajes solo funciona en WhatsApp." };
+  if (message.conversations?.channel !== WA_LEGACY_CHANNEL) {
+    return {
+      error:
+        "Editar un mensaje ya mandado solo funciona en el número viejo: la WhatsApp API no lo permite.",
+    };
   }
   if (!message.external_id) {
     return { error: "Esperá a que el mensaje salga para poder editarlo." };
@@ -347,15 +352,18 @@ export async function deleteMessageAction(
   // remoto si el envío se le adelantó.
   if (
     !alreadySent &&
-    message.conversations?.channel === "whatsapp_cloud" &&
+    message.conversations?.channel === WA_CLOUD_CHANNEL &&
     message.status === "sending"
   ) {
     return { error: "El mensaje ya se está enviando: no llegamos a cancelarlo." };
   }
 
   if (alreadySent) {
-    if (message.conversations?.channel !== "whatsapp") {
-      return { error: "Eliminar para todos solo funciona en WhatsApp." };
+    if (message.conversations?.channel !== WA_LEGACY_CHANNEL) {
+      return {
+        error:
+          "Eliminar para todos solo funciona en el número viejo: la WhatsApp API no lo permite.",
+      };
     }
     const { error: opError } = await supabase.from("message_ops").insert({
       message_id: message.id,
@@ -604,106 +612,14 @@ export async function markConversationReadAction(
 }
 
 /**
- * Dígitos de un teléfono guardado en la ficha de la clienta. Los formatos
- * conviven ("+54 9 351 123-4567", "3511234567", …) porque el campo es libre.
- */
-function phoneDigits(raw: string | null | undefined): string | null {
-  const digits = (raw ?? "").replace(/\D/g, "");
-  return digits.length >= 8 ? digits : null;
-}
-
-/**
- * Encuentra —o abre— el chat de WhatsApp de una clienta.
- *
- * Primero busca por la clienta vinculada, después por los últimos 8 dígitos
- * del teléfono (que es el criterio con el que el worker asocia contactos: el
- * prefijo internacional y el 9 de los celulares argentinos se escriben de mil
- * maneras). Recién si no hay nada abre una conversación nueva con el JID
- * armado a mano, que es lo que pasa cuando el salón escribe primero.
- */
-async function resolveWhatsappConversation(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  args: { clientId?: string | null; phone?: string | null; displayName?: string | null },
-): Promise<{ conversationId?: string; error?: string }> {
-  if (args.clientId) {
-    const { data: existing } = await supabase
-      .from("conversations")
-      .select("id")
-      .eq("client_id", args.clientId)
-      .eq("channel", "whatsapp")
-      .order("last_message_at", { ascending: false, nullsFirst: false })
-      .limit(1)
-      .maybeSingle();
-    if (existing) return { conversationId: existing.id };
-  }
-
-  const digits = phoneDigits(args.phone);
-  if (!digits) {
-    return {
-      error: "La clienta no tiene un teléfono válido cargado en su ficha.",
-    };
-  }
-
-  const last8 = digits.slice(-8);
-  const { data: byPhone } = await supabase
-    .from("conversations")
-    .select("id, client_id")
-    .eq("channel", "whatsapp")
-    .or(`wa_phone.ilike.%${last8}%,external_id.ilike.%${last8}%`)
-    .order("last_message_at", { ascending: false, nullsFirst: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (byPhone) {
-    // De paso queda vinculada: la próxima vez la encontramos por client_id y
-    // el chat empieza a mostrar el nombre en vez del número.
-    if (args.clientId && !byPhone.client_id) {
-      await supabase
-        .from("conversations")
-        .update({ client_id: args.clientId })
-        .eq("id", byPhone.id);
-    }
-    return { conversationId: byPhone.id };
-  }
-
-  const externalId = `${digits}@s.whatsapp.net`;
-  const { data: created, error } = await supabase
-    .from("conversations")
-    .insert({
-      channel: "whatsapp",
-      external_id: externalId,
-      client_id: args.clientId ?? null,
-      display_name: args.displayName ?? null,
-      wa_phone: digits,
-      // Un chat recién abierto va arriba de la lista aunque todavía no tenga
-      // mensajes: si no, queda al final de las 100 que carga la bandeja y no
-      // hay forma de encontrarlo.
-      last_message_at: new Date().toISOString(),
-    })
-    .select("id")
-    .single();
-
-  if (created) return { conversationId: created.id };
-
-  // 23505 = otro pedido creó la misma conversación entre medio (o ya existía
-  // archivada, que la búsqueda de arriba no mira).
-  if (error?.code === "23505") {
-    const { data: raced } = await supabase
-      .from("conversations")
-      .select("id")
-      .eq("channel", "whatsapp")
-      .eq("external_id", externalId)
-      .maybeSingle();
-    if (raced) return { conversationId: raced.id };
-  }
-
-  console.error("[crm] resolveWhatsappConversation error:", error);
-  return { error: "No pudimos abrir el chat de WhatsApp de la clienta." };
-}
-
-/**
  * Manda un WhatsApp a una clienta desde afuera de la bandeja (hoy, desde el
  * turnero). Si nunca hubo chat con ella, lo abre.
+ *
+ * Sale por el número nuevo (Cloud API): es el canal principal desde la
+ * migración. Ojo con la ventana de 24 h — este camino manda texto libre, así
+ * que si la clienta no escribió en el último día Meta lo rebota y el motivo
+ * queda en la burbuja. Para alcanzarla igual hay que mandarle una plantilla
+ * desde el chat.
  */
 export async function messageClientAction(args: {
   clientId?: string | null;
@@ -718,7 +634,7 @@ export async function messageClientAction(args: {
   if (text.length > 4000) return { error: "El mensaje es demasiado largo." };
 
   const supabase = await createClient();
-  const resolved = await resolveWhatsappConversation(supabase, args);
+  const resolved = await resolveCloudConversation(supabase, args);
   if (!resolved.conversationId) return { error: resolved.error };
 
   const { error } = await supabase.from("messages").insert({
@@ -750,7 +666,7 @@ export async function openClientConversationAction(args: {
 }): Promise<ActionState & { conversationId?: string }> {
   await requireRole(["owner", "receptionist"]);
   const supabase = await createClient();
-  const resolved = await resolveWhatsappConversation(supabase, args);
+  const resolved = await resolveCloudConversation(supabase, args);
   if (!resolved.conversationId) return { error: resolved.error };
   return { success: true, conversationId: resolved.conversationId };
 }

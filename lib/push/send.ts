@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import webpush from "web-push";
+import { INSTAGRAM_CHANNEL, isLegacyChannel } from "@/lib/channels";
 import type { Database } from "@/types/database.types";
 
 /**
@@ -186,12 +187,19 @@ export async function notifyInboundMessage(
       client?.full_name ||
       conversation?.display_name ||
       conversation?.wa_phone ||
-      (conversation?.channel === "instagram"
+      (conversation?.channel === INSTAGRAM_CHANNEL
         ? "Contacto de Instagram"
         : "Contacto sin nombre");
 
-    const isInstagram = conversation?.channel === "instagram";
-    const canal = isInstagram ? "Instagram" : "WhatsApp";
+    const isInstagram = conversation?.channel === INSTAGRAM_CHANNEL;
+    // El número viejo se etiqueta distinto: quien lee el aviso en el teléfono
+    // tiene que saber, antes de abrirlo, que ese chat es del archivo y que
+    // contestar ahí sale por un número que ya no damos.
+    const canal = isInstagram
+      ? "Instagram"
+      : isLegacyChannel(conversation?.channel)
+        ? "WhatsApp viejo"
+        : "WhatsApp";
     const text = (args.body ?? "").trim();
     const preview = text ? text.slice(0, 140) : mediaPreview(args.type ?? null);
 

@@ -1,5 +1,6 @@
 import { addDays, startOfDay } from "date-fns";
 import { requireRole } from "@/lib/auth";
+import { PRIMARY_CHANNELS, WA_LEGACY_CHANNEL } from "@/lib/channels";
 import { INBOX_LIMIT } from "@/lib/inbox-unread";
 import { createClient } from "@/lib/supabase/server";
 import type { WhatsappTemplateRow } from "@/lib/whatsapp-cloud/templates";
@@ -44,6 +45,7 @@ export default async function CrmPage({ searchParams }: Props) {
   // loading states when switching tabs.
   const [
     conversationsResult,
+    legacyResult,
     tagsResult,
     repliesResult,
     flowsResult,
@@ -55,11 +57,29 @@ export default async function CrmPage({ searchParams }: Props) {
     outreachResult,
     waTemplatesResult,
   ] = await Promise.all([
+    // Bandeja principal: el número nuevo (WhatsApp API) y los DMs de
+    // Instagram. Va en una consulta aparte de la del número viejo, y no en una
+    // sola que se parta en el cliente, para que el límite de INBOX_LIMIT sea
+    // por bandeja: si no, un pico de mensajes al número viejo empujaría chats
+    // vivos fuera de la lista principal.
     supabase
       .from("conversations")
       .select("*, clients ( id, full_name, phone, tags )")
       .eq("archived", false)
+      .in("channel", [...PRIMARY_CHANNELS])
       // Los chats fijados van arriba de todo, como en WhatsApp.
+      .order("pinned_at", { ascending: false, nullsFirst: false })
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(INBOX_LIMIT),
+    // Bandeja del número viejo (Baileys). Se carga junto con la principal
+    // —son 100 filas más de la misma tabla— para que abrirla sea instantáneo:
+    // es un archivo que se consulta de refilón, no una pantalla en la que se
+    // espera un spinner.
+    supabase
+      .from("conversations")
+      .select("*, clients ( id, full_name, phone, tags )")
+      .eq("archived", false)
+      .eq("channel", WA_LEGACY_CHANNEL)
       .order("pinned_at", { ascending: false, nullsFirst: false })
       .order("last_message_at", { ascending: false, nullsFirst: false })
       .limit(INBOX_LIMIT),
@@ -138,6 +158,9 @@ export default async function CrmPage({ searchParams }: Props) {
         initialTab={initialTab}
         conversations={
           (conversationsResult.data as ConversationWithClient[] | null) ?? []
+        }
+        legacyConversations={
+          (legacyResult.data as ConversationWithClient[] | null) ?? []
         }
         initialSelectedId={c ?? null}
         tags={(tagsResult.data as ClientTag[] | null) ?? []}

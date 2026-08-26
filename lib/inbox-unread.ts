@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { PRIMARY_CHANNELS, WA_LEGACY_CHANNEL } from "@/lib/channels";
 import type { Database } from "@/types/database.types";
 
 /**
@@ -17,6 +18,11 @@ export const INBOX_LIMIT = 100;
  * se busca de reojo: no importa que en un chat esperen veinte mensajes, sino
  * cuántas charlas hay sin abrir.
  *
+ * Solo mira los canales principales (WhatsApp API + Instagram). El número
+ * viejo tiene su propio contador en el botón que lleva a su bandeja: mezclarlo
+ * acá haría que el globo del rail pidiera atención por chats que ya no son la
+ * vía de contacto del salón.
+ *
  * Mismo orden y mismo límite que `app/(dashboard)/crm/page.tsx`, para que el
  * número del globo y el de la bandeja no puedan separarse.
  */
@@ -27,7 +33,27 @@ export async function countInboxUnread(
     .from("conversations")
     .select("unread_count")
     .eq("archived", false)
+    .in("channel", [...PRIMARY_CHANNELS])
     .order("pinned_at", { ascending: false, nullsFirst: false })
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .limit(INBOX_LIMIT);
+
+  return (data ?? []).filter((row) => row.unread_count > 0).length;
+}
+
+/**
+ * Lo mismo para el número viejo (Baileys). Es el número del botón "Número
+ * viejo" de la bandeja: la única señal de que quedó alguien esperando del otro
+ * lado de una vía que ya no usamos.
+ */
+export async function countLegacyUnread(
+  supabase: SupabaseClient<Database>,
+): Promise<number> {
+  const { data } = await supabase
+    .from("conversations")
+    .select("unread_count")
+    .eq("archived", false)
+    .eq("channel", WA_LEGACY_CHANNEL)
     .order("last_message_at", { ascending: false, nullsFirst: false })
     .limit(INBOX_LIMIT);
 

@@ -34,16 +34,22 @@ import {
 } from "@/lib/reviews";
 import { cn } from "@/lib/utils";
 import {
+  type AutomationSendMode,
+  EMPTY_TEMPLATE_PARAMS_INPUT,
   formatOffsetMinutes,
   renderTemplate,
   REVIEW_QUESTION_VARIABLES,
   REVIEW_REPLY_VARIABLES,
+  type TemplateParamsInput,
 } from "@/lib/validations/crm-config";
+import { templateParamsOf } from "@/lib/automations/message";
+import type { WhatsappTemplateRow } from "@/lib/whatsapp-cloud/templates";
 import {
   createReviewFlowAction,
   updateReviewFlowAction,
 } from "./config-actions";
 import type { AutomationFlow, ServiceSlim } from "./config-types";
+import { FlowTemplateFields } from "./flow-template-fields";
 
 type OffsetUnit = "min" | "h" | "d";
 
@@ -82,6 +88,15 @@ type FormState = {
   replyHigh: string;
   replyMid: string;
   replyLow: string;
+  /**
+   * Cómo sale la PREGUNTA. Las respuestas por puntaje no tienen modo: salen
+   * inmediatamente después de que la clienta contestó, o sea siempre dentro de
+   * la ventana de 24 h, donde el texto libre pasa sin problema.
+   */
+  sendMode: AutomationSendMode;
+  templateName: string;
+  templateLanguage: string;
+  templateParams: TemplateParamsInput;
   active: boolean;
 };
 
@@ -96,6 +111,10 @@ const EMPTY: FormState = {
   replyHigh: "",
   replyMid: "",
   replyLow: "",
+  sendMode: "text",
+  templateName: "",
+  templateLanguage: "",
+  templateParams: EMPTY_TEMPLATE_PARAMS_INPUT,
   active: true,
 };
 
@@ -118,11 +137,14 @@ export function ReviewFlowDialog({
   onOpenChange,
   flow,
   services,
+  waTemplates = [],
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   flow: AutomationFlow | null;
   services: ServiceSlim[];
+  /** Plantillas aprobadas del WABA, para mandar la pregunta como plantilla. */
+  waTemplates?: WhatsappTemplateRow[];
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -136,6 +158,7 @@ export function ReviewFlowDialog({
             key={flow?.id ?? "new"}
             flow={flow}
             services={services}
+            waTemplates={waTemplates}
             onDone={() => onOpenChange(false)}
           />
         ) : null}
@@ -158,6 +181,10 @@ function initialState(flow: AutomationFlow | null): FormState {
     replyHigh: flow.review_reply_high ?? "",
     replyMid: flow.review_reply_mid ?? "",
     replyLow: flow.review_reply_low ?? "",
+    sendMode: flow.send_mode === "template" ? "template" : "text",
+    templateName: flow.template_name ?? "",
+    templateLanguage: flow.template_language ?? "",
+    templateParams: templateParamsOf(flow.template_params),
     active: flow.active,
   };
 }
@@ -165,10 +192,12 @@ function initialState(flow: AutomationFlow | null): FormState {
 function ReviewFlowForm({
   flow,
   services,
+  waTemplates,
   onDone,
 }: {
   flow: AutomationFlow | null;
   services: ServiceSlim[];
+  waTemplates: WhatsappTemplateRow[];
   onDone: () => void;
 }) {
   const editing = flow !== null;
@@ -223,6 +252,10 @@ function ReviewFlowForm({
     formData.set("replyHigh", effective.replyHigh);
     formData.set("replyMid", effective.replyMid);
     formData.set("replyLow", effective.replyLow);
+    formData.set("sendMode", form.sendMode);
+    formData.set("templateName", form.templateName);
+    formData.set("templateLanguage", form.templateLanguage);
+    formData.set("templateParams", JSON.stringify(form.templateParams));
     formData.set("active", String(form.active));
 
     startTransition(async () => {
@@ -418,7 +451,25 @@ function ReviewFlowForm({
         </div>
 
         {/* ─── La pregunta ─── */}
-        <div className="space-y-2">
+        <FlowTemplateFields
+          templates={waTemplates}
+          sendMode={form.sendMode}
+          onSendModeChange={(sendMode) => patch({ sendMode })}
+          templateName={form.templateName}
+          templateLanguage={form.templateLanguage}
+          onTemplateChange={(templateName, templateLanguage) =>
+            patch({ templateName, templateLanguage })
+          }
+          params={form.templateParams}
+          onParamsChange={(templateParams) => patch({ templateParams })}
+          variables={REVIEW_QUESTION_VARIABLES}
+          freeTextNote="La encuesta sale horas después de cobrar el turno, casi siempre fuera de las 24 h que WhatsApp da para el texto libre. En ese caso no llega: para que salga siempre, mandala como plantilla."
+          error={errors.templateName}
+        />
+
+        <div
+          className={cn("space-y-2", form.sendMode === "template" && "hidden")}
+        >
           <Label htmlFor="review-question">Primer mensaje (la pregunta)</Label>
           <Textarea
             id="review-question"

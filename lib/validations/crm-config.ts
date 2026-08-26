@@ -74,6 +74,64 @@ export const APPOINTMENT_TRIGGERS: AutomationTrigger[] = [
 /** Los dos editores del panel: texto simple, o encuesta de reseña. */
 export type AutomationKind = "message" | "review";
 
+/**
+ * Cómo sale el mensaje de un flujo por el canal de la WhatsApp Cloud API.
+ *
+ * - `text`     — el cuerpo de siempre, con las variables reemplazadas. Meta
+ *   solo lo acepta dentro de las 24 h del último mensaje de la clienta, así
+ *   que sirve para responder, no para iniciar.
+ * - `template` — una plantilla aprobada en el WhatsApp Manager. Es la única
+ *   forma de que un recordatorio de turno llegue cuando la clienta no
+ *   escribió en el último día, o sea: casi siempre.
+ */
+export type AutomationSendMode = "text" | "template";
+
+export const SEND_MODES: { value: AutomationSendMode; label: string }[] = [
+  { value: "text", label: "Mensaje libre" },
+  { value: "template", label: "Plantilla aprobada" },
+];
+
+/**
+ * Con qué se rellena cada placeholder de la plantilla, por sección. Los
+ * valores son mini-plantillas del CRM (`"{{nombre}}"`, `"Hola {{nombre}}"` o
+ * texto fijo) que se resuelven recién al disparar el flujo.
+ */
+export const templateParamsSchema = z.object({
+  header: z.record(z.string(), z.string()),
+  body: z.record(z.string(), z.string()),
+});
+
+export type TemplateParamsInput = z.infer<typeof templateParamsSchema>;
+
+export const EMPTY_TEMPLATE_PARAMS_INPUT: TemplateParamsInput = {
+  header: {},
+  body: {},
+};
+
+/**
+ * Los campos de plantilla que comparten el flujo común y el de reseña. Se
+ * definen una sola vez: los dos editan la misma tabla y tienen que aceptar y
+ * rechazar exactamente lo mismo.
+ */
+const templateFields = {
+  sendMode: z.enum(["text", "template"] as const),
+  templateName: z.string().max(512).optional().or(z.literal("")),
+  templateLanguage: z.string().max(20).optional().or(z.literal("")),
+  templateParams: templateParamsSchema,
+};
+
+/**
+ * En modo plantilla hay que haber elegido una. La comprobación va acá y no en
+ * el `<select>` porque el formulario puede quedar a medias (se elige el modo,
+ * se cierra el desplegable sin elegir plantilla) y la base tiene el mismo
+ * check: mejor un error legible que un 23514 de Postgres.
+ *
+ * Se repite en los dos esquemas en vez de envolverlos con un helper genérico:
+ * envolverlos borra el tipo de entrada que `zodResolver` necesita para tipar
+ * el formulario, y el remedio salía más caro que las tres líneas repetidas.
+ */
+const TEMPLATE_REQUIRED_MESSAGE = "Elegí la plantilla aprobada que se va a mandar.";
+
 export const automationFlowSchema = z
   .object({
     name: z
@@ -92,20 +150,30 @@ export const automationFlowSchema = z
       .min(0, "El offset no puede ser negativo.")
       .max(525600, "El offset es demasiado grande."),
     serviceFilterIds: z.array(z.string().uuid()),
-    messageBody: z
-      .string()
-      .min(2, "El mensaje es muy corto.")
-      .max(4000, "El mensaje es demasiado largo."),
+    messageBody: z.string().max(4000, "El mensaje es demasiado largo."),
+    ...templateFields,
     active: z.boolean(),
   })
   .refine(
     (v) =>
-      APPOINTMENT_TRIGGERS.includes(v.trigger) || v.serviceFilterIds.length === 0,
+      APPOINTMENT_TRIGGERS.includes(v.trigger) ||
+      v.serviceFilterIds.length === 0,
     {
       message: "El filtro por servicio solo aplica a triggers de turno.",
       path: ["serviceFilterIds"],
     },
-  );
+  )
+  // El cuerpo libre solo es obligatorio cuando es lo que se manda. En modo
+  // plantilla queda como nota de lo que decía el flujo antes de migrarlo, y
+  // pedirlo sería un formulario trabado sin motivo.
+  .refine(
+    (v) => v.sendMode === "template" || v.messageBody.trim().length >= 2,
+    { message: "El mensaje es muy corto.", path: ["messageBody"] },
+  )
+  .refine((v) => v.sendMode !== "template" || Boolean(v.templateName?.trim()), {
+    message: TEMPLATE_REQUIRED_MESSAGE,
+    path: ["templateName"],
+  });
 
 export type AutomationFlowInput = z.infer<typeof automationFlowSchema>;
 
@@ -154,7 +222,8 @@ export const TEMPLATE_VARIABLES = [
  * ya se cobró, que es cuando la clienta terminó de vivir la experiencia — así
  * que no se elige en el formulario.
  */
-export const reviewFlowSchema = z.object({
+export const reviewFlowSchema = z
+  .object({
   name: z
     .string()
     .min(2, "El nombre es muy corto.")
@@ -181,6 +250,11 @@ export const reviewFlowSchema = z.object({
     .string()
     .min(2, "La pregunta es muy corta.")
     .max(4000, "La pregunta es demasiado larga."),
+  // La pregunta se manda horas después de cobrar el turno, así que casi
+  // siempre cae fuera de la ventana de 24 h: sin plantilla no llega. Las tres
+  // respuestas por puntaje NO tienen modo — contestan a un mensaje que acaba
+  // de entrar, y ahí el texto libre siempre pasa.
+  ...templateFields,
   replyHigh: z
     .string()
     .min(2, "La respuesta es muy corta.")
@@ -194,7 +268,11 @@ export const reviewFlowSchema = z.object({
     .min(2, "La respuesta es muy corta.")
     .max(4000, "La respuesta es demasiado larga."),
   active: z.boolean(),
-});
+  })
+  .refine(
+    (v) => v.sendMode !== "template" || Boolean(v.templateName?.trim()),
+    { message: TEMPLATE_REQUIRED_MESSAGE, path: ["templateName"] },
+  );
 
 export type ReviewFlowInput = z.infer<typeof reviewFlowSchema>;
 

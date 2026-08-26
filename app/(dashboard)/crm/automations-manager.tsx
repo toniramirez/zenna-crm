@@ -48,12 +48,16 @@ import {
   APPOINTMENT_TRIGGERS,
   automationFlowSchema,
   type AutomationFlowInput,
+  type AutomationSendMode,
   type AutomationTrigger,
+  EMPTY_TEMPLATE_PARAMS_INPUT,
   formatOffsetMinutes,
   TEMPLATE_VARIABLES,
   TRIGGER_LABEL,
   TRIGGERS,
 } from "@/lib/validations/crm-config";
+import { templateParamsOf } from "@/lib/automations/message";
+import type { WhatsappTemplateRow } from "@/lib/whatsapp-cloud/templates";
 import { REVIEW_CASE_THRESHOLD } from "@/lib/reviews";
 import { cn } from "@/lib/utils";
 import {
@@ -62,6 +66,7 @@ import {
   updateFlowAction,
 } from "./config-actions";
 import type { AutomationFlow, ServiceSlim } from "./config-types";
+import { describeSendMode, FlowTemplateFields } from "./flow-template-fields";
 import { ReviewFlowDialog } from "./review-flow-dialog";
 
 // Convert mins → { value, unit } for friendly editor
@@ -81,9 +86,12 @@ function toMinutes(value: number, unit: "min" | "h" | "d"): number {
 export function AutomationsManager({
   flows,
   services,
+  waTemplates = [],
 }: {
   flows: AutomationFlow[];
   services: ServiceSlim[];
+  /** Plantillas aprobadas del WABA, para los flujos en modo plantilla. */
+  waTemplates?: WhatsappTemplateRow[];
 }) {
   const [editing, setEditing] = useState<AutomationFlow | null>(null);
   const [open, setOpen] = useState(false);
@@ -224,6 +232,12 @@ export function AutomationsManager({
                 </div>
               )}
 
+              {describeSendMode(f) ? (
+                <Badge variant="outline" className="text-[10px] font-normal">
+                  {describeSendMode(f)}
+                </Badge>
+              ) : null}
+
               <div className="rounded-md bg-muted/30 px-2.5 py-1.5 text-xs whitespace-pre-wrap line-clamp-3">
                 {f.message_body}
               </div>
@@ -279,6 +293,7 @@ export function AutomationsManager({
         onOpenChange={setOpen}
         flow={editing}
         services={services}
+        waTemplates={waTemplates}
       />
 
       <ReviewFlowDialog
@@ -286,6 +301,7 @@ export function AutomationsManager({
         onOpenChange={setReviewOpen}
         flow={reviewEditing}
         services={services}
+        waTemplates={waTemplates}
       />
     </div>
   );
@@ -296,11 +312,13 @@ function FlowDialog({
   onOpenChange,
   flow,
   services,
+  waTemplates,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   flow: AutomationFlow | null;
   services: ServiceSlim[];
+  waTemplates: WhatsappTemplateRow[];
 }) {
   const editing = flow !== null;
   const [isPending, startTransition] = useTransition();
@@ -315,6 +333,10 @@ function FlowDialog({
       triggerOffsetMinutes: 1440,
       serviceFilterIds: [],
       messageBody: "",
+      sendMode: "text",
+      templateName: "",
+      templateLanguage: "",
+      templateParams: EMPTY_TEMPLATE_PARAMS_INPUT,
       active: true,
     },
   });
@@ -331,6 +353,10 @@ function FlowDialog({
         triggerOffsetMinutes: flow.trigger_offset_minutes,
         serviceFilterIds: flow.service_filter_ids,
         messageBody: flow.message_body,
+        sendMode: flow.send_mode === "template" ? "template" : "text",
+        templateName: flow.template_name ?? "",
+        templateLanguage: flow.template_language ?? "",
+        templateParams: templateParamsOf(flow.template_params),
         active: flow.active,
       });
     } else {
@@ -342,6 +368,10 @@ function FlowDialog({
         triggerOffsetMinutes: 1440,
         serviceFilterIds: [],
         messageBody: "",
+        sendMode: "text",
+        templateName: "",
+        templateLanguage: "",
+        templateParams: EMPTY_TEMPLATE_PARAMS_INPUT,
         active: true,
       });
     }
@@ -366,6 +396,10 @@ function FlowDialog({
     formData.set("triggerOffsetMinutes", String(values.triggerOffsetMinutes));
     formData.set("serviceFilterIds", values.serviceFilterIds.join(","));
     formData.set("messageBody", values.messageBody);
+    formData.set("sendMode", values.sendMode);
+    formData.set("templateName", values.templateName ?? "");
+    formData.set("templateLanguage", values.templateLanguage ?? "");
+    formData.set("templateParams", JSON.stringify(values.templateParams));
     formData.set("active", String(values.active));
 
     startTransition(async () => {
@@ -386,7 +420,7 @@ function FlowDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {editing ? "Editar flujo" : "Nuevo flujo de automatización"}
@@ -556,40 +590,65 @@ function FlowDialog({
               </div>
             )}
 
-            <FormField
-              control={form.control}
-              name="messageBody"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Mensaje a enviar</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      rows={5}
-                      placeholder="Hola {{nombre}}, te recordamos tu turno mañana a las {{hora}} con {{profesional}} para {{servicio}}. Te esperamos! 💛"
-                      {...field}
-                    />
-                  </FormControl>
-                  <div className="flex flex-wrap gap-1.5 mt-1">
-                    {TEMPLATE_VARIABLES.map((v) => (
-                      <button
-                        key={v.key}
-                        type="button"
-                        onClick={() => insertVariable(v.key)}
-                        className="inline-flex items-center gap-1 rounded-full border bg-muted/30 px-2 py-0.5 text-[11px] font-mono hover:bg-muted transition-colors"
-                        title={v.label}
-                      >
-                        {`{{${v.key}}}`}
-                      </button>
-                    ))}
-                  </div>
-                  <FormDescription>
-                    Click en una variable para insertarla. Se reemplazan al
-                    momento de enviar.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
+            <FlowTemplateFields
+              templates={waTemplates}
+              sendMode={form.watch("sendMode")}
+              onSendModeChange={(mode: AutomationSendMode) =>
+                form.setValue("sendMode", mode, { shouldValidate: true })
+              }
+              templateName={form.watch("templateName") ?? ""}
+              templateLanguage={form.watch("templateLanguage") ?? ""}
+              onTemplateChange={(name, language) => {
+                form.setValue("templateName", name, { shouldValidate: true });
+                form.setValue("templateLanguage", language);
+              }}
+              params={form.watch("templateParams")}
+              onParamsChange={(next) => form.setValue("templateParams", next)}
+              variables={TEMPLATE_VARIABLES}
+              error={form.formState.errors.templateName?.message}
             />
+
+            {/*
+              El cuerpo libre solo se muestra cuando es lo que se manda. El
+              valor sigue en el formulario al cambiar de modo, así que probar
+              con una plantilla y volver atrás no pierde el texto escrito.
+            */}
+            {form.watch("sendMode") === "text" ? (
+              <FormField
+                control={form.control}
+                name="messageBody"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Mensaje a enviar</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        rows={5}
+                        placeholder="Hola {{nombre}}, te recordamos tu turno mañana a las {{hora}} con {{profesional}} para {{servicio}}. Te esperamos! 💛"
+                        {...field}
+                      />
+                    </FormControl>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {TEMPLATE_VARIABLES.map((v) => (
+                        <button
+                          key={v.key}
+                          type="button"
+                          onClick={() => insertVariable(v.key)}
+                          className="inline-flex items-center gap-1 rounded-full border bg-muted/30 px-2 py-0.5 text-[11px] font-mono hover:bg-muted transition-colors"
+                          title={v.label}
+                        >
+                          {`{{${v.key}}}`}
+                        </button>
+                      ))}
+                    </div>
+                    <FormDescription>
+                      Click en una variable para insertarla. Se reemplazan al
+                      momento de enviar.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
 
             <FormField
               control={form.control}

@@ -15,6 +15,7 @@ import {
   verifyToken as waCloudVerifyToken,
 } from "@/lib/whatsapp-cloud/config";
 import { InstagramPanel } from "./instagram-panel";
+import type { LegacySettings } from "./legacy-redirect-panel";
 import { NotificationsPanel } from "./notifications-panel";
 import { WhatsappCloudPanel, type TemplateSlim } from "./whatsapp-cloud-panel";
 import { WhatsappPanel } from "./whatsapp-panel";
@@ -45,11 +46,21 @@ export default async function ConfiguracionPage() {
   await requireRole("owner");
 
   const supabase = await createClient();
-  const { data: status } = await supabase
-    .from("whatsapp_status")
-    .select("*")
-    .eq("session_id", "default")
-    .maybeSingle();
+  const [{ data: status }, { data: legacySettings }] = await Promise.all([
+    supabase
+      .from("whatsapp_status")
+      .select("*")
+      .eq("session_id", "default")
+      .maybeSingle(),
+    // Config de la redirección del número viejo. Si todavía no se corrió
+    // `whatsapp-migration.sql` esto viene con error y `data` en null, y el
+    // panel muestra el aviso en vez de romper la página.
+    supabase
+      .from("whatsapp_legacy_settings")
+      .select("*")
+      .eq("session_id", "default")
+      .maybeSingle(),
+  ]);
 
   // `instagram_accounts` está cerrada por RLS (guarda el token), así que se lee
   // con service_role y se le saca el token antes de mandarla al cliente.
@@ -84,7 +95,6 @@ export default async function ConfiguracionPage() {
 
       <section className="space-y-3">
         <h2 className="text-base font-semibold tracking-tight">Integraciones</h2>
-        <WhatsappPanel initialStatus={(status as Status | null) ?? null} />
         <WhatsappCloudPanel
           account={toPublicWaCloudAccount(waCloudAccount)}
           templates={(waTemplates as TemplateSlim[] | null) ?? []}
@@ -99,6 +109,10 @@ export default async function ConfiguracionPage() {
           verifyTokenConfigured={Boolean(verifyToken())}
           appSecretConfigured={Boolean(appSecret())}
           serviceKeyConfigured={serviceKeyConfigured}
+        />
+        <WhatsappPanel
+          initialStatus={(status as Status | null) ?? null}
+          legacySettings={(legacySettings as LegacySettings | null) ?? null}
         />
       </section>
 

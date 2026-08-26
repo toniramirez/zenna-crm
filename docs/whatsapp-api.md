@@ -1,15 +1,17 @@
 # WhatsApp Cloud API (canal `whatsapp_cloud`)
 
-Canal oficial de Meta para WhatsApp. **Convive con el canal `whatsapp` de
-Baileys**: son dos números distintos que comparten la misma bandeja del CRM,
-igual que Instagram. Cada conversación sabe de qué canal es y el worker de cada
-canal drena solo lo suyo.
+Canal oficial de Meta para WhatsApp, y **el canal principal del CRM** desde la
+migración de número. Convive con el canal `whatsapp` de Baileys —son dos
+números distintos— pero no como pares: Baileys quedó como archivo del número
+viejo, en su propia bandeja. Ver
+[`docs/migracion-numero.md`](./migracion-numero.md).
 
 | | Baileys (`whatsapp`) | Cloud API (`whatsapp_cloud`) |
 |---|---|---|
 | Conexión | QR del teléfono | Token + IDs de Meta |
 | Texto libre | siempre | solo dentro de la ventana de 24 h |
 | **Plantillas aprobadas** | no | **sí** (reabren la conversación) |
+| Automatizaciones / turnero | no (archivo) | **sí** |
 | Editar / eliminar para todos | sí | no (la API no lo permite) |
 | Acuses sent/delivered/read | sí | sí (por webhook) |
 | Notas de voz del CRM (webm) | sí | no (Meta no acepta webm) |
@@ -81,11 +83,11 @@ deshabilitadas (todavía no se piden esos parámetros).
 
 ## Decisiones deliberadas (mientras convivan los dos canales)
 
-- **El turnero y las automatizaciones siguen saliendo por Baileys** (canal
-  `whatsapp`): son texto libre, y en la Cloud API el texto libre muere fuera
-  de la ventana de 24 h. Cuando la Cloud API pase a ser el canal principal,
-  `resolveWhatsappConversation` y `worker/automations.ts` son los dos lugares
-  a tocar (y las automatizaciones deberían volverse plantillas).
+- **El turnero y las automatizaciones salen por acá.** El texto libre muere
+  fuera de la ventana de 24 h, así que cada flujo elige entre mensaje libre y
+  plantilla aprobada (`automation_flows.send_mode`); un recordatorio de turno
+  necesita plantilla. El detalle está en
+  [`docs/migracion-numero.md`](./migracion-numero.md).
 - **Entrega "al menos una vez"**: si Meta acepta un envío pero la respuesta se
   pierde (timeout, 502), el mensaje se reintenta y puede llegar duplicado.
   Mismo criterio que el worker de Instagram; la Cloud API no ofrece clave de

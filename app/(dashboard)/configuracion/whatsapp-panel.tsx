@@ -26,6 +26,10 @@ import {
   requestWhatsappLogoutAction,
   requestWhatsappReconnectAction,
 } from "./actions";
+import {
+  LegacyRedirectPanel,
+  type LegacySettings,
+} from "./legacy-redirect-panel";
 
 type Status = Database["public"]["Tables"]["whatsapp_status"]["Row"];
 
@@ -85,7 +89,14 @@ function stateLabel(state: string, stale?: boolean): string {
   }
 }
 
-export function WhatsappPanel({ initialStatus }: { initialStatus: Status | null }) {
+export function WhatsappPanel({
+  initialStatus,
+  legacySettings,
+}: {
+  initialStatus: Status | null;
+  /** Config de la redirección al número nuevo; null si falta la migración. */
+  legacySettings: LegacySettings | null;
+}) {
   const supabase = useMemo(() => createClient(), []);
   const [status, setStatus] = useState<Status | null>(initialStatus);
   const [isPending, startTransition] = useTransition();
@@ -211,7 +222,12 @@ export function WhatsappPanel({ initialStatus }: { initialStatus: Status | null 
             <Smartphone className="size-5 text-emerald-700" />
           </div>
           <div className="min-w-0">
-            <h2 className="font-semibold">WhatsApp</h2>
+            <h2 className="font-semibold">
+              WhatsApp{" "}
+              <span className="text-xs font-normal text-muted-foreground">
+                · número viejo
+              </span>
+            </h2>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <StateDot state={state} stale={staleConnected} />
               {stateLabel(state, staleConnected)}
@@ -343,16 +359,14 @@ export function WhatsappPanel({ initialStatus }: { initialStatus: Status | null 
             <div className="size-14 rounded-full bg-emerald-50 grid place-items-center">
               <CheckCircle2 className="size-7 text-emerald-700" />
             </div>
-            <p className="font-medium">Todo listo</p>
+            <p className="font-medium">Conectado como archivo</p>
             <p className="text-sm text-muted-foreground text-center max-w-sm">
-              Estás recibiendo mensajes en{" "}
-              <a
-                href="/crm"
-                className="underline hover:text-foreground"
-              >
-                CRM
-              </a>
-              . Los mensajes que mandes desde la app se envían en tiempo real.
+              Lo que entre por este número se guarda en{" "}
+              <a href="/crm" className="underline hover:text-foreground">
+                Mensajes → Número viejo
+              </a>{" "}
+              y se puede responder a mano. Las automatizaciones y los mensajes
+              del turnero salen por la WhatsApp API.
             </p>
             {lastConnectedRel ? (
               <p className="text-xs text-muted-foreground">
@@ -398,6 +412,8 @@ export function WhatsappPanel({ initialStatus }: { initialStatus: Status | null 
           </div>
         )}
       </div>
+
+      <LegacyRedirectPanel settings={legacySettings} />
 
       {/* Footer info — when something to show */}
       {state === "qr" || (state === "connected" && !staleConnected) ? (

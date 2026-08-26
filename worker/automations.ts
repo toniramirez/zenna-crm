@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { renderTemplate } from "@/lib/validations/crm-config";
+import { buildFlowMessage } from "@/lib/automations/message";
+import { resolveCloudConversation } from "@/lib/whatsapp-cloud/conversations";
 import type { Database } from "@/types/database.types";
 import { fireReviewForAppointment } from "./reviews";
 
@@ -166,13 +167,26 @@ async function fireForInbound(
   const fullName = conv.clients?.full_name ?? conv.display_name ?? "";
   const firstName = fullName.split(" ")[0] ?? "";
 
-  const body = renderTemplate(flow.message_body, {
+  // Acá la ventana de 24 h está abierta por definición —la clienta acaba de
+  // escribir— así que el texto libre llega igual que una plantilla. Se usa el
+  // mismo constructor de todos modos: el flujo puede estar configurado con
+  // plantilla y no tiene por qué comportarse distinto según quién lo dispare.
+  const built = await buildFlowMessage(supabase, flow, {
     nombre: firstName,
     servicio: "",
     fecha: "",
     hora: "",
     profesional: "",
+    salon: flow.review_salon_name ?? "",
   });
+
+  if (!built.ok) {
+    console.error(
+      `[automations] inbound flow ${flow.name} sin mensaje que mandar:`,
+      built.error,
+    );
+    return;
+  }
 
   const now = new Date();
 
@@ -202,7 +216,8 @@ async function fireForInbound(
       conversation_id: conv.id,
       direction: "outbound",
       type: "text",
-      body,
+      body: built.content.body,
+      wa_template: built.content.wa_template,
       status: "queued",
     })
     .select("id")
@@ -343,19 +358,24 @@ async function fireForAppointment(
   apt: AppointmentRow,
   now: Date,
 ) {
-  // Find the conversation for this client. Without a conversation we can't
-  // deliver the message — skip and record as a "skipped" execution so we
-  // don't keep retrying forever (the unique constraint blocks future attempts).
-  // El filtro por canal no es decorativo: una clienta puede tener conversación
-  // de WhatsApp y de Instagram a la vez, y sin él `maybeSingle()` fallaría.
-  // Las automatizaciones son deliberadamente solo-WhatsApp por ahora — Instagram
-  // tiene ventana de 24 h y mandar recordatorios fuera de ella los rebota.
-  const { data: conv } = await supabase
-    .from("conversations")
-    .select("id, external_id")
-    .eq("client_id", apt.client_id)
-    .eq("channel", "whatsapp")
-    .maybeSingle();
+  // El chat de la clienta en el número nuevo (Cloud API). Las automatizaciones
+  // salen SIEMPRE por ahí: el número viejo de Baileys quedó como archivo y no
+  // dispara nada. Instagram tampoco entra — su ventana de 24 h rebota los
+  // recordatorios y no tiene plantillas con las que reabrirla.
+  //
+  // `createIfMissing` va atado al modo de envío, y es la diferencia que hace
+  // que la migración no apague los recordatorios: en modo plantilla podemos
+  // escribirle a alguien que nunca nos habló, así que abrimos el chat; en modo
+  // texto libre Meta lo rebotaría fuera de la ventana, y abrir una
+  // conversación vacía solo ensuciaría la bandeja.
+  const wantsTemplate = flow.send_mode === "template";
+  const resolved = await resolveCloudConversation(supabase, {
+    clientId: apt.client_id,
+    phone: apt.clients?.phone ?? null,
+    displayName: apt.clients?.full_name ?? null,
+    createIfMissing: wantsTemplate,
+  });
+  const conversationId = resolved.conversationId ?? null;
 
   // Claim the slot — unique (flow_id, appointment_id) makes this safe under
   // concurrent ticks.
@@ -366,7 +386,7 @@ async function fireForAppointment(
       appointment_id: apt.id,
       client_id: apt.client_id,
       scheduled_for: now.toISOString(),
-      status: conv ? "pending" : "skipped",
+      status: conversationId ? "pending" : "skipped",
     })
     .select("id")
     .single();
@@ -382,11 +402,13 @@ async function fireForAppointment(
     return;
   }
 
-  if (!conv) {
+  if (!conversationId) {
     await supabase
       .from("automation_executions")
       .update({
-        error: "Sin conversación de WhatsApp para esta clienta.",
+        error:
+          resolved.error ??
+          "Sin chat en el WhatsApp nuevo para esta clienta.",
         executed_at: new Date().toISOString(),
       })
       .eq("id", execution.id);
@@ -404,22 +426,43 @@ async function fireForAppointment(
   );
   const horaStr = format(parseISO(apt.starts_at), "HH:mm");
 
-  const body = renderTemplate(flow.message_body, {
+  const built = await buildFlowMessage(supabase, flow, {
     nombre: apt.clients?.full_name?.split(" ")[0] ?? "",
     servicio: services || "tu turno",
     fecha: fechaStr,
     hora: horaStr,
     profesional: apt.professionals?.full_name ?? "",
+    salon: flow.review_salon_name ?? "",
   });
+
+  // Una plantilla despublicada, o una variable que quedó vacía porque el turno
+  // no tenía profesional: el motivo queda en la ejecución, que es donde se
+  // mira cuando "no salió el recordatorio".
+  if (!built.ok) {
+    await supabase
+      .from("automation_executions")
+      .update({
+        status: "failed",
+        error: built.error.slice(0, 500),
+        executed_at: new Date().toISOString(),
+      })
+      .eq("id", execution.id);
+    console.error(
+      `[automations] flow ${flow.name} sin mensaje que mandar:`,
+      built.error,
+    );
+    return;
+  }
 
   // Enqueue an outbound message. The regular outbound-poller picks it up.
   const { data: msg, error: msgErr } = await supabase
     .from("messages")
     .insert({
-      conversation_id: conv.id,
+      conversation_id: conversationId,
       direction: "outbound",
       type: "text",
-      body,
+      body: built.content.body,
+      wa_template: built.content.wa_template,
       status: "queued",
     })
     .select("id")

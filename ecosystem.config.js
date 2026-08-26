@@ -24,6 +24,9 @@ module.exports = {
       env: { NODE_ENV: "production" },
     },
     {
+      // Número VIEJO (Baileys). Desde la migración es archivo + redirección:
+      // guarda lo que entra y contesta el aviso del número nuevo. No dispara
+      // automatizaciones — ese reloj vive en zenna-wpp-api.
       name: "zenna-worker",
       script: "node_modules/tsx/dist/cli.mjs",
       args: "worker/baileys.ts",
@@ -48,9 +51,10 @@ module.exports = {
       env: { NODE_ENV: "production" },
     },
     {
-      // Cola de salida de la WhatsApp Cloud API (canal oficial, convive con
-      // Baileys). Mismo esquema que el de Instagram: solo HTTPS salientes;
-      // los entrantes y los acuses llegan al webhook de Next.
+      // Número NUEVO: cola de salida de la WhatsApp Cloud API, el canal
+      // principal. Mismo esquema que el de Instagram —solo HTTPS salientes; los
+      // entrantes y los acuses llegan al webhook de Next— más el reloj de las
+      // automatizaciones, que corre acá porque acá salen todas.
       name: "zenna-wpp-api",
       script: "node_modules/tsx/dist/cli.mjs",
       args: "worker/whatsapp-cloud.ts",

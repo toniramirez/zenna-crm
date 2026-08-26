@@ -4,12 +4,16 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
+  type AutomationFlowInput,
   automationFlowSchema,
   clientTagSchema,
+  EMPTY_TEMPLATE_PARAMS_INPUT,
   paymentMethodSchema,
   quickReplySchema,
   reviewFlowSchema,
   type ReviewFlowInput,
+  type TemplateParamsInput,
+  templateParamsSchema,
 } from "@/lib/validations/crm-config";
 import { fieldErrorsFromZod } from "@/lib/zod-helpers";
 
@@ -156,6 +160,46 @@ export async function deleteQuickReplyAction(id: string): Promise<ActionState> {
 
 // ──────────────────── Automation flows ────────────────────
 
+/**
+ * Los `templateParams` viajan como JSON en un campo del FormData: es un objeto
+ * de dos niveles y no hay forma razonable de aplanarlo en pares clave/valor.
+ * Un JSON roto se trata como "sin variables" en vez de tirar — la validación
+ * de abajo ya rechaza el flujo si le faltan las que la plantilla pide.
+ */
+function parseTemplateParams(raw: FormDataEntryValue | null): TemplateParamsInput {
+  if (typeof raw !== "string" || raw.length === 0) {
+    return EMPTY_TEMPLATE_PARAMS_INPUT;
+  }
+  try {
+    const parsed = templateParamsSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : EMPTY_TEMPLATE_PARAMS_INPUT;
+  } catch {
+    return EMPTY_TEMPLATE_PARAMS_INPUT;
+  }
+}
+
+/** Los campos de plantilla, tal como los guarda `automation_flows`. */
+function templateRow(data: {
+  sendMode: "text" | "template";
+  templateName?: string;
+  templateLanguage?: string;
+  templateParams: TemplateParamsInput;
+}) {
+  const isTemplate = data.sendMode === "template";
+  return {
+    send_mode: data.sendMode,
+    // En modo texto se limpian: dejar el nombre de una plantilla en un flujo
+    // que ya no la usa haría que la tarjeta del panel mienta.
+    template_name: isTemplate ? (data.templateName?.trim() || null) : null,
+    template_language: isTemplate
+      ? (data.templateLanguage?.trim() || null)
+      : null,
+    template_params: isTemplate
+      ? data.templateParams
+      : EMPTY_TEMPLATE_PARAMS_INPUT,
+  };
+}
+
 function parseFlow(formData: FormData) {
   const ids = formData.get("serviceFilterIds");
   const serviceFilterIds =
@@ -169,8 +213,24 @@ function parseFlow(formData: FormData) {
     triggerOffsetMinutes: Number(formData.get("triggerOffsetMinutes") ?? 0),
     serviceFilterIds,
     messageBody: formData.get("messageBody"),
+    sendMode: formData.get("sendMode") ?? "text",
+    templateName: formData.get("templateName") ?? "",
+    templateLanguage: formData.get("templateLanguage") ?? "",
+    templateParams: parseTemplateParams(formData.get("templateParams")),
     active: formData.get("active") === "true",
   });
+}
+
+function flowRow(data: AutomationFlowInput) {
+  return {
+    name: data.name.trim(),
+    trigger: data.trigger,
+    trigger_offset_minutes: data.triggerOffsetMinutes,
+    service_filter_ids: data.serviceFilterIds,
+    message_body: data.messageBody,
+    ...templateRow(data),
+    active: data.active,
+  };
 }
 
 export async function createFlowAction(
@@ -181,14 +241,9 @@ export async function createFlowAction(
   if (!parsed.success) return { fieldErrors: fieldErrorsFromZod(parsed) };
 
   const supabase = await createClient();
-  const { error } = await supabase.from("automation_flows").insert({
-    name: parsed.data.name.trim(),
-    trigger: parsed.data.trigger,
-    trigger_offset_minutes: parsed.data.triggerOffsetMinutes,
-    service_filter_ids: parsed.data.serviceFilterIds,
-    message_body: parsed.data.messageBody,
-    active: parsed.data.active,
-  });
+  const { error } = await supabase
+    .from("automation_flows")
+    .insert(flowRow(parsed.data));
   if (error) return { error: "No pudimos crear el flujo." };
   revalidatePath("/crm");
   return { success: true };
@@ -205,14 +260,7 @@ export async function updateFlowAction(
   const supabase = await createClient();
   const { error } = await supabase
     .from("automation_flows")
-    .update({
-      name: parsed.data.name.trim(),
-      trigger: parsed.data.trigger,
-      trigger_offset_minutes: parsed.data.triggerOffsetMinutes,
-      service_filter_ids: parsed.data.serviceFilterIds,
-      message_body: parsed.data.messageBody,
-      active: parsed.data.active,
-    })
+    .update(flowRow(parsed.data))
     .eq("id", id);
   if (error) return { error: "No pudimos guardar los cambios." };
   revalidatePath("/crm");
@@ -256,6 +304,10 @@ function parseReviewFlow(formData: FormData) {
     replyHigh: formData.get("replyHigh"),
     replyMid: formData.get("replyMid"),
     replyLow: formData.get("replyLow"),
+    sendMode: formData.get("sendMode") ?? "text",
+    templateName: formData.get("templateName") ?? "",
+    templateLanguage: formData.get("templateLanguage") ?? "",
+    templateParams: parseTemplateParams(formData.get("templateParams")),
     active: formData.get("active") === "true",
   });
 }
@@ -273,6 +325,7 @@ function reviewFlowRow(data: ReviewFlowInput) {
     review_reply_high: data.replyHigh,
     review_reply_mid: data.replyMid,
     review_reply_low: data.replyLow,
+    ...templateRow(data),
     active: data.active,
   };
 }

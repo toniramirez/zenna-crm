@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { notifyInboundMessage } from "@/lib/push/send";
 import type { Database } from "@/types/database.types";
+import { processInboundAutomations } from "@/worker/automations";
+import { processInboundReview } from "@/worker/reviews";
 import { transcribeAndStore } from "@/worker/transcribe";
 import { downloadMedia, fetchMediaInfo } from "./client";
 import type { WhatsappCloudAccount } from "./config";
@@ -54,10 +56,51 @@ async function getOrCreateConversation(
     return existing.id;
   }
 
+  const last8 = args.waId.replace(/\D/g, "").slice(-8);
+
+  // Segundo intento, por los últimos 8 dígitos. Es lo que hace que una
+  // automatización pueda abrir el chat ANTES de que la clienta escriba: ese
+  // chat se crea con los dígitos del teléfono de la ficha, y Meta devuelve los
+  // números argentinos SIN el 9 del celular ("5493511234567" en la ficha,
+  // "543511234567" en el `wa_id`). Sin este paso la respuesta caería en una
+  // conversación nueva y la clienta quedaría partida en dos chats del mismo
+  // número.
+  if (last8.length === 8) {
+    const { data: byPhone } = await supabase
+      .from("conversations")
+      .select("id, display_name, external_id")
+      .eq("channel", "whatsapp_cloud")
+      .or(`external_id.ilike.%${last8}%,wa_phone.ilike.%${last8}%`)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (byPhone) {
+      // Se adopta el `wa_id` de Meta como external_id: a partir de acá la
+      // búsqueda exacta de arriba acierta y no se vuelve a pasar por este
+      // camino. Si el UPDATE choca contra el único, es que otro evento en
+      // paralelo ya creó la fila con ese id — no es grave, seguimos con ésta.
+      const patch: Database["public"]["Tables"]["conversations"]["Update"] = {};
+      if (byPhone.external_id !== args.waId) patch.external_id = args.waId;
+      const name = args.profileName?.trim();
+      if (name && !byPhone.display_name) patch.display_name = name;
+
+      if (Object.keys(patch).length > 0) {
+        const { error: adoptErr } = await supabase
+          .from("conversations")
+          .update(patch)
+          .eq("id", byPhone.id);
+        if (adoptErr && adoptErr.code !== UNIQUE_VIOLATION) {
+          console.error("[wa-cloud] adopt conversation error:", adoptErr.message);
+        }
+      }
+      return byPhone.id;
+    }
+  }
+
   // Mismo criterio de vinculación que usa el worker de Baileys al crear una
   // conversación: últimos 8 dígitos contra el teléfono de la ficha.
   let clientId: string | null = null;
-  const last8 = args.waId.replace(/\D/g, "").slice(-8);
   if (last8.length === 8) {
     const { data: client } = await supabase
       .from("clients")
@@ -266,6 +309,57 @@ function textualBody(message: CloudInboundMessage): string | null {
   return null;
 }
 
+/**
+ * Lo que se dispara cuando entra un mensaje real de una clienta: primero la
+ * encuesta de reseña, después las automatizaciones de mensaje entrante.
+ *
+ * Vive acá y no en el worker de salida porque en la Cloud API los entrantes no
+ * pasan por ningún worker: llegan por el webhook de Next. Es el equivalente
+ * exacto del bloque que tenía el worker de Baileys, que dejó de correrlo
+ * cuando el número viejo pasó a ser archivo.
+ *
+ * El orden no es casual: si este "5" era la respuesta a una encuesta abierta,
+ * la reseña se lo queda y corta. Sin eso, el mismo mensaje dispararía además
+ * el saludo de reactivación y la clienta recibiría dos respuestas encimadas.
+ *
+ * Se hace `await` a propósito, no fire-and-forget: esto corre dentro del
+ * `after()` de la ruta, y una promesa suelta puede quedar cortada cuando el
+ * handler termina — perdiendo la respuesta automática sin dejar rastro.
+ */
+async function runInboundHooks(
+  supabase: Db,
+  args: {
+    conversationId: string;
+    messageId: string;
+    body: string | null;
+    sentAt: Date;
+  },
+): Promise<void> {
+  try {
+    const consumed = await processInboundReview(
+      supabase,
+      args.conversationId,
+      args.body,
+      args.sentAt,
+    );
+    if (consumed) return;
+
+    await processInboundAutomations(
+      supabase,
+      args.conversationId,
+      args.messageId,
+      args.sentAt,
+    );
+  } catch (err) {
+    // Una automatización rota no puede impedir que el mensaje quede guardado:
+    // para cuando llegamos acá la fila ya está en la bandeja.
+    console.error(
+      "[wa-cloud] fallo en los disparadores de entrada:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 async function handleInboundMessage(
   supabase: Db,
   message: CloudInboundMessage,
@@ -344,6 +438,12 @@ async function handleInboundMessage(
         body: media.media.caption ?? null,
         type: media.kind,
       });
+      await runInboundHooks(supabase, {
+        conversationId,
+        messageId: insertedId,
+        body: media.media.caption?.trim() || null,
+        sentAt: new Date(sentAt),
+      });
     }
     return;
   }
@@ -371,6 +471,12 @@ async function handleInboundMessage(
       conversationId,
       body,
       type: "text",
+    });
+    await runInboundHooks(supabase, {
+      conversationId,
+      messageId: insertedId,
+      body,
+      sentAt: new Date(sentAt),
     });
   }
 }

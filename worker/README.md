@@ -1,8 +1,15 @@
-# Zenna Worker (Baileys / WhatsApp)
+# Zenna Worker (Baileys / WhatsApp — número VIEJO)
 
 Worker independiente que mantiene la conexión con WhatsApp Web vía
 [Baileys](https://github.com/WhiskeySockets/Baileys) y sincroniza mensajes
 con Supabase.
+
+> **Desde la migración de número este canal es archivo.** El salón atiende por
+> la WhatsApp Cloud API (`worker/whatsapp-cloud.ts`, canal `whatsapp_cloud`);
+> Baileys sigue conectado solo para guardar lo que llegue al número viejo y
+> contestar el aviso de redirección al nuevo. Las automatizaciones, el turnero
+> y las encuestas de reseña ya **no** salen por acá — ver
+> [`docs/migracion-numero.md`](../docs/migracion-numero.md).
 
 ## Setup (1 sola vez)
 

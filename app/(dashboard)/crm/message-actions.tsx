@@ -19,6 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { WA_LEGACY_CHANNEL } from "@/lib/channels";
 import { cn } from "@/lib/utils";
 import { deleteMessageAction } from "./actions";
 import type { MessageRow } from "./types";
@@ -30,7 +31,7 @@ export function canEditMessage(message: MessageRow, channel: string): boolean {
   return (
     message.direction === "outbound" &&
     message.type === "text" &&
-    channel === "whatsapp" &&
+    channel === WA_LEGACY_CHANNEL &&
     !message.revoked_at &&
     !!message.external_id &&
     Date.now() - new Date(message.sent_at).getTime() < EDIT_WINDOW_MS
@@ -78,7 +79,7 @@ export function MessageActions({
   // ofrecerlo para que el server lo rechace después de confirmar es peor.
   const neverSent = !message.external_id;
   const canDelete =
-    isOutbound && !revoked && (neverSent || channel === "whatsapp");
+    isOutbound && !revoked && (neverSent || channel === WA_LEGACY_CHANNEL);
   const canCopy = !revoked && !!message.body?.trim();
   const canForward =
     !revoked &&

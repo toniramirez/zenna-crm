@@ -224,7 +224,11 @@ export type Database = {
           review_reply_low: string | null
           review_reply_mid: string | null
           review_salon_name: string | null
+          send_mode: string
           service_filter_ids: string[]
+          template_language: string | null
+          template_name: string | null
+          template_params: Json
           trigger: Database["public"]["Enums"]["automation_trigger"]
           trigger_offset_minutes: number
           updated_at: string
@@ -241,7 +245,11 @@ export type Database = {
           review_reply_low?: string | null
           review_reply_mid?: string | null
           review_salon_name?: string | null
+          send_mode?: string
           service_filter_ids?: string[]
+          template_language?: string | null
+          template_name?: string | null
+          template_params?: Json
           trigger: Database["public"]["Enums"]["automation_trigger"]
           trigger_offset_minutes?: number
           updated_at?: string
@@ -258,7 +266,11 @@ export type Database = {
           review_reply_low?: string | null
           review_reply_mid?: string | null
           review_salon_name?: string | null
+          send_mode?: string
           service_filter_ids?: string[]
+          template_language?: string | null
+          template_name?: string | null
+          template_params?: Json
           trigger?: Database["public"]["Enums"]["automation_trigger"]
           trigger_offset_minutes?: number
           updated_at?: string
@@ -569,6 +581,7 @@ export type Database = {
           external_id: string
           id: string
           last_message_at: string | null
+          legacy_redirect_at: string | null
           last_message_preview: string | null
           pinned_at: string | null
           unread_count: number
@@ -586,6 +599,7 @@ export type Database = {
           external_id: string
           id?: string
           last_message_at?: string | null
+          legacy_redirect_at?: string | null
           last_message_preview?: string | null
           pinned_at?: string | null
           unread_count?: number
@@ -603,6 +617,7 @@ export type Database = {
           external_id?: string
           id?: string
           last_message_at?: string | null
+          legacy_redirect_at?: string | null
           last_message_preview?: string | null
           pinned_at?: string | null
           unread_count?: number
@@ -1499,6 +1514,36 @@ export type Database = {
           updated_at?: string
           verified_name?: string | null
           waba_id?: string | null
+        }
+        Relationships: []
+      }
+      whatsapp_legacy_settings: {
+        Row: {
+          created_at: string
+          redirect_cooldown_minutes: number
+          redirect_enabled: boolean
+          redirect_message: string
+          redirect_number: string | null
+          session_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          redirect_cooldown_minutes?: number
+          redirect_enabled?: boolean
+          redirect_message?: string
+          redirect_number?: string | null
+          session_id?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          redirect_cooldown_minutes?: number
+          redirect_enabled?: boolean
+          redirect_message?: string
+          redirect_number?: string | null
+          session_id?: string
+          updated_at?: string
         }
         Relationships: []
       }

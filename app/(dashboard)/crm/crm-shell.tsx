@@ -38,6 +38,7 @@ import type { ConversationWithClient } from "./types";
 export function CrmShell({
   initialTab,
   conversations,
+  legacyConversations,
   initialSelectedId,
   tags,
   quickReplies,
@@ -53,6 +54,8 @@ export function CrmShell({
 }: {
   initialTab: "chat" | "config";
   conversations: ConversationWithClient[];
+  /** Los chats del número viejo (Baileys), que viven en su propia bandeja. */
+  legacyConversations: ConversationWithClient[];
   initialSelectedId: string | null;
   tags: ClientTag[];
   quickReplies: QuickReply[];
@@ -88,6 +91,7 @@ export function CrmShell({
       <TabsContent value="chat" className="m-0 flex-1 min-h-0">
         <CrmView
           initialConversations={conversations}
+          initialLegacyConversations={legacyConversations}
           initialSelectedId={initialSelectedId}
           quickReplies={quickReplies.filter((q) => q.active)}
           waTemplates={waTemplates}
@@ -122,6 +126,12 @@ export function CrmShell({
           <span className="ml-auto text-[0.8125rem] text-muted-foreground tabular-nums">
             {conversations.length}{" "}
             {conversations.length === 1 ? "conversación" : "conversaciones"}
+            {legacyConversations.length > 0 ? (
+              <span className="text-muted-foreground/70">
+                {" · "}
+                {legacyConversations.length} en el número viejo
+              </span>
+            ) : null}
           </span>
         </div>
         <div className="p-4 sm:p-6">
@@ -129,6 +139,7 @@ export function CrmShell({
             tags={tags}
             quickReplies={quickReplies}
             flows={flows}
+            waTemplates={waTemplates}
             services={services}
             paymentMethods={paymentMethods}
             outreachSuggestions={outreachSuggestions}

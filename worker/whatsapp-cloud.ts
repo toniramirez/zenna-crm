@@ -20,6 +20,7 @@ import {
 } from "@/lib/whatsapp-cloud/config";
 import { parseStoredTemplatePayload } from "@/lib/whatsapp-cloud/templates";
 import type { Database } from "@/types/database.types";
+import { processAutomations } from "./automations";
 
 /**
  * Worker de salida de la WhatsApp Cloud API (canal `whatsapp_cloud`).
@@ -33,6 +34,12 @@ import type { Database } from "@/types/database.types";
  * que mantener, solo llamadas HTTPS, y una caída de un canal no tiene por qué
  * frenar a los otros. Los ENTRANTES y los acuses no pasan por acá — llegan al
  * webhook de Next (app/api/whatsapp/webhook).
+ *
+ * Desde la migración de número también es el que corre el reloj de las
+ * automatizaciones. Vivía en el worker de Baileys, que era el único proceso
+ * permanente cuando el número viejo era el principal; dejarlo ahí ataba los
+ * recordatorios de turno a que el socket de Baileys estuviera vivo, cuando ya
+ * no sale nada por él.
  */
 
 const POLL_INTERVAL_MS = 2_000;
@@ -373,6 +380,13 @@ async function pollOutgoing(): Promise<void> {
 const STUCK_SENDING_MS = 15 * 60 * 1000;
 const RESCUE_INTERVAL_MS = 60 * 1000;
 
+/**
+ * Cada cuánto se buscan turnos que disparen una automatización. Tiene que
+ * coincidir con la ventana que usa `processAutomations` para no dejar huecos
+ * ni pisar dos veces el mismo turno.
+ */
+const AUTOMATION_TICK_MS = 60 * 1000;
+
 async function rescueStuckSending(): Promise<void> {
   const cutoff = new Date(Date.now() - STUCK_SENDING_MS).toISOString();
 
@@ -409,6 +423,11 @@ console.log("☁️ Worker de WhatsApp Cloud API arriba. Escuchando la cola de s
 // `void` en vez de await: si una vuelta falla, la siguiente sigue corriendo.
 setInterval(() => void pollOutgoing(), POLL_INTERVAL_MS);
 setInterval(() => void rescueStuckSending(), RESCUE_INTERVAL_MS);
+
+// Reloj de las automatizaciones (recordatorios de turno, post-turno, encuestas
+// de reseña). Independiente de pollOutgoing: solo encola mensajes, que la
+// vuelta siguiente del poller levanta como cualquier otro.
+setInterval(() => void processAutomations(supabase), AUTOMATION_TICK_MS);
 
 // El chequeo de arranque avisa en logs si la cuenta no está lista, que es la
 // pregunta número uno cuando "no sale nada".

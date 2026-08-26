@@ -36,11 +36,12 @@ function decodeWaMessageContent(b64: string): WAMessageContent {
 import baileysLogger from "@whiskeysockets/baileys/lib/Utils/logger.js";
 import type { ILogger } from "@whiskeysockets/baileys/lib/Utils/logger.js";
 import qrcode from "qrcode-terminal";
+import { WA_LEGACY_CHANNEL } from "@/lib/channels";
 import { notifyInboundMessage } from "@/lib/push/send";
+import { renderTemplate } from "@/lib/validations/crm-config";
 import type { Database } from "@/types/database.types";
-import { processAutomations, processInboundAutomations } from "./automations";
+
 import { downloadAndStoreMedia, fetchAndStoreAvatar } from "./media";
-import { processInboundReview } from "./reviews";
 import { useSupabaseAuthState } from "./supabase-auth";
 import { transcribeAndStore } from "./transcribe";
 
@@ -389,7 +390,7 @@ async function getOrCreateConversation(
   const { data: existing } = await supabase
     .from("conversations")
     .select("id, avatar_path, display_name, wa_phone, client_id")
-    .eq("channel", "whatsapp")
+    .eq("channel", WA_LEGACY_CHANNEL)
     .eq("external_id", externalId)
     .maybeSingle();
   if (existing) {
@@ -436,7 +437,7 @@ async function getOrCreateConversation(
   const { data: created, error } = await supabase
     .from("conversations")
     .insert({
-      channel: "whatsapp",
+      channel: WA_LEGACY_CHANNEL,
       external_id: externalId,
       display_name: displayName ?? null,
       client_id: clientId,
@@ -581,7 +582,7 @@ async function applyContactIdentities(
     const { data: convs, error } = await supabase
       .from("conversations")
       .select("id, external_id, display_name, wa_phone, avatar_path, client_id")
-      .eq("channel", "whatsapp")
+      .eq("channel", WA_LEGACY_CHANNEL)
       .in("external_id", chunk);
     if (error) {
       console.error("[contacts] lookup error:", error.message);
@@ -656,7 +657,7 @@ async function reconcileOrphanLidConversations(sock: WASocket): Promise<void> {
   const { data: orphans } = await supabase
     .from("conversations")
     .select("external_id")
-    .eq("channel", "whatsapp")
+    .eq("channel", WA_LEGACY_CHANNEL)
     .like("external_id", "%@lid")
     .is("wa_phone", null);
   if (!orphans?.length) return;
@@ -674,7 +675,7 @@ async function reconcileOrphanLidConversations(sock: WASocket): Promise<void> {
     supabase
       .from("conversations")
       .select("wa_phone")
-      .eq("channel", "whatsapp")
+      .eq("channel", WA_LEGACY_CHANNEL)
       .not("wa_phone", "is", null),
   ]);
   for (const c of clients ?? []) addPhone(c.phone);
@@ -787,6 +788,118 @@ async function handleIncomingReaction(msg: WAMessage) {
   });
 }
 
+// ─────────────────────────────────────────── Redirección al número nuevo
+
+type LegacySettings =
+  Database["public"]["Tables"]["whatsapp_legacy_settings"]["Row"];
+
+/**
+ * La configuración se relee como mucho una vez por minuto. Sin caché sería una
+ * consulta por cada mensaje entrante para leer una fila que cambia dos veces
+ * al año, y un minuto de demora en aplicar un cambio del panel no se nota.
+ */
+const SETTINGS_TTL_MS = 60_000;
+let cachedSettings: { at: number; value: LegacySettings | null } | null = null;
+
+async function legacySettings(): Promise<LegacySettings | null> {
+  const now = Date.now();
+  if (cachedSettings && now - cachedSettings.at < SETTINGS_TTL_MS) {
+    return cachedSettings.value;
+  }
+
+  const { data, error } = await supabase
+    .from("whatsapp_legacy_settings")
+    .select("*")
+    .eq("session_id", SESSION_ID)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[redirect] no pudimos leer la configuración:", error.message);
+  }
+
+  // El fallo se cachea igual que el acierto: si falta la tabla o la política,
+  // reintentar en cada mensaje entrante convertiría un error de setup en una
+  // tormenta de consultas.
+  cachedSettings = { at: now, value: data ?? null };
+  return cachedSettings.value;
+}
+
+/**
+ * Contesta el aviso de "escribinos al número nuevo".
+ *
+ * Es lo único que este número manda por su cuenta desde que dejó de ser el
+ * principal. Se encola como cualquier saliente —`status='queued'`— así que lo
+ * despacha el mismo `pollOutgoing` de siempre y queda visible en el chat: el
+ * salón ve qué se le contestó a quién.
+ *
+ * El cooldown es configurable y por defecto es 0, o sea que contesta cada vez
+ * que escriban. Con un valor mayor, `conversations.legacy_redirect_at` guarda
+ * cuándo fue el último aviso de ESE chat.
+ */
+async function maybeSendRedirect(conversationId: string): Promise<void> {
+  try {
+    const settings = await legacySettings();
+    if (!settings?.redirect_enabled) return;
+
+    const template = settings.redirect_message?.trim();
+    if (!template) return;
+
+    // Un aviso que dice "escribinos al" y termina ahí es peor que no mandar
+    // nada: si la plantilla pide el número y no está cargado, se calla.
+    if (template.includes("{{numero}}") && !settings.redirect_number?.trim()) {
+      console.warn(
+        "[redirect] el mensaje usa {{numero}} pero no hay número nuevo cargado en Configuración.",
+      );
+      return;
+    }
+
+    const cooldownMs = settings.redirect_cooldown_minutes * 60_000;
+    if (cooldownMs > 0) {
+      const { data: conv } = await supabase
+        .from("conversations")
+        .select("legacy_redirect_at")
+        .eq("id", conversationId)
+        .maybeSingle();
+      if (conv?.legacy_redirect_at) {
+        const since = Date.now() - new Date(conv.legacy_redirect_at).getTime();
+        if (since < cooldownMs) return;
+      }
+    }
+
+    const body = renderTemplate(template, {
+      numero: settings.redirect_number?.trim() ?? "",
+    }).trim();
+    if (!body) return;
+
+    const { error } = await supabase.from("messages").insert({
+      conversation_id: conversationId,
+      direction: "outbound",
+      type: "text",
+      body,
+      status: "queued",
+    });
+
+    if (error) {
+      console.error("[redirect] no pudimos encolar el aviso:", error.message);
+      return;
+    }
+
+    await supabase
+      .from("conversations")
+      .update({ legacy_redirect_at: new Date().toISOString() })
+      .eq("id", conversationId);
+
+    console.log(`↪️  aviso de redirección encolado para ${conversationId}`);
+  } catch (err) {
+    // El mensaje entrante ya quedó guardado; que falle el aviso no puede
+    // tumbar el manejo del mensaje.
+    console.error(
+      "[redirect] fallo mandando el aviso:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 async function handleUpsertedMessage(msg: WAMessage) {
   const remoteJid = msg.key.remoteJid;
   if (!remoteJid) return;
@@ -894,29 +1007,11 @@ async function handleUpsertedMessage(msg: WAMessage) {
     );
   }
 
-  // Inbound automation hook (welcome / re-engagement). Reactions and
-  // outbound echoes don't qualify — automations should react to real
-  // incoming text/media only.
+  // Este número es archivo: las automatizaciones (bienvenida, reactivación,
+  // encuestas de reseña) dejaron de dispararse acá y salen todas por el
+  // número de la Cloud API. Lo único que contesta solo es la redirección.
   if (!fromMe && inserted?.id) {
-    // La encuesta de reseña va primero y puede quedarse con el mensaje: si
-    // este "5" era la respuesta al puntaje, ya se le contestó y dejar correr
-    // además el flujo de reactivación mandaría dos mensajes encimados.
-    void (async () => {
-      const consumed = await processInboundReview(
-        supabase,
-        conversationId,
-        mediaResult?.caption ?? textBody ?? null,
-        new Date(sentAt),
-      );
-      if (consumed) return;
-
-      await processInboundAutomations(
-        supabase,
-        conversationId,
-        inserted.id,
-        new Date(sentAt),
-      );
-    })();
+    void maybeSendRedirect(conversationId);
 
     // Aviso al teléfono. Va suelto a propósito: si el push falla, el mensaje
     // ya quedó guardado y la bandeja lo muestra igual.
@@ -937,7 +1032,7 @@ async function findConversationId(remoteJid: string): Promise<string | null> {
   const { data } = await supabase
     .from("conversations")
     .select("id")
-    .eq("channel", "whatsapp")
+    .eq("channel", WA_LEGACY_CHANNEL)
     .eq("external_id", remoteJid)
     .maybeSingle();
   return data?.id ?? null;
@@ -1146,7 +1241,7 @@ async function pollOutgoing() {
     // los 10 más viejos de cualquier canal y los de Instagram —que este worker
     // saltea— se comían la ventana entera: había 12 mensajes de IG trabados
     // desde el 8/8 y ningún mensaje de WhatsApp volvía a salir nunca.
-    .eq("conversations.channel", "whatsapp")
+    .eq("conversations.channel", WA_LEGACY_CHANNEL)
     // Un mensaje al que le cancelaron el envío antes de que saliera queda
     // 'queued' con `revoked_at` puesto: es la forma de que no salga nunca.
     .is("revoked_at", null)
@@ -1161,7 +1256,7 @@ async function pollOutgoing() {
 
   for (const m of queued as unknown as QueuedMessage[]) {
     const conv = m.conversations;
-    if (!conv || conv.channel !== "whatsapp") continue;
+    if (!conv || conv.channel !== WA_LEGACY_CHANNEL) continue;
 
     const { data: claim } = await supabase
       .from("messages")
@@ -1268,7 +1363,7 @@ async function pollMessageOps() {
     .eq("status", "queued")
     // Mismo bloqueo de cabecera que en `pollOutgoing`: si las 10 ops más viejas
     // son de otro canal, las de WhatsApp no se procesan nunca.
-    .eq("conversations.channel", "whatsapp")
+    .eq("conversations.channel", WA_LEGACY_CHANNEL)
     .order("created_at")
     .limit(10);
 
@@ -1280,7 +1375,7 @@ async function pollMessageOps() {
 
   for (const op of pending as unknown as QueuedOp[]) {
     const conv = op.conversations;
-    if (!conv || conv.channel !== "whatsapp") continue;
+    if (!conv || conv.channel !== WA_LEGACY_CHANNEL) continue;
 
     const { data: claim } = await supabase
       .from("message_ops")
@@ -1349,9 +1444,10 @@ async function pollMessageOps() {
 
 setInterval(() => void pollMessageOps(), 2000);
 
-// Automation tick — runs every 60s. Independent of pollOutgoing since
-// automations just enqueue messages that the regular poller picks up.
-setInterval(() => void processAutomations(supabase), 60_000);
+// El reloj de las automatizaciones ya no vive acá: se mudó al worker de la
+// Cloud API (worker/whatsapp-cloud.ts) junto con el resto de los envíos
+// automáticos. Este número quedó como archivo y lo único que sale solo de él
+// es el aviso de redirección (ver maybeSendRedirect).
 
 // ─────────────────────────────────────────── Connection lifecycle
 

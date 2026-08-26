@@ -7,6 +7,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import type { WhatsappTemplateRow } from "@/lib/whatsapp-cloud/templates";
 import { AutomationsManager } from "./automations-manager";
 import type {
   AutomationFlow,
@@ -30,6 +31,7 @@ export function CrmConfig({
   tags,
   quickReplies,
   flows,
+  waTemplates,
   services,
   paymentMethods,
   outreachSuggestions,
@@ -37,6 +39,8 @@ export function CrmConfig({
   tags: ClientTag[];
   quickReplies: QuickReply[];
   flows: AutomationFlow[];
+  /** Plantillas aprobadas del WABA, para los flujos que mandan plantilla. */
+  waTemplates: WhatsappTemplateRow[];
   services: ServiceSlim[];
   paymentMethods: PaymentMethod[];
   outreachSuggestions: OutreachSuggestionWithRelations[];
@@ -93,7 +97,11 @@ export function CrmConfig({
         <QuickRepliesManager replies={quickReplies} />
       </TabsContent>
       <TabsContent value="flows">
-        <AutomationsManager flows={flows} services={services} />
+        <AutomationsManager
+          flows={flows}
+          services={services}
+          waTemplates={waTemplates}
+        />
       </TabsContent>
       <TabsContent value="payments">
         <PaymentMethodsManager methods={paymentMethods} />

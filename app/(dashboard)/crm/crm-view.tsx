@@ -9,6 +9,7 @@ import {
   Check,
   CheckCheck,
   ChevronDown,
+  ChevronRight,
   CircleAlert,
   Clock,
   CornerDownRight,
@@ -20,6 +21,7 @@ import {
   MoreHorizontal,
   MoreVertical,
   Pencil,
+  PhoneOff,
   Pin,
   PinOff,
   Search,
@@ -47,6 +49,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  isLegacyChannel,
+  PRIMARY_CHANNELS,
+  WA_CLOUD_CHANNEL,
+  WA_LEGACY_CHANNEL,
+} from "@/lib/channels";
 import { onOpenConversation } from "@/lib/push/open-conversation";
 import { createClient } from "@/lib/supabase/client";
 import { useVisiblePoll } from "@/lib/use-visible-poll";
@@ -224,6 +232,7 @@ function StatusIcon({ status }: { status: MessageRow["status"] }) {
 
 export function CrmView({
   initialConversations,
+  initialLegacyConversations = [],
   initialSelectedId,
   quickReplies = [],
   waTemplates = [],
@@ -236,6 +245,11 @@ export function CrmView({
   onOpenConfig,
 }: {
   initialConversations: ConversationWithClient[];
+  /**
+   * Los chats del número viejo (Baileys). Viven en su propia bandeja, a un
+   * botón de distancia de la principal.
+   */
+  initialLegacyConversations?: ConversationWithClient[];
   initialSelectedId: string | null;
   quickReplies?: QuickReply[];
   /** Plantillas aprobadas de la Cloud API, para el canal `whatsapp_cloud`. */
@@ -251,8 +265,25 @@ export function CrmView({
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [conversations, setConversations] = useState(initialConversations);
+  const [legacyConversations, setLegacyConversations] = useState(
+    initialLegacyConversations,
+  );
   const [selectedId, setSelectedId] = useState<string | null>(
     initialSelectedId,
+  );
+  /**
+   * Qué bandeja se está mirando. La principal es el número nuevo (WhatsApp
+   * API) más Instagram; la del número viejo es archivo consultable.
+   *
+   * El estado inicial mira dónde cayó el chat que pide la URL: un push del
+   * número viejo abre /crm?c=<id> y sin esto aterrizaría en la bandeja
+   * principal, donde ese chat no está, y no se vería nada.
+   */
+  const [inbox, setInbox] = useState<"primary" | "legacy">(() =>
+    initialSelectedId &&
+    initialLegacyConversations.some((c) => c.id === initialSelectedId)
+      ? "legacy"
+      : "primary",
   );
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -280,16 +311,45 @@ export function CrmView({
   // llegue un mensaje nuevo que provoque el re-render.
   const now = useMinuteClock();
 
+  /**
+   * La lista del número viejo, siempre al día, para el listener de los pushes.
+   * Va por ref y no por dependencia: el listener se registra una sola vez, y
+   * volver a suscribirlo con cada mensaje nuevo abriría una ventana en la que
+   * un push llegado justo ahí no lo agarraría nadie.
+   */
+  const legacyRef = useRef(legacyConversations);
+  useEffect(() => {
+    legacyRef.current = legacyConversations;
+  }, [legacyConversations]);
+
   // Subscribe to conversation changes (new conversations, last_message_at updates)
   const refetchConversations = useCallback(async () => {
-    const { data } = await supabase
-      .from("conversations")
-      .select("*, clients ( id, full_name, phone, tags )")
-      .eq("archived", false)
-      .order("pinned_at", { ascending: false, nullsFirst: false })
-      .order("last_message_at", { ascending: false, nullsFirst: false })
-      .limit(100);
-    if (data) setConversations(data as ConversationWithClient[]);
+    // Las dos bandejas se refrescan juntas: son la misma tabla y el globo del
+    // botón "Número viejo" tiene que envejecer al mismo ritmo que la lista.
+    const [primary, legacy] = await Promise.all([
+      supabase
+        .from("conversations")
+        .select("*, clients ( id, full_name, phone, tags )")
+        .eq("archived", false)
+        .in("channel", [...PRIMARY_CHANNELS])
+        .order("pinned_at", { ascending: false, nullsFirst: false })
+        .order("last_message_at", { ascending: false, nullsFirst: false })
+        .limit(100),
+      supabase
+        .from("conversations")
+        .select("*, clients ( id, full_name, phone, tags )")
+        .eq("archived", false)
+        .eq("channel", WA_LEGACY_CHANNEL)
+        .order("pinned_at", { ascending: false, nullsFirst: false })
+        .order("last_message_at", { ascending: false, nullsFirst: false })
+        .limit(100),
+    ]);
+    if (primary.data) {
+      setConversations(primary.data as ConversationWithClient[]);
+    }
+    if (legacy.data) {
+      setLegacyConversations(legacy.data as ConversationWithClient[]);
+    }
   }, [supabase]);
 
   useEffect(() => {
@@ -435,7 +495,20 @@ export function CrmView({
   // Toque en una notificación con la bandeja ya abierta. El id llega por el
   // puente del service worker y no por la URL: `selectedId` es estado de React
   // y una navegación a /crm?c=… no lo reemplaza una vez montado.
-  useEffect(() => onOpenConversation(setSelectedId), []);
+  // Un push abre /crm?c=<id> con la app ya cargada. El chat puede ser del
+  // número viejo, así que además de seleccionarlo hay que pararse en su
+  // bandeja: sin esto se abre el chat pero la lista de al lado muestra otra
+  // cosa, y volver atrás lo pierde.
+  useEffect(
+    () =>
+      onOpenConversation((id) => {
+        setSelectedId(id);
+        setInbox((current) =>
+          legacyRef.current.some((c) => c.id === id) ? "legacy" : current,
+        );
+      }),
+    [],
+  );
 
   // Al abrir una conversación el cursor ya queda en el campo de escritura.
   // Solo en desktop: en el celular esto levantaría el teclado y taparía el chat.
@@ -472,7 +545,61 @@ export function CrmView({
     if (editing) composerRef.current?.focus();
   }, [editing]);
 
-  const selected = conversations.find((c) => c.id === selectedId) ?? null;
+  /**
+   * La lista que se está mirando. Todo lo de la izquierda —filtros,
+   * contadores, orden— trabaja sobre ésta y no sobre la unión de las dos: si
+   * el buscador encontrara chats de la otra bandeja, elegirlos dejaría la
+   * lista mostrando algo distinto de lo que está abierto a la derecha.
+   */
+  const activeConversations =
+    inbox === "legacy" ? legacyConversations : conversations;
+
+  /**
+   * El chat abierto se busca en las DOS listas a propósito. Entre que se
+   * cambia de bandeja y que se limpia la selección hay un render en el que el
+   * id todavía apunta a la lista anterior; buscarlo solo en la activa haría
+   * parpadear la pantalla de bienvenida.
+   */
+  const selected =
+    activeConversations.find((c) => c.id === selectedId) ??
+    conversations.find((c) => c.id === selectedId) ??
+    legacyConversations.find((c) => c.id === selectedId) ??
+    null;
+
+  /** Este chat es del número viejo: archivo, sin automatizaciones. */
+  const selectedIsLegacy = isLegacyChannel(selected?.channel);
+
+  const legacyUnread = useMemo(
+    () => legacyConversations.filter((c) => c.unread_count > 0).length,
+    [legacyConversations],
+  );
+
+  /**
+   * Cambiar de bandeja suelta el chat abierto salvo que también viva en la
+   * bandeja de destino (no puede pasar hoy, pero deja el cambio a prueba de
+   * que mañana un canal aparezca en las dos).
+   */
+  function switchInbox(next: "primary" | "legacy") {
+    if (next === inbox) return;
+    const target = next === "legacy" ? legacyConversations : conversations;
+    if (!selectedId || !target.some((c) => c.id === selectedId)) {
+      setSelectedId(null);
+    }
+    setInbox(next);
+  }
+
+  /**
+   * Parche local de una conversación, sin importar en qué bandeja esté. Se
+   * aplica sobre las dos listas: el `map` no cambia nada en la que no la
+   * tiene, y así quien llama no necesita saber de qué canal era el chat.
+   */
+  const patchConversations = useCallback(
+    (updater: (c: ConversationWithClient) => ConversationWithClient) => {
+      setConversations((prev) => prev.map(updater));
+      setLegacyConversations((prev) => prev.map(updater));
+    },
+    [],
+  );
 
   /**
    * Ventana de servicio de la Cloud API: 24 h desde el último mensaje de la
@@ -497,7 +624,7 @@ export function CrmView({
   // que mira la conversación entera, corta lo que esté fuera de ventana.
   const messagesMaybeTruncated = messages.length >= 500;
   const cloudWindowClosed =
-    selected?.channel === "whatsapp_cloud" &&
+    selected?.channel === WA_CLOUD_CHANNEL &&
     !loadingMessages &&
     !messagesMaybeTruncated &&
     now !== null &&
@@ -506,7 +633,7 @@ export function CrmView({
 
   const filteredConversations = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const matching = conversations.filter((c) => {
+    const matching = activeConversations.filter((c) => {
       if (statusFilter === "unread" && c.unread_count <= 0) return false;
       if (statusFilter === "awaiting" && !c.awaiting_reply) return false;
       if (statusFilter === "answered" && c.awaiting_reply) return false;
@@ -544,22 +671,26 @@ export function CrmView({
         : 0;
       return lastB - lastA;
     });
-  }, [conversations, statusFilter, tagFilter, query]);
+  }, [activeConversations, statusFilter, tagFilter, query]);
 
   const awaitingCount = useMemo(
-    () => conversations.filter((c) => c.awaiting_reply).length,
-    [conversations],
+    () => activeConversations.filter((c) => c.awaiting_reply).length,
+    [activeConversations],
   );
 
   const unreadCount = useMemo(
-    () => conversations.filter((c) => c.unread_count > 0).length,
-    [conversations],
+    () => activeConversations.filter((c) => c.unread_count > 0).length,
+    [activeConversations],
   );
 
   /** Mensajes sin leer, no conversaciones: es el número que se busca de reojo. */
   const unreadMessages = useMemo(
-    () => conversations.reduce((sum, c) => sum + Math.max(0, c.unread_count), 0),
-    [conversations],
+    () =>
+      activeConversations.reduce(
+        (sum, c) => sum + Math.max(0, c.unread_count),
+        0,
+      ),
+    [activeConversations],
   );
 
   const tagsByName = useMemo(() => {
@@ -585,10 +716,8 @@ export function CrmView({
   function togglePin(conversation: ConversationWithClient) {
     const previous = conversation.pinned_at;
     const next = previous ? null : new Date().toISOString();
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === conversation.id ? { ...c, pinned_at: next } : c,
-      ),
+    patchConversations((c) =>
+      c.id === conversation.id ? { ...c, pinned_at: next } : c,
     );
 
     void (async () => {
@@ -598,10 +727,8 @@ export function CrmView({
       );
       if (result.error) {
         toast.error(result.error);
-        setConversations((prev) =>
-          prev.map((c) =>
-            c.id === conversation.id ? { ...c, pinned_at: previous } : c,
-          ),
+        patchConversations((c) =>
+          c.id === conversation.id ? { ...c, pinned_at: previous } : c,
         );
       }
     })();
@@ -760,17 +887,30 @@ export function CrmView({
           la pantalla con el hilo y con el rail.
         */}
         <div className="hidden h-[var(--wa-header-h)] shrink-0 items-center gap-3 bg-[var(--wa-panel-header)] px-4 md:flex">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--wa-avatar-bg)] text-[var(--wa-icon)]">
-            <MessageCircle className="size-5" strokeWidth={1.75} />
+          <span
+            className={cn(
+              "flex size-10 shrink-0 items-center justify-center rounded-full",
+              inbox === "legacy"
+                ? "bg-[var(--wa-search-bg)] text-[var(--wa-text-2)]"
+                : "bg-[var(--wa-avatar-bg)] text-[var(--wa-icon)]",
+            )}
+          >
+            {inbox === "legacy" ? (
+              <PhoneOff className="size-5" strokeWidth={1.75} />
+            ) : (
+              <MessageCircle className="size-5" strokeWidth={1.75} />
+            )}
           </span>
           <div className="min-w-0 flex-1 leading-tight">
             <div className="text-[1.0625rem] font-medium text-[var(--wa-text)]">
-              WhatsApp
+              {inbox === "legacy" ? "Número viejo" : "Mensajes"}
             </div>
             <div className="truncate text-[0.8125rem] text-[var(--wa-text-2)] tabular-nums">
               {filteredConversations.length}
-              {filtersActive ? ` de ${conversations.length}` : ""}{" "}
-              {conversations.length === 1 ? "conversación" : "conversaciones"}
+              {filtersActive ? ` de ${activeConversations.length}` : ""}{" "}
+              {activeConversations.length === 1
+                ? "conversación"
+                : "conversaciones"}
               {unreadMessages > 0 ? (
                 <span className="font-medium text-[var(--wa-accent-strong)]">
                   {" · "}
@@ -821,6 +961,52 @@ export function CrmView({
             />
           </div>
         </div>
+
+        {/*
+          El acceso al número viejo. Es un botón y no una solapa a propósito:
+          las solapas se leen como dos bandejas del mismo rango, y ésta es un
+          archivo al que se entra y del que se vuelve. Solo aparece si hay algo
+          adentro — un salón que nunca usó Baileys no tiene por qué enterarse
+          de que existió.
+        */}
+        {inbox === "legacy" ? (
+          <div className="shrink-0 px-4 pb-2 md:px-3">
+            <button
+              type="button"
+              onClick={() => switchInbox("primary")}
+              className="flex w-full items-center gap-2 rounded-lg bg-[var(--wa-search-bg)] px-3 py-2 text-left text-[0.8125rem] text-[var(--wa-text-2)] transition-colors hover:text-[var(--wa-text)]"
+            >
+              <ArrowLeft className="size-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">
+                Volver a la bandeja principal
+              </span>
+            </button>
+          </div>
+        ) : legacyConversations.length > 0 ? (
+          <div className="shrink-0 px-4 pb-2 md:px-3">
+            <button
+              type="button"
+              onClick={() => switchInbox("legacy")}
+              className="flex w-full items-center gap-2 rounded-lg bg-[var(--wa-search-bg)] px-3 py-2 text-left text-[0.8125rem] text-[var(--wa-text-2)] transition-colors hover:text-[var(--wa-text)]"
+            >
+              <PhoneOff className="size-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">
+                Número viejo
+                <span className="text-[var(--wa-text-3)]">
+                  {" · "}
+                  {legacyConversations.length} chat
+                  {legacyConversations.length === 1 ? "" : "s"}
+                </span>
+              </span>
+              {legacyUnread > 0 ? (
+                <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[var(--wa-badge)] px-1.5 text-[0.6875rem] font-medium tabular-nums text-[var(--wa-badge-text)]">
+                  {legacyUnread > 99 ? "99+" : legacyUnread}
+                </span>
+              ) : null}
+              <ChevronRight className="size-4 shrink-0 opacity-60" />
+            </button>
+          </div>
+        ) : null}
 
         {/*
           Filtros rápidos. En el teléfono ruedan en una sola fila horizontal
@@ -899,8 +1085,10 @@ export function CrmView({
         <ScrollArea className="flex-1 min-h-0">
           {filteredConversations.length === 0 ? (
             <div className="p-6 pb-[calc(1.5rem+var(--tabbar-space))] text-center text-sm text-[var(--wa-text-2)]">
-              {conversations.length === 0
-                ? "Cuando llegue un mensaje al WhatsApp del salón va a aparecer acá."
+              {activeConversations.length === 0
+                ? inbox === "legacy"
+                  ? "No quedó ningún chat en el número viejo."
+                  : "Cuando llegue un mensaje al WhatsApp del salón va a aparecer acá."
                 : "Ninguna conversación coincide con el filtro."}
             </div>
           ) : (
@@ -1230,23 +1418,37 @@ export function CrmView({
               onChange={(next, linkedClient) => {
                 // Patch local list: ensure the conversation now reflects the
                 // (possibly newly-created) clienta + the latest tags.
-                setConversations((prev) =>
-                  prev.map((c) =>
-                    c.id === selected.id
-                      ? {
-                          ...c,
-                          clients: {
-                            id: linkedClient.id,
-                            full_name: linkedClient.full_name,
-                            phone: linkedClient.phone,
-                            tags: next,
-                          },
-                        }
-                      : c,
-                  ),
+                patchConversations((c) =>
+                  c.id === selected.id
+                    ? {
+                        ...c,
+                        clients: {
+                          id: linkedClient.id,
+                          full_name: linkedClient.full_name,
+                          phone: linkedClient.phone,
+                          tags: next,
+                        },
+                      }
+                    : c,
                 );
               }}
             />
+
+            {/*
+              El número viejo se avisa una vez, arriba de todo, y no en cada
+              burbuja: lo que importa es que quien está por escribir sepa que
+              va a contestar desde un número que la clienta ya no debería usar.
+            */}
+            {selectedIsLegacy ? (
+              <div className="flex items-start gap-2 border-b border-[var(--wa-divider)] bg-[var(--wa-search-bg)] px-4 py-2 text-[0.8125rem] leading-snug text-[var(--wa-text-2)]">
+                <PhoneOff className="mt-0.5 size-4 shrink-0" />
+                <p className="min-w-0 flex-1">
+                  Chat del <strong className="font-medium">número viejo</strong>
+                  . Se puede responder a mano, pero las automatizaciones y los
+                  mensajes del turnero salen por el número nuevo.
+                </p>
+              </div>
+            ) : null}
 
             {/*
               El papel de la conversación no scrollea: el muro de garabatos
@@ -1354,7 +1556,7 @@ export function CrmView({
                       }
                       disabled={isPending}
                     />
-                    {selected.channel === "whatsapp_cloud" ? (
+                    {selected.channel === WA_CLOUD_CHANNEL ? (
                       <TemplatePicker
                         templates={waTemplates}
                         conversationId={selected.id}
@@ -1432,7 +1634,7 @@ export function CrmView({
 
       <ForwardDialog
         message={forwarding}
-        conversations={conversations}
+        conversations={activeConversations}
         currentConversationId={selectedId}
         titleOf={conversationTitle}
         onOpenChange={(open) => {
