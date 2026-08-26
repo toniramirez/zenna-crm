@@ -613,7 +613,13 @@ async function handleTemplateStatus(
 
   const { error } = await supabase
     .from("whatsapp_templates")
-    .update({ status: event, synced_at: new Date().toISOString() })
+    .update({
+      status: event,
+      // El motivo es lo único que el panel puede mostrar para arreglar una
+      // plantilla rechazada; al aprobarse deja de aplicar y se limpia.
+      rejected_reason: event === "APPROVED" ? null : (value.reason ?? null),
+      synced_at: new Date().toISOString(),
+    })
     .eq("name", name)
     .eq("language", language);
 

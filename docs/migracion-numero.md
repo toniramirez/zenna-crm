@@ -21,14 +21,16 @@ Baileys se toca ahí.
 
 ## Puesta en marcha
 
-1. **SQL** — correr `scripts/sql/whatsapp-migration.sql` en el SQL Editor de
-   Supabase (idempotente). Requiere haber corrido antes
-   `whatsapp-cloud-api.sql`.
+1. **SQL** — correr `scripts/sql/whatsapp-migration.sql` y
+   `scripts/sql/whatsapp-template-editor.sql` en el SQL Editor de Supabase
+   (idempotentes). Requieren haber corrido antes `whatsapp-cloud-api.sql`.
 2. **Conectar el número nuevo** — Configuración → *WhatsApp API*. Ver
    [`docs/whatsapp-api.md`](./whatsapp-api.md) para el detalle de credenciales
    y webhook.
-3. **Sincronizar plantillas** — desde el mismo panel. Sin plantillas aprobadas
-   las automatizaciones solo alcanzan a quien haya escrito en las últimas 24 h
+3. **Plantillas** — en el mismo panel: *Nueva* para armarlas ahí (se mandan a
+   Meta y quedan pendientes de aprobación) o *Sincronizar* para traer las que
+   ya existan en el WhatsApp Manager. Sin plantillas aprobadas las
+   automatizaciones solo alcanzan a quien haya escrito en las últimas 24 h
    (ver abajo).
 4. **Configurar la redirección** — Configuración → *WhatsApp · número viejo* →
    *Redirección al número nuevo*: activarla, cargar el número nuevo tal como se
@@ -63,10 +65,15 @@ Lo mismo aplica al **pedido de reseña**: la pregunta sale horas después de
 cobrar el turno, así que necesita plantilla. Las tres respuestas por puntaje
 no: contestan a un mensaje que acaba de entrar.
 
-Las plantillas se crean en el **WhatsApp Manager** de Meta, no desde el CRM, y
-tardan minutos u horas en aprobarse. El selector ofrece solo las que el CRM
-sabe armar (texto, con o sin variables, y botones estáticos); las de cabecera
-multimedia o botón con URL dinámica quedan afuera.
+Las plantillas se arman en **Configuración → WhatsApp API → Plantillas** (ver
+[`docs/whatsapp-api.md`](./whatsapp-api.md)) y las aprueba Meta, lo que tarda
+minutos u horas. El selector ofrece solo las que el CRM sabe armar (texto, con
+o sin variables, y botones estáticos); las de cabecera multimedia o botón con
+URL dinámica —que solo pueden venir del WhatsApp Manager— quedan afuera.
+
+Si la plantilla se armó desde el CRM sus variables se llaman igual que las del
+CRM (`{{nombre}}`, `{{fecha}}`…), y el mapeo de cada `{{…}}` viene precargado
+al elegirla.
 
 ## Cómo llega una automatización a alguien que nunca escribió al número nuevo
 
@@ -95,6 +102,7 @@ ensuciaría la bandeja. La ejecución queda en `skipped` con el motivo.
 | Salientes del número nuevo | `zenna-wpp-api` | `worker/whatsapp-cloud.ts` |
 | Entrantes/salientes del número viejo | `zenna-worker` | `worker/baileys.ts` |
 | Aviso de redirección | `zenna-worker` | `maybeSendRedirect` en `worker/baileys.ts` |
+| Crear/editar/borrar plantillas | Next (server action) | `app/(dashboard)/configuracion/whatsapp-cloud-actions.ts` |
 
 El reloj de las automatizaciones vivía en el worker de Baileys, que era el
 único proceso permanente cuando el número viejo era el principal. Se mudó: si
@@ -107,6 +115,9 @@ ya no usamos siguiera vivo.
   `skipped` con motivo = no había chat en el número nuevo (flujo en modo texto,
   o teléfono sin cargar en la ficha). `failed` = la plantilla no está aprobada,
   o una variable quedó vacía (un turno sin profesional, por ejemplo).
+- **"Meta rechazó la plantilla"** → el motivo queda escrito en la fila de la
+  plantilla, en Configuración. Casi siempre es la categoría (un recordatorio de
+  turno es *Utilidad*, no *Marketing*) o un texto que suena a promoción.
 - **"Manda todo pero no llega"** → ¿está corriendo `zenna-wpp-api`? ¿El panel
   de WhatsApp API dice Conectado? Un flujo en modo texto libre fuera de la
   ventana queda en rojo en el chat con el motivo de Meta (error 131047).

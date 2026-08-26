@@ -1607,6 +1607,7 @@ export type Database = {
           language: string
           meta_id: string | null
           name: string
+          rejected_reason: string | null
           status: string
           synced_at: string
           updated_at: string
@@ -1619,6 +1620,7 @@ export type Database = {
           language: string
           meta_id?: string | null
           name: string
+          rejected_reason?: string | null
           status?: string
           synced_at?: string
           updated_at?: string
@@ -1631,6 +1633,7 @@ export type Database = {
           language?: string
           meta_id?: string | null
           name?: string
+          rejected_reason?: string | null
           status?: string
           synced_at?: string
           updated_at?: string

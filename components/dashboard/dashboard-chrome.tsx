@@ -2,7 +2,7 @@
 
 import { Headset, PanelLeft, Search } from "lucide-react";
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { AppRole } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { BrandWordmark } from "./brand-wordmark";
@@ -29,6 +29,65 @@ import { UserMenu } from "./user-menu";
  * barra de pestañas abajo, con Chats al centro. Arriba queda apenas la marca;
  * la cuenta y las secciones que no entran están en "Más".
  */
+/**
+ * Alto real de la ventana y cuánto de ella tapa el teclado.
+ *
+ * En el teléfono `100dvh` no alcanza: el teclado no es chrome del navegador,
+ * así que `dvh` sigue midiendo la pantalla entera y iOS resuelve el estorbo
+ * empujando el documento hacia arriba — el encabezado del chat se va de la
+ * pantalla y abajo queda una franja muerta. La `visualViewport` sí sabe qué
+ * parte se ve: de ahí salen `--app-height` (el alto que toma el shell) y
+ * `--kb-inset` (lo que hay que descontarle al respiro del gesto de inicio,
+ * que con teclado abierto ya no esquiva nada).
+ *
+ * El `scrollTo(0, 0)` deshace el empujón: con el shell ya achicado, la barra
+ * de escritura queda apoyada sobre las teclas sin que nadie tenga que
+ * desplazar nada.
+ */
+function useViewportMetrics() {
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const root = document.documentElement;
+    let frame = 0;
+
+    const apply = () => {
+      frame = 0;
+      const overlap = Math.max(
+        0,
+        Math.round(window.innerHeight - vv.height - vv.offsetTop),
+      );
+      root.style.setProperty("--app-height", `${Math.round(vv.height)}px`);
+      root.style.setProperty("--kb-inset", `${overlap}px`);
+      // Con el teclado arriba el navegador ya desplazó el documento; el shell
+      // mide lo que se ve, así que ese desplazamiento sobra.
+      if (overlap > 0 && window.scrollY !== 0) window.scrollTo(0, 0);
+    };
+
+    // Los eventos de la visualViewport llegan de a ráfagas mientras el teclado
+    // entra: un rAF por ráfaga alcanza y evita recalcular el layout por cuadro.
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(apply);
+    };
+
+    apply();
+    vv.addEventListener("resize", schedule);
+    vv.addEventListener("scroll", schedule);
+    window.addEventListener("orientationchange", schedule);
+
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      vv.removeEventListener("resize", schedule);
+      vv.removeEventListener("scroll", schedule);
+      window.removeEventListener("orientationchange", schedule);
+      root.style.removeProperty("--app-height");
+      root.style.removeProperty("--kb-inset");
+    };
+  }, []);
+}
+
 export function DashboardChrome({
   items,
   profile,
@@ -43,6 +102,8 @@ export function DashboardChrome({
   unreadCount?: number;
   children: ReactNode;
 }) {
+  useViewportMetrics();
+
   const { focused, toggle } = useFocusMode();
   const [searchOpen, setSearchOpen] = useState(false);
   const collapsed = focused;
@@ -62,10 +123,11 @@ export function DashboardChrome({
       <div
         data-app-shell
         className={cn(
-          // `h-dvh` y no `h-screen`: con la barra de pestañas apoyada abajo,
-          // los 100vh del navegador móvil (que incluyen la barra de URL
-          // retraída) le comían el borde inferior.
-          "grid h-dvh w-full overflow-hidden transition-[grid-template-columns] duration-200",
+          // `--app-height` y no `h-screen`: los 100vh del navegador móvil
+          // (que incluyen la barra de URL retraída) le comían el borde
+          // inferior, y `100dvh` —el valor de arranque de la variable— no se
+          // entera del teclado. Ver `useViewportMetrics`.
+          "grid h-[var(--app-height)] w-full overflow-hidden transition-[grid-template-columns] duration-200",
           collapsed ? "md:grid-cols-[64px_1fr]" : "md:grid-cols-[232px_1fr]",
         )}
       >

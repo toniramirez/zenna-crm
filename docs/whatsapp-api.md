@@ -25,16 +25,19 @@ viejo, en su propia bandeja. Ver
   drena `messages` con `status='queued'` y `conversations.channel='whatsapp_cloud'`.
   Todo lo que ya encola mensajes funciona sin cambios.
 - **Credenciales** → tabla `whatsapp_cloud_accounts` (service_role-only).
-- **Plantillas** → tabla `whatsapp_templates`, caché de lo que hay en el
-  WhatsApp Manager. Se sincroniza desde Configuración y se actualiza sola
-  cuando Meta avisa por webhook (`message_template_status_update`).
+- **Plantillas** → tabla `whatsapp_templates`, caché de lo que hay en el WABA.
+  Se crean y editan desde Configuración (`lib/whatsapp-cloud/template-draft.ts`
+  arma el payload; `client.ts` habla con la Graph API), se sincronizan a mano
+  con el botón del panel y se actualizan solas cuando Meta avisa por webhook
+  (`message_template_status_update`).
 - Las conversaciones se identifican por `(channel='whatsapp_cloud',
   external_id=<dígitos del número>)`. El `wa_id` de Meta ya son los dígitos.
 
 ## Puesta en marcha
 
-1. **SQL**: correr `scripts/sql/whatsapp-cloud-api.sql` en el SQL Editor de
-   Supabase (idempotente).
+1. **SQL**: correr `scripts/sql/whatsapp-cloud-api.sql` y después
+   `scripts/sql/whatsapp-template-editor.sql` en el SQL Editor de Supabase
+   (los dos idempotentes).
 2. **App de Meta**: producto *WhatsApp* agregado (puede ser la misma app que
    usa Instagram). Anotar del **App Dashboard → WhatsApp → API Setup**:
    - *Phone Number ID* (no es el número de teléfono),
@@ -76,10 +79,42 @@ Meta solo acepta texto/archivos libres dentro de las 24 h posteriores al
 3. **Webhook**: si igual se escapó uno (carrera justo en el límite), el acuse
    `failed` de Meta se traduce a un error legible en la burbuja.
 
-Las plantillas se crean en el **WhatsApp Manager** de Meta (no desde el CRM) y
-tardan minutos u horas en aprobarse. El selector del chat ofrece solo las
-aprobadas; las de cabecera multimedia o botón con URL dinámica aparecen
-deshabilitadas (todavía no se piden esos parámetros).
+Las plantillas tardan minutos u horas en aprobarse. El selector del chat ofrece
+solo las aprobadas; las de cabecera multimedia o botón con URL dinámica
+aparecen deshabilitadas (todavía no se piden esos parámetros).
+
+## Armar plantillas desde el CRM
+
+**Configuración → WhatsApp API → Plantillas → Nueva.** El editor manda la
+plantilla al WABA (`POST /<WABA_ID>/message_templates`) y la deja cacheada en
+`PENDING`; el veredicto de Meta llega solo por el webhook. El lápiz de cada
+fila la reedita (`POST /<TEMPLATE_ID>`, vuelve a revisión) y el tacho la borra
+en Meta y en el caché.
+
+Lo que se puede armar es exactamente lo que el CRM sabe enviar —cabecera de
+texto, cuerpo, pie y botones estáticos (respuesta rápida, link fijo,
+llamar)—, así que no se puede crear una plantilla que después el selector
+rechace. Las que ya existan con cabecera multimedia o botones raros se siguen
+listando, pero el lápiz queda deshabilitado con el motivo: esas se editan en
+el WhatsApp Manager.
+
+Dos cosas que el editor resuelve y que son la mitad de los rechazos de Meta:
+
+- **Ejemplos**: cada variable necesita un valor de muestra o Meta ni siquiera
+  la revisa. El editor los pide y los prellena.
+- **Variables con nombre**: los botones de `{{nombre}}`, `{{servicio}}`,
+  `{{fecha}}`, `{{hora}}`, `{{profesional}}` y `{{salon}}` escriben
+  placeholders **nombrados** (la plantilla viaja con
+  `parameter_format: "NAMED"`), no `{{1}}`/`{{2}}`. El beneficio está río
+  abajo: como el token se llama igual que la variable del CRM, el editor de
+  automatizaciones precarga el mapeo en vez de hacer adivinar cuál era `{{2}}`.
+  Una plantilla numerada creada en el Manager sigue funcionando, solo que hay
+  que mapearla a mano.
+
+Un rechazo deja el motivo de Meta a la vista en la fila
+(`whatsapp_templates.rejected_reason`, que llena el webhook). El nombre y el
+idioma no se pueden cambiar después de creada: son la identidad de la
+plantilla para Meta y para la cola de envío.
 
 ## Decisiones deliberadas (mientras convivan los dos canales)
 

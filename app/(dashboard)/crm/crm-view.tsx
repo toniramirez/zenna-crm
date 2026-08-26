@@ -29,6 +29,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  type CSSProperties,
   useCallback,
   useEffect,
   useMemo,
@@ -537,6 +538,33 @@ export function CrmView({
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+  /*
+    Al abrirse el teclado el hilo se achica (el shell ahora mide la ventana
+    real, ver `useViewportMetrics`), y sin esto la última burbuja queda abajo
+    del corte: quien acaba de tocar el campo pierde de vista justo lo que está
+    contestando. El salto sólo se pega si ya estaba mirando el final — a quien
+    esté leyendo más arriba no se le mueve el piso.
+  */
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+
+    let atBottom = true;
+    const trackPosition = () => {
+      atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    };
+    const observer = new ResizeObserver(() => {
+      if (atBottom) el.scrollTop = el.scrollHeight;
+    });
+
+    el.addEventListener("scroll", trackPosition, { passive: true });
+    observer.observe(el);
+    return () => {
+      el.removeEventListener("scroll", trackPosition);
+      observer.disconnect();
+    };
+  }, [selectedId]);
 
   // Al entrar en modo edición el cursor va al campo, con el texto viejo ya
   // cargado. Va en un efecto y no en el handler del menú: mientras el menú
@@ -1458,7 +1486,7 @@ export function CrmView({
             <div className="wa-conv-bg flex min-h-0 flex-1 flex-col">
               <div
                 ref={scrollRef}
-                className="wa-conv-scroll min-h-0 flex-1 space-y-0.5 overflow-y-auto px-4 py-4 sm:px-8"
+                className="wa-conv-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-8 sm:py-4"
               >
                 {loadingMessages ? (
                   <div className="space-y-2">
@@ -1519,7 +1547,7 @@ export function CrmView({
                   escribir un mensaje condenado, el composer se convierte en el
                   camino que sí funciona — mandar una plantilla.
                 */
-                <div className="flex items-center gap-3 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-4 md:pb-3">
+                <div className="flex items-center gap-3 p-3 pb-[calc(0.75rem+var(--safe-bottom))] sm:px-4 md:pb-3">
                   <Hourglass className="size-4 shrink-0 text-[var(--wa-text-2)]" />
                   <p className="min-w-0 flex-1 text-[0.8125rem] leading-snug text-[var(--wa-text-2)]">
                     Pasaron más de 24 h del último mensaje de la clienta.
@@ -1539,7 +1567,7 @@ export function CrmView({
               ) : (
               <form
                 onSubmit={handleSend}
-                className="wa-composer flex items-center gap-1.5 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:gap-2 sm:px-4 md:pb-2"
+                className="wa-composer flex items-center gap-1.5 p-2 pb-[calc(0.5rem+var(--safe-bottom))] sm:gap-2 sm:px-4 md:pb-2"
               >
                 {/* Editando no se adjuntan archivos: WhatsApp sólo deja
                     cambiar el texto de un mensaje ya mandado. */}
@@ -1818,6 +1846,20 @@ function Bubble({
   // (i.e. they have an external_id we can reference in the reaction key).
   const canReact = !!message.external_id && !revoked;
 
+  /*
+    La hora se mete en el último renglón del texto; un adjunto o un mensaje
+    eliminado la llevan en su propia fila, que es donde hay lugar.
+
+    El hueco que hay que reservarle se calcula, no se mide: son 11px tabulares
+    (siempre el mismo ancho, "10:25" mide igual que "18:00"), más el doble
+    tilde si el mensaje es nuestro y "editado" si se retocó.
+  */
+  // Un mensaje fallido lleva el motivo debajo del texto: ahí la hora vuelve a
+  // su propia fila para no montarse sobre el error.
+  const inlineMeta =
+    !revoked && !isMedia && !!message.body && message.status !== "failed";
+  const metaGap = (isOutbound ? 3.5 : 2.5) + (message.edited_at ? 2.75 : 0);
+
   const actions = (
     <MessageActions
       message={message}
@@ -1831,7 +1873,11 @@ function Bubble({
   return (
     <div
       className={cn(
+        // WhatsApp respira distinto adentro de una tanda (2px) que entre una
+        // tanda y la siguiente (8px): es lo que agrupa los mensajes de quien
+        // escribió varios seguidos sin necesidad de una línea ni un avatar.
         "group flex items-end gap-1.5",
+        tail ? "mt-2 first:mt-0" : "mt-0.5",
         isOutbound ? "justify-end" : "justify-start",
       )}
     >
@@ -1851,14 +1897,14 @@ function Bubble({
 
       <div
         className={cn(
-          "relative max-w-[78%] rounded-lg px-2 py-1.5 text-[var(--wa-text)] shadow-[var(--wa-bubble-shadow)]",
+          "relative max-w-[85%] rounded-lg px-[9px] py-[6px] text-[var(--wa-text)] shadow-[var(--wa-bubble-shadow)] md:max-w-[65%]",
           isOutbound
             ? "bg-[var(--wa-bubble-out)]"
             : "bg-[var(--wa-bubble-in)]",
           // El piquito recorta la esquina superior del lado que corresponde.
           tail && (isOutbound ? "wa-tail-out rounded-tr-none" : "wa-tail-in rounded-tl-none"),
           !revoked && message.status === "failed" && "bg-red-50 ring-1 ring-red-200",
-          isMedia && "px-2 pt-2 pb-1.5",
+          isMedia && "px-[6px] pt-[6px] pb-[6px]",
         )}
       >
         {revoked ? (
@@ -1884,10 +1930,28 @@ function Bubble({
             {replyTo ? (
               <ReplyPreview message={replyTo} isOutbound={isOutbound} />
             ) : null}
-            <MessageContent message={message} />
+            <MessageContent
+              message={message}
+              trailing={
+                inlineMeta ? (
+                  <span
+                    aria-hidden
+                    className="wa-meta-gap"
+                    style={
+                      { "--wa-meta-gap": `${metaGap}rem` } as CSSProperties
+                    }
+                  />
+                ) : null
+              }
+            />
           </>
         )}
-        <div className="mt-0.5 flex items-center justify-end gap-1 text-[var(--wa-meta)]">
+        <div
+          className={cn(
+            "flex items-center gap-1 text-[var(--wa-meta)]",
+            inlineMeta ? "wa-meta-inline" : "mt-0.5 justify-end",
+          )}
+        >
           {message.edited_at && !revoked ? (
             <span className="text-[0.6875rem] italic">editado</span>
           ) : null}

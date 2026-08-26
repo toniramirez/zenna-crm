@@ -85,7 +85,7 @@ export default async function ConfiguracionPage() {
   // SELECT para usuarios logueados (no guarda nada sensible).
   const { data: waTemplates } = await supabase
     .from("whatsapp_templates")
-    .select("id, name, language, status, category")
+    .select("id, name, language, status, category, components, rejected_reason")
     .order("status")
     .order("name");
 

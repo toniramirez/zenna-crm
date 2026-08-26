@@ -626,50 +626,54 @@ export function AppointmentDialog({
             </div>
           </div>
 
-          {/* Services — collapsible Popover */}
+          {/*
+            Servicios. La lista se abre acá abajo, en el flujo del formulario,
+            y no en un popover: el popover se monta fuera del diálogo, que es
+            modal y trae su propio bloqueo de scroll, así que en el teléfono la
+            lista aparecía pero no se dejaba desplazar ni elegir. Adentro son
+            toques comunes sobre el mismo scroll del diálogo.
+          */}
           <div className="space-y-2">
             <Label>Servicios</Label>
-            <Popover
-              open={servicesPickerOpen}
-              onOpenChange={setServicesPickerOpen}
+            <Button
+              type="button"
+              variant="outline"
+              role="combobox"
+              aria-expanded={servicesPickerOpen}
+              aria-controls="services-picker"
+              onClick={() => setServicesPickerOpen((open) => !open)}
+              className="w-full justify-between font-normal h-auto py-2"
             >
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  className="w-full justify-between font-normal h-auto py-2"
-                >
-                  {selectedServices.length === 0 ? (
-                    <span className="text-muted-foreground">
-                      Elegí al menos un servicio
-                    </span>
-                  ) : (
-                    <div className="flex flex-col items-start gap-0.5 min-w-0">
-                      <span className="truncate text-left">
-                        {selectedServices.map((s) => s.name).join(" + ")}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {selectedServices.length}{" "}
-                        {selectedServices.length === 1
-                          ? "servicio"
-                          : "servicios"}{" "}
-                        · {formatDuration(totalDuration)} ·{" "}
-                        {formatCurrency(totalPrice)}
-                      </span>
-                    </div>
-                  )}
-                  <ChevronsUpDown className="size-4 opacity-50 shrink-0" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent
-                // Cap the popover to the space actually available between the
-                // trigger and the screen edge so the full list is reachable on
-                // mobile (a fixed max-height used to push the bottom services
-                // off-screen, making it look like only some services existed).
-                className="w-[var(--radix-popover-trigger-width)] p-0 flex flex-col max-h-[min(20rem,var(--radix-popover-content-available-height))]"
-                align="start"
+              {selectedServices.length === 0 ? (
+                <span className="text-muted-foreground">
+                  Elegí al menos un servicio
+                </span>
+              ) : (
+                <div className="flex flex-col items-start gap-0.5 min-w-0">
+                  <span className="truncate text-left">
+                    {selectedServices.map((s) => s.name).join(" + ")}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {selectedServices.length}{" "}
+                    {selectedServices.length === 1 ? "servicio" : "servicios"} ·{" "}
+                    {formatDuration(totalDuration)} · {formatCurrency(totalPrice)}
+                  </span>
+                </div>
+              )}
+              <ChevronsUpDown className="size-4 opacity-50 shrink-0" />
+            </Button>
+
+            {servicesPickerOpen ? (
+              <div
+                id="services-picker"
+                className="overflow-hidden rounded-md border"
               >
-                <div className="flex-1 min-h-0 overflow-y-auto">
+                {/*
+                  Alto acotado con desplazamiento propio: con veinte servicios
+                  cargados, dejarla crecer entera empujaría el horario y la
+                  seña tan abajo que nadie los encontraría.
+                */}
+                <div className="max-h-64 overflow-y-auto overscroll-contain">
                   {services.length === 0 ? (
                     <p className="p-3 text-sm text-muted-foreground">
                       No hay servicios cargados. Andá a Servicios para crear
@@ -680,44 +684,66 @@ export function AppointmentDialog({
                       {services.map((s) => {
                         const checked = selectedServiceIds.includes(s.id);
                         return (
-                          <li
-                            key={s.id}
-                            className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-muted/40"
-                            onClick={() => toggleService(s.id)}
-                          >
-                            <Checkbox checked={checked} tabIndex={-1} />
-                            <div className="flex-1 min-w-0 flex flex-col">
-                              <span className="text-sm font-medium truncate">
-                                {s.name}
+                          <li key={s.id}>
+                            {/*
+                              La fila entera es el botón —y la casilla no
+                              recibe toques (`pointer-events-none`)— así no hay
+                              forma de acertarle al control y errarle a la
+                              fila.
+                            */}
+                            <button
+                              type="button"
+                              aria-pressed={checked}
+                              onClick={() => toggleService(s.id)}
+                              className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/40"
+                            >
+                              <Checkbox
+                                checked={checked}
+                                tabIndex={-1}
+                                aria-hidden
+                                className="pointer-events-none"
+                              />
+                              <span className="flex-1 min-w-0 flex flex-col">
+                                <span className="text-sm font-medium truncate">
+                                  {s.name}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {CATEGORY_LABEL[s.category]} ·{" "}
+                                  {formatDuration(s.duration_minutes)} ·{" "}
+                                  {formatCurrency(s.price)}
+                                </span>
                               </span>
-                              <span className="text-xs text-muted-foreground">
-                                {CATEGORY_LABEL[s.category]} ·{" "}
-                                {formatDuration(s.duration_minutes)} ·{" "}
-                                {formatCurrency(s.price)}
-                              </span>
-                            </div>
+                            </button>
                           </li>
                         );
                       })}
                     </ul>
                   )}
                 </div>
-                {selectedServices.length > 0 ? (
-                  <div className="shrink-0 border-t px-3 py-2 text-xs text-muted-foreground flex items-center justify-between bg-muted/20">
+                <div className="flex items-center justify-between gap-2 border-t bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                  {selectedServices.length > 0 ? (
                     <span>
                       {selectedServices.length} seleccionado
-                      {selectedServices.length === 1 ? "" : "s"}
-                    </span>
-                    <span>
+                      {selectedServices.length === 1 ? "" : "s"} ·{" "}
                       {formatDuration(totalDuration)} ·{" "}
                       <strong className="text-foreground">
                         {formatCurrency(totalPrice)}
                       </strong>
                     </span>
-                  </div>
-                ) : null}
-              </PopoverContent>
-            </Popover>
+                  ) : (
+                    <span>Tocá los servicios del turno</span>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setServicesPickerOpen(false)}
+                  >
+                    Listo
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {/* Inicio — datetime-local on desktop, date + slot grid on mobile */}

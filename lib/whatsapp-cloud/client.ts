@@ -1,4 +1,5 @@
 import { graphUrl, type WhatsappCloudAccount } from "./config";
+import type { TemplateCreatePayload } from "./template-draft";
 import type { TemplateSendPayload } from "./templates";
 
 /**
@@ -284,6 +285,84 @@ export async function fetchTemplates(args: {
   }
 
   return all;
+}
+
+/**
+ * `POST /<WABA_ID>/message_templates` — crea una plantilla en el WABA.
+ *
+ * Meta la devuelve en estado `PENDING` y la revisa aparte (minutos, a veces
+ * horas); el resultado llega solo por el webhook
+ * `message_template_status_update`. Los errores de forma, en cambio, vuelven
+ * acá mismo: nombre repetido, ejemplo faltante, botón mal armado.
+ */
+export async function createTemplate(args: {
+  accessToken: string;
+  wabaId: string;
+  template: TemplateCreatePayload;
+}): Promise<{ id?: string; status?: string; category?: string }> {
+  return graphFetch(graphUrl(`${args.wabaId}/message_templates`), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${args.accessToken}`,
+    },
+    body: JSON.stringify(args.template),
+  });
+}
+
+/**
+ * `POST /<TEMPLATE_ID>` — reedita una plantilla ya creada. Meta no deja
+ * cambiarle el nombre ni el idioma (son su identidad), así que solo viajan
+ * los componentes y, si la plantilla está aprobada, la categoría.
+ *
+ * Vuelve a quedar en revisión. Una plantilla aprobada se puede editar unas
+ * pocas veces por mes; una rechazada, siempre.
+ */
+export async function updateTemplate(args: {
+  accessToken: string;
+  metaId: string;
+  template: TemplateCreatePayload;
+}): Promise<{ success?: boolean }> {
+  const { category, components, parameter_format } = args.template;
+  const editable = {
+    category,
+    components,
+    ...(parameter_format ? { parameter_format } : {}),
+  };
+  return graphFetch(graphUrl(args.metaId), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${args.accessToken}`,
+    },
+    body: JSON.stringify(editable),
+  });
+}
+
+/**
+ * `DELETE /<WABA_ID>/message_templates` — borra una plantilla.
+ *
+ * Con `hsm_id` borra solo ese idioma; sin él, Meta borra **todos** los idiomas
+ * que compartan el nombre. Siempre mandamos el id cuando lo tenemos.
+ *
+ * Ojo: el nombre queda reservado 30 días y una plantilla borrada no se puede
+ * usar más, ni siquiera en envíos ya encolados.
+ */
+export async function deleteTemplate(args: {
+  accessToken: string;
+  wabaId: string;
+  name: string;
+  metaId?: string | null;
+}): Promise<{ success?: boolean }> {
+  const params = new URLSearchParams({ name: args.name });
+  if (args.metaId) params.set("hsm_id", args.metaId);
+  return graphFetch(
+    graphUrl(`${args.wabaId}/message_templates?${params.toString()}`),
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${args.accessToken}` },
+    },
+  );
 }
 
 // ─────────────────────────────────────────── Media entrante

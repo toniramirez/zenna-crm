@@ -310,6 +310,23 @@
   /* Sin barra de pestañas: es el estado del escritorio. */
   --tabbar-h: 0px;
   --tabbar-space: 0px;
+
+  /*
+   * Alto real de la ventana. `100dvh` es el valor de arranque y el que queda
+   * si no hay JS; con teclado abierto `dvh` no se achica (el teclado no es
+   * chrome del navegador), así que el shell lo pisa desde la visualViewport
+   * — ver `useViewportMetrics` en components/dashboard/dashboard-chrome.tsx.
+   */
+  --app-height: 100dvh;
+
+  /*
+   * Cuánto del viewport tapa el teclado. Sirve para descontar el respiro del
+   * gesto de inicio: mientras el teclado está arriba, `safe-area-inset-bottom`
+   * sigue valiendo 34px aunque abajo ya no haya gesto que esquivar, y eso deja
+   * una franja muerta entre la barra de escritura y las teclas.
+   */
+  --kb-inset: 0px;
+  --safe-bottom: max(0px, calc(env(safe-area-inset-bottom) - var(--kb-inset)));
 }
 
 @media (width < 48rem) {
@@ -382,6 +399,18 @@
      */
     --tabbar-h: 3.75rem;
     --tabbar-space: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+  }
+
+  /*
+   * Instalada, la app arranca en y=0: con `viewportFit: cover` y la barra de
+   * estado translúcida, la primera fila de cualquier pantalla queda debajo del
+   * reloj. El shell reserva ese alto una sola vez —y no cada encabezado— así
+   * la franja de arriba queda pintada del fondo de la app, como en WhatsApp.
+   * En Safari con la barra de direcciones a la vista el valor es 0 y no pasa
+   * nada.
+   */
+  [data-app-shell] {
+    padding-top: env(safe-area-inset-top);
   }
 }
 
@@ -787,6 +816,33 @@
   clip-path: path("M2.812 0H8v11.193L1.533 2.568C.474 1.156 1.042 0 2.812 0z");
 }
 
+/*
+ * La hora va adentro del último renglón, no en una fila propia. Es la
+ * diferencia entre una burbuja de 33px y una de 50px: con la fila aparte cada
+ * mensaje de una línea ocupa el doble y la conversación se siente hueca — el
+ * "no parece WhatsApp" es casi todo esto.
+ *
+ * El truco es el del referente: la hora se posiciona absoluta abajo a la
+ * derecha y el texto termina con un separador invisible de su mismo ancho,
+ * así el último renglón le deja el hueco. Si no entra, el separador se va solo
+ * a un renglón nuevo y la hora baja con él.
+ */
+.wa-meta-inline {
+  position: absolute;
+  right: 0.5625rem;
+  bottom: 0.375rem;
+  display: flex;
+  align-items: center;
+  gap: 0.1875rem;
+  line-height: 1;
+}
+
+.wa-meta-gap {
+  display: inline-block;
+  height: 0;
+  width: var(--wa-meta-gap, 3.5rem);
+}
+
 .wa-row-active {
   background: var(--wa-active);
 }
@@ -835,9 +891,14 @@
   color: var(--wa-icon);
 }
 
+/*
+ * El campo es una pastilla, no una caja: es la silueta que tiene la barra de
+ * escritura de WhatsApp y lo primero que delata a un clon cuando falta.
+ */
 .wa-composer [data-slot="input"] {
   background-color: var(--wa-composer-field);
-  border-radius: var(--radius);
+  border-radius: 9999px;
+  padding-inline: 0.875rem;
 }
 
 .wa-composer [data-slot="input"]:focus,

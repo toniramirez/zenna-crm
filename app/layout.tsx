@@ -68,6 +68,12 @@ export const metadata: Metadata = {
  *
  * `viewportFit: "cover"` es lo que habilita `env(safe-area-inset-*)`: sin eso,
  * la barra de pestañas se apoyaría sobre el gesto de inicio del iPhone.
+ *
+ * `interactiveWidget: "resizes-content"` es el pedido de que el teclado achique
+ * la ventana en vez de taparla: sin eso el navegador deja el alto como estaba y
+ * empuja el documento hacia arriba para mostrar el campo, que es lo que se
+ * llevaba puesto el encabezado del chat. Donde no está soportado lo suple el
+ * cálculo por visualViewport del shell.
  */
 export const viewport: Viewport = {
   themeColor: [
@@ -75,6 +81,7 @@ export const viewport: Viewport = {
     { media: "(min-width: 768px)", color: "#fbfaf9" },
   ],
   viewportFit: "cover",
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({

@@ -16,7 +16,12 @@ export type TemplateComponent = {
   type?: string; // HEADER | BODY | FOOTER | BUTTONS
   format?: string; // en HEADER: TEXT | IMAGE | VIDEO | DOCUMENT | LOCATION
   text?: string;
-  buttons?: Array<{ type?: string; text?: string; url?: string }>;
+  buttons?: Array<{
+    type?: string;
+    text?: string;
+    url?: string;
+    phone_number?: string;
+  }>;
 };
 
 /**

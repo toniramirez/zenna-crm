@@ -642,7 +642,8 @@ export function NewTurnoDialog({
                         <Checkbox
                           checked={checked}
                           tabIndex={-1}
-                          className="mt-0.5"
+                          aria-hidden
+                          className="mt-0.5 pointer-events-none"
                         />
                         <div className="flex-1 min-w-0">
                           <div className="text-xs font-medium truncate">

@@ -8,8 +8,11 @@ import {
   Copy,
   Loader2,
   LogOut,
+  Pencil,
   Plug,
+  Plus,
   RefreshCw,
+  Trash2,
   Zap,
 } from "lucide-react";
 import { useActionState, useEffect, useState, useTransition } from "react";
@@ -20,22 +23,39 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import type { WhatsappCloudAccountPublic } from "@/lib/whatsapp-cloud/config";
+import { templateEditability } from "@/lib/whatsapp-cloud/template-draft";
+import type { TemplateComponent } from "@/lib/whatsapp-cloud/templates";
 import {
   connectWhatsappCloudAction,
+  deleteWhatsappTemplateAction,
   disconnectWhatsappCloudAction,
   syncWhatsappTemplatesAction,
   testWhatsappCloudAction,
   type ActionState,
 } from "./whatsapp-cloud-actions";
+import {
+  WhatsappTemplateDialog,
+  type EditableTemplate,
+} from "./whatsapp-template-dialog";
 
-/** Lo que el panel necesita mostrar de cada plantilla cacheada. */
+/** Lo que el panel necesita mostrar —y editar— de cada plantilla cacheada. */
 export type TemplateSlim = {
   id: string;
   name: string;
   language: string;
   status: string;
   category: string | null;
+  /** El array de Meta tal cual; el editor lo vuelve a convertir en borrador. */
+  components: unknown;
+  /** Por qué la rechazó Meta, cuando la rechazó. */
+  rejected_reason: string | null;
 };
+
+function componentsOfSlim(template: TemplateSlim): TemplateComponent[] {
+  return Array.isArray(template.components)
+    ? (template.components as TemplateComponent[])
+    : [];
+}
 
 function StateDot({ state }: { state: string }) {
   const cls =
@@ -136,6 +156,10 @@ export function WhatsappCloudPanel({
     FormData
   >(connectWhatsappCloudAction, {});
   const [isPending, startTransition] = useTransition();
+  // `undefined` = editor cerrado; `null` = plantilla nueva.
+  const [editing, setEditing] = useState<EditableTemplate | null | undefined>(
+    undefined,
+  );
 
   useEffect(() => {
     if (formState.error) toast.error(formState.error);
@@ -175,9 +199,7 @@ export function WhatsappCloudPanel({
       const result = await testWhatsappCloudAction();
       if (result.error) toast.error(result.error);
       else
-        toast.success(
-          `Conexión OK${result.phone ? ` — ${result.phone}` : ""}`,
-        );
+        toast.success(`Conexión OK${result.phone ? ` — ${result.phone}` : ""}`);
     });
   }
 
@@ -189,6 +211,23 @@ export function WhatsappCloudPanel({
         toast.success(
           `Plantillas sincronizadas: ${result.approved ?? 0} aprobada(s) de ${result.total ?? 0}.`,
         );
+    });
+  }
+
+  function handleDeleteTemplate(template: TemplateSlim) {
+    // Borrar una plantilla es definitivo del lado de Meta y deja rengueando a
+    // cualquier automatización que la use: por eso el aviso nombra las dos
+    // consecuencias en vez de un "¿seguro?" pelado.
+    if (
+      !confirm(
+        `¿Borrar la plantilla "${template.name}"? Se elimina de Meta, las automatizaciones que la usen dejan de mandar y el nombre queda reservado 30 días.`,
+      )
+    )
+      return;
+    startTransition(async () => {
+      const result = await deleteWhatsappTemplateAction(template.id);
+      if (result.error) toast.error(result.error);
+      else toast.success("Plantilla borrada.");
     });
   }
 
@@ -279,7 +318,11 @@ export function WhatsappCloudPanel({
                 Falta configurar{" "}
                 {missingEnv.map((name, i) => (
                   <span key={name}>
-                    {i > 0 ? (i === missingEnv.length - 1 ? " y " : ", ") : null}
+                    {i > 0
+                      ? i === missingEnv.length - 1
+                        ? " y "
+                        : ", "
+                      : null}
                     <code>{name}</code>
                   </span>
                 ))}{" "}
@@ -352,8 +395,8 @@ export function WhatsappCloudPanel({
                 />
                 <p className="text-xs text-muted-foreground">
                   Ideal: el token permanente de un System User de Meta Business
-                  (no vence). Se valida contra Meta antes de guardarlo y queda en
-                  una tabla que solo el servidor puede leer.
+                  (no vence). Se valida contra Meta antes de guardarlo y queda
+                  en una tabla que solo el servidor puede leer.
                 </p>
               </div>
 
@@ -411,48 +454,115 @@ export function WhatsappCloudPanel({
                   {syncedRel ? ` · sincronizadas ${syncedRel}` : ""}
                 </p>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSyncTemplates}
-                disabled={isPending}
-              >
-                {isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="size-4" />
-                )}
-                Sincronizar
-              </Button>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSyncTemplates}
+                  disabled={isPending}
+                  title="Vuelve a leer las plantillas del WABA."
+                >
+                  {isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="size-4" />
+                  )}
+                  Sincronizar
+                </Button>
+                <Button size="sm" onClick={() => setEditing(null)}>
+                  <Plus className="size-4" />
+                  Nueva
+                </Button>
+              </div>
             </div>
 
             {templates.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                No hay plantillas todavía. Se crean en el WhatsApp Manager de
-                Meta y acá aparecen al sincronizar (o solas, cuando Meta avisa
-                que se aprobaron).
+                No hay plantillas todavía. Creá una acá —se manda a Meta y queda
+                pendiente hasta que la aprueben— o traé las que ya existan en el
+                WhatsApp Manager con Sincronizar.
               </p>
             ) : (
-              <ul className="space-y-1.5">
-                {templates.slice(0, 8).map((t) => (
-                  <li
-                    key={t.id}
-                    className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-1.5 text-xs"
-                  >
-                    <span className="min-w-0 flex-1 truncate font-mono">
-                      {t.name}
-                    </span>
-                    <span className="text-muted-foreground">{t.language}</span>
-                    {templateStatusBadge(t.status)}
-                  </li>
-                ))}
-                {templates.length > 8 ? (
-                  <li className="px-3 text-xs text-muted-foreground">
-                    …y {templates.length - 8} más.
-                  </li>
-                ) : null}
+              <ul className="max-h-72 space-y-1.5 overflow-y-auto">
+                {templates.map((t) => {
+                  const components = componentsOfSlim(t);
+                  const editable = templateEditability(components, t.category);
+                  return (
+                    <li
+                      key={t.id}
+                      className="rounded-md border bg-muted/30 px-3 py-1.5 text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate font-mono">
+                          {t.name}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {t.language}
+                        </span>
+                        {templateStatusBadge(t.status)}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="size-7 p-0"
+                          disabled={isPending || !editable.ok}
+                          title={
+                            editable.ok
+                              ? "Editar (vuelve a revisión de Meta)"
+                              : editable.reason
+                          }
+                          onClick={() =>
+                            setEditing({
+                              id: t.id,
+                              name: t.name,
+                              language: t.language,
+                              status: t.status,
+                              category: t.category,
+                              components,
+                            })
+                          }
+                        >
+                          <Pencil className="size-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="size-7 p-0 text-destructive hover:text-destructive"
+                          disabled={isPending}
+                          title="Borrar de Meta y del CRM"
+                          onClick={() => handleDeleteTemplate(t)}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                      {t.rejected_reason ? (
+                        <p className="pt-1 text-[11px] text-rose-700">
+                          Meta: {t.rejected_reason}
+                        </p>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
             )}
+
+            <p className="text-[11px] text-muted-foreground">
+              Meta revisa cada plantilla nueva o editada: suele tardar minutos y
+              el estado se actualiza solo por el webhook. Recién cuando dice
+              Aprobada se puede elegir en el chat y en las automatizaciones.
+            </p>
+
+            {editing !== undefined ? (
+              <WhatsappTemplateDialog
+                // Remontar por plantilla: el editor arranca de su borrador y no
+                // sabe reaccionar a que le cambien la plantilla de abajo.
+                key={editing?.id ?? "nueva"}
+                open
+                onOpenChange={(open) => {
+                  if (!open) setEditing(undefined);
+                }}
+                template={editing}
+              />
+            ) : null}
           </div>
         ) : null}
       </div>

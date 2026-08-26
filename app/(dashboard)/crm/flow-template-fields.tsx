@@ -34,6 +34,32 @@ function templateKey(name: string, language: string): string {
 
 export type FlowVariable = { key: string; label: string };
 
+const EMPTY_PARAMS: TemplateParamsInput = { header: {}, body: {} };
+
+/**
+ * Precarga el mapeo de variables cuando se puede deducir.
+ *
+ * Las plantillas armadas desde Configuración usan los nombres de las variables
+ * del CRM —`{{nombre}}`, `{{fecha}}`…— justamente para esto: el mapeo obvio es
+ * la identidad y no tiene sentido hacerlo tipear. Las plantillas numeradas
+ * (`{{1}}`, `{{2}}`), típicas de las que se crearon en el WhatsApp Manager, no
+ * se pueden adivinar y quedan en blanco.
+ */
+function seedParams(
+  template: WhatsappTemplateRow,
+  variables: readonly FlowVariable[],
+): TemplateParamsInput {
+  const known = new Set(variables.map((v) => v.key));
+  const vars = templateVariables(componentsOf(template));
+  const fill = (tokens: string[]) =>
+    Object.fromEntries(
+      tokens
+        .filter((token) => known.has(token))
+        .map((token) => [token, `{{${token}}}`]),
+    );
+  return { header: fill(vars.header), body: fill(vars.body) };
+}
+
 /**
  * El bloque "cómo sale este mensaje" que comparten el editor de flujos y el de
  * pedidos de reseña.
@@ -151,12 +177,11 @@ export function FlowTemplateFields({
         <div className="flex items-start gap-2 rounded-md border border-dashed p-3 text-xs text-muted-foreground">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
           <p>
-            No hay plantillas aprobadas disponibles. Se crean en el WhatsApp
-            Manager de Meta y se traen desde{" "}
+            No hay plantillas aprobadas disponibles. Se arman en{" "}
             <strong className="text-foreground">
-              Configuración → WhatsApp API → Sincronizar plantillas
-            </strong>
-            .
+              Configuración → WhatsApp API → Plantillas
+            </strong>{" "}
+            y aparecen acá cuando Meta las aprueba.
           </p>
         </div>
       ) : (
@@ -173,7 +198,10 @@ export function FlowTemplateFields({
                 // Los placeholders de una plantilla no significan lo mismo que
                 // los de otra: arrastrar los valores viejos pondría el nombre
                 // de la clienta donde ahora va la fecha.
-                onParamsChange({ header: {}, body: {} });
+                const next = sendable.find(
+                  (t) => t.name === name && t.language === language,
+                );
+                onParamsChange(next ? seedParams(next, variables) : EMPTY_PARAMS);
               }}
             >
               <SelectTrigger>

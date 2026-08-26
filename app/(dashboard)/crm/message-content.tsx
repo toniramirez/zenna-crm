@@ -9,7 +9,7 @@ import {
   Play,
   Video,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -27,12 +27,24 @@ import { useSignedUrl } from "./use-signed-url";
  * `--wa-text` en ambas, así que no hay nada que invertir. Lo que necesita
  * contraste propio (botones, barras) se resuelve con `currentColor`.
  */
-export function MessageContent({ message }: { message: MessageRow }) {
+export function MessageContent({
+  message,
+  trailing,
+}: {
+  message: MessageRow;
+  /**
+   * Separador invisible que se cuelga del final del texto para dejarle el
+   * hueco a la hora (que va posicionada sobre el último renglón). Sólo lo
+   * usa el texto: los adjuntos llevan la hora en su propia fila.
+   */
+  trailing?: ReactNode;
+}) {
   if (message.type === "text" || !message.media_url) {
     if (!message.body) return null;
     return (
-      <div className="whitespace-pre-wrap break-words text-sm">
+      <div className="whitespace-pre-wrap break-words text-sm leading-[1.35]">
         {message.body}
+        {trailing}
       </div>
     );
   }
