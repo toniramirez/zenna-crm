@@ -1,7 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { buildFlowMessage } from "@/lib/automations/message";
+import { buildFlowMessage, type FlowMessageContent } from "@/lib/automations/message";
+import {
+  isWithinSendWindow,
+  nextSendWindowStart,
+} from "@/lib/automations/quiet-hours";
 import { resolveCloudConversation } from "@/lib/whatsapp-cloud/conversations";
 import type { Database } from "@/types/database.types";
 import { fireReviewForAppointment } from "./reviews";
@@ -14,6 +18,13 @@ type ConversationRow = {
   client_id: string | null;
   display_name: string | null;
   clients: { full_name: string } | null;
+};
+
+/** Lo que el barrido de silencios necesita mirar de una conversación. */
+type SilentConversationRow = ConversationRow & {
+  created_at: string;
+  last_inbound_at: string | null;
+  last_message_at: string | null;
 };
 
 export type AppointmentRow = {
@@ -30,6 +41,9 @@ export type AppointmentRow = {
 };
 
 const TICK_WINDOW_MS = 60_000;
+
+/** La ventana de servicio de la Cloud API: 24 h desde el último entrante. */
+const CLOUD_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export const APPOINTMENT_SELECT = `
   id, client_id, starts_at, ends_at,
@@ -193,20 +207,16 @@ async function fireForInbound(
   }
 
   const fullName = conv.clients?.full_name ?? conv.display_name ?? "";
-  const firstName = fullName.split(" ")[0] ?? "";
 
   // Acá la ventana de 24 h está abierta por definición —la clienta acaba de
   // escribir— así que el texto libre llega igual que una plantilla. Se usa el
   // mismo constructor de todos modos: el flujo puede estar configurado con
   // plantilla y no tiene por qué comportarse distinto según quién lo dispare.
-  const built = await buildFlowMessage(supabase, flow, {
-    nombre: firstName,
-    servicio: "",
-    fecha: "",
-    hora: "",
-    profesional: "",
-    salon: flow.review_salon_name ?? "",
-  });
+  const built = await buildFlowMessage(
+    supabase,
+    flow,
+    conversationFlowContext(fullName, flow.review_salon_name),
+  );
 
   if (!built.ok) {
     console.error(
@@ -238,39 +248,13 @@ async function fireForInbound(
     return;
   }
 
-  const { data: msg, error: msgErr } = await supabase
-    .from("messages")
-    .insert({
-      conversation_id: conv.id,
-      direction: "outbound",
-      type: "text",
-      body: built.content.body,
-      wa_template: built.content.wa_template,
-      status: "queued",
-    })
-    .select("id")
-    .single();
-
-  if (msgErr || !msg) {
-    await supabase
-      .from("automation_executions")
-      .update({
-        status: "failed",
-        error: msgErr?.message ?? "unknown insert error",
-        executed_at: new Date().toISOString(),
-      })
-      .eq("id", execution.id);
-    return;
-  }
-
-  await supabase
-    .from("automation_executions")
-    .update({
-      status: "sent",
-      message_id: msg.id,
-      executed_at: new Date().toISOString(),
-    })
-    .eq("id", execution.id);
+  const queued = await queueFlowMessage(
+    supabase,
+    execution.id,
+    conv.id,
+    built.content,
+  );
+  if (!queued) return;
 
   console.log(
     `⚡ automation "${flow.name}" → message queued for ${fullName || conv.id}`,
@@ -472,29 +456,57 @@ async function fireForAppointment(
   }
 
   // Enqueue an outbound message. The regular outbound-poller picks it up.
+  const queued = await queueFlowMessage(
+    supabase,
+    execution.id,
+    conversationId,
+    built.content,
+  );
+  if (!queued) return;
+
+  console.log(
+    `⚡ automation "${flow.name}" → message queued for ${apt.clients?.full_name ?? apt.client_id}`,
+  );
+}
+
+// ─────────────────────────────────────────── Piezas compartidas
+
+/**
+ * Encola el mensaje de una ejecución y cierra su fila con el resultado.
+ *
+ * Los tres caminos que disparan un flujo terminan igual —insertar en
+ * `messages` y dejar la ejecución en 'sent' o en 'failed' con el motivo— y ese
+ * final tiene que ser idéntico: es lo que se mira cuando alguien pregunta por
+ * qué no salió un mensaje. Devuelve si quedó encolado para que el llamador
+ * decida qué loguear.
+ */
+async function queueFlowMessage(
+  supabase: SupabaseClient<Database>,
+  executionId: string,
+  conversationId: string,
+  content: FlowMessageContent,
+): Promise<boolean> {
   const { data: msg, error: msgErr } = await supabase
     .from("messages")
     .insert({
       conversation_id: conversationId,
       direction: "outbound",
       type: "text",
-      body: built.content.body,
-      wa_template: built.content.wa_template,
+      body: content.body,
+      wa_template: content.wa_template,
       status: "queued",
     })
     .select("id")
     .single();
 
   if (msgErr || !msg) {
-    await supabase
-      .from("automation_executions")
-      .update({
-        status: "failed",
-        error: msgErr?.message ?? "unknown insert error",
-        executed_at: new Date().toISOString(),
-      })
-      .eq("id", execution.id);
-    return;
+    await closeExecution(
+      supabase,
+      executionId,
+      "failed",
+      msgErr?.message ?? "unknown insert error",
+    );
+    return false;
   }
 
   await supabase
@@ -504,9 +516,512 @@ async function fireForAppointment(
       message_id: msg.id,
       executed_at: new Date().toISOString(),
     })
-    .eq("id", execution.id);
+    .eq("id", executionId);
+
+  return true;
+}
+
+/** Cierra una ejecución sin mensaje, con el motivo a la vista en el panel. */
+async function closeExecution(
+  supabase: SupabaseClient<Database>,
+  executionId: string,
+  status: "skipped" | "failed",
+  reason: string,
+): Promise<void> {
+  await supabase
+    .from("automation_executions")
+    .update({
+      status,
+      error: reason.slice(0, 500),
+      executed_at: new Date().toISOString(),
+    })
+    .eq("id", executionId);
+}
+
+/**
+ * Las variables de un flujo que sale de un chat y no de un turno. Solo hay
+ * nombre: no hay fecha ni servicio que contar, y dejarlas vacías es mejor que
+ * inventarlas —`renderTemplate` las reemplaza por nada y la frase se sostiene.
+ */
+function conversationFlowContext(
+  fullName: string,
+  salonName: string | null,
+): Record<string, string> {
+  return {
+    nombre: fullName.split(" ")[0] ?? "",
+    servicio: "",
+    fecha: "",
+    hora: "",
+    profesional: "",
+    salon: salonName ?? "",
+  };
+}
+
+// ───────────────────────────── Seguimiento: la clienta no contestó
+
+/**
+ * Cuánto para atrás mira el barrido de silencios, contado desde el momento en
+ * que un chat cumple el umbral del flujo.
+ *
+ * Existe por dos motivos. Uno: prender un flujo de "seguimiento a las 48 h" no
+ * puede disparar de golpe sobre los tres mil chats muertos de los últimos dos
+ * años — solo engancha lo que se apagó hace poco. Dos: si el worker estuvo
+ * caído un rato, al volver recupera lo que se le pasó en vez de perderlo,
+ * que es lo que pasaría con una ventana de un tick como la de los turnos.
+ */
+const NO_REPLY_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+
+/** Cuántos chats trae cada página del barrido, y cuántas páginas por vuelta. */
+const NO_REPLY_PAGE = 100;
+const NO_REPLY_MAX_PAGES = 5;
+
+/** Techo de envíos que se sacan de la cola en una misma vuelta. */
+const NO_REPLY_BATCH = 200;
+
+/**
+ * Margen contra el cierre de la ventana de 24 h. Un envío que sale clavado
+ * sobre la hora se arriesga a que Meta lo evalúe del otro lado del límite.
+ */
+const WINDOW_SAFETY_MS = 15 * 60 * 1000;
+
+/**
+ * Los flujos `no_reply_after_outbound`: el último mensaje del chat es nuestro
+ * y la clienta no contestó en `trigger_offset_minutes`.
+ *
+ * A diferencia de todos los demás, a este no lo despierta ningún hecho —no
+ * entra un mensaje, no termina un turno—, así que se barre por reloj. Son dos
+ * pasadas y no una a propósito:
+ *
+ *   1. `scanSilentConversations` detecta el silencio y RESERVA el envío con su
+ *      hora de salida (`scheduled_for`), que puede ser dentro de varias horas
+ *      si el umbral se cumplió de madrugada.
+ *   2. `drainNoReplyQueue` manda lo que ya tiene la hora cumplida.
+ *
+ * Separarlas es lo que hace que el horario funcione: el silencio se detecta
+ * cuando pasa, el mensaje sale cuando corresponde, y en el medio hay una fila
+ * que se puede cancelar si la clienta contesta antes.
+ */
+export async function processNoReplyAutomations(
+  supabase: SupabaseClient<Database>,
+  now: Date = new Date(),
+) {
+  const { data: flows } = await supabase
+    .from("automation_flows")
+    .select("*")
+    .eq("active", true)
+    .eq("trigger", "no_reply_after_outbound");
+
+  for (const flow of flows ?? []) {
+    try {
+      await scanSilentConversations(supabase, flow, now);
+    } catch (err) {
+      console.error(
+        `[automations] no-reply flow ${flow.name} failed:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  // Va afuera del `for` y corre aunque no haya ningún flujo activo: en la cola
+  // puede haber envíos de un flujo que se apagó anoche, y esas filas hay que
+  // cerrarlas igual en vez de dejarlas colgadas en 'pending' para siempre.
+  try {
+    await drainNoReplyQueue(supabase, now);
+  } catch (err) {
+    console.error(
+      "[automations] no-reply queue drain failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+/** El arranque de la racha de silencio de un chat. Nunca es null. */
+function silenceAnchor(conv: SilentConversationRow): string {
+  // Sin entrante nunca hubo respuesta que esperar: la racha arranca cuando se
+  // abrió el chat, que también es una fecha fija. Sirve para los chats que
+  // abre el propio CRM para mandar una plantilla.
+  return new Date(conv.last_inbound_at ?? conv.created_at).toISOString();
+}
+
+/** ¿El último mensaje del chat es nuestro? */
+function isWaitingOnClient(conv: SilentConversationRow): boolean {
+  if (!conv.last_message_at) return false;
+  if (!conv.last_inbound_at) return true;
+  return (
+    new Date(conv.last_inbound_at).getTime() <
+    new Date(conv.last_message_at).getTime()
+  );
+}
+
+async function scanSilentConversations(
+  supabase: SupabaseClient<Database>,
+  flow: AutomationFlow,
+  now: Date,
+) {
+  const offsetMs = flow.trigger_offset_minutes * 60_000;
+  const hi = new Date(now.getTime() - offsetMs);
+  const lo = new Date(hi.getTime() - NO_REPLY_LOOKBACK_MS);
+
+  // Se recorre por páginas y no de un saque porque en régimen la mayoría de
+  // los chats de la ventana ya tienen su racha atendida: sin avanzar el cursor,
+  // una tanda grande —una campaña de 500 plantillas, por ejemplo— dejaría a las
+  // últimas sin seguimiento nunca, porque la primera página siempre devolvería
+  // las mismas 100 ya reservadas.
+  let cursor = hi.toISOString();
+
+  for (let page = 0; page < NO_REPLY_MAX_PAGES; page++) {
+    const { data, error } = await supabase
+      .from("conversations")
+      .select(
+        "id, client_id, display_name, created_at, last_inbound_at, last_message_at, clients ( full_name )",
+      )
+      // Instagram queda afuera igual que en los flujos de turno: su ventana de
+      // 24 h rebota y no tiene plantillas con las que reabrirla.
+      .eq("channel", "whatsapp_cloud")
+      .eq("archived", false)
+      .gte("last_message_at", lo.toISOString())
+      .lt("last_message_at", cursor)
+      .order("last_message_at", { ascending: false })
+      .limit(NO_REPLY_PAGE);
+
+    if (error) {
+      console.error("[automations] silence scan error:", error.message);
+      return;
+    }
+
+    const rows = (data ?? []) as unknown as SilentConversationRow[];
+    if (rows.length === 0) return;
+
+    // El cursor es el `last_message_at` de la última fila, no un offset: la
+    // lista se mueve entre página y página (cada mensaje que entra reordena la
+    // bandeja) y un offset se saltearía filas. Dos chats con el timestamp
+    // idéntico al microsegundo sería el único caso que se pierde una vuelta.
+    cursor = rows[rows.length - 1].last_message_at ?? cursor;
+
+    await claimSilentPage(supabase, flow, rows, now);
+
+    if (rows.length < NO_REPLY_PAGE) return;
+    if (page === NO_REPLY_MAX_PAGES - 1) {
+      console.warn(
+        `[automations] flow ${flow.name}: quedaron chats en silencio sin revisar (tope de ${NO_REPLY_PAGE * NO_REPLY_MAX_PAGES} por vuelta); siguen en la vuelta que viene.`,
+      );
+    }
+  }
+}
+
+/** Reserva los seguimientos de una página del barrido. */
+async function claimSilentPage(
+  supabase: SupabaseClient<Database>,
+  flow: AutomationFlow,
+  rows: SilentConversationRow[],
+  now: Date,
+) {
+  const silent = rows.filter(isWaitingOnClient);
+  if (silent.length === 0) return;
+
+  // Pre-filtro contra lo ya reservado. El único de la tabla es la garantía de
+  // verdad, pero sin esto cada vuelta reintentaría el mismo insert para cada
+  // chat en silencio hasta que salga de la ventana de recuperación: en régimen
+  // el caso normal es justamente ese, el de la racha ya atendida.
+  const { data: claimed } = await supabase
+    .from("automation_executions")
+    .select("conversation_id, silence_anchor_at")
+    .eq("flow_id", flow.id)
+    .not("silence_anchor_at", "is", null)
+    .in(
+      "conversation_id",
+      silent.map((c) => c.id),
+    );
+
+  const key = (conversationId: string, anchor: string) =>
+    `${conversationId}|${new Date(anchor).getTime()}`;
+
+  const taken = new Set(
+    (claimed ?? [])
+      .filter((r) => r.conversation_id && r.silence_anchor_at)
+      .map((r) => key(r.conversation_id!, r.silence_anchor_at!)),
+  );
+
+  for (const conv of silent) {
+    const anchor = silenceAnchor(conv);
+    if (taken.has(key(conv.id, anchor))) continue;
+    await claimSilenceFollowUp(supabase, flow, conv, anchor, now);
+  }
+}
+
+/**
+ * Reserva el seguimiento de una racha y le pone hora de salida.
+ *
+ * La hora es lo único que tiene vuelta de tuerca. Por defecto es la próxima
+ * hora razonable —si el umbral se cumple a las 3 de la mañana, el mensaje
+ * espera a las 9—, salvo que el flujo mande texto libre y la ventana de 24 h
+ * se vaya a cerrar antes: ahí esperar sería perder el mensaje, así que sale en
+ * el momento. Es la única excepción al horario, y solo aplica al modo texto —
+ * una plantilla puede salir cualquier día, así que nunca tiene apuro.
+ */
+async function claimSilenceFollowUp(
+  supabase: SupabaseClient<Database>,
+  flow: AutomationFlow,
+  conv: SilentConversationRow,
+  anchor: string,
+  now: Date,
+) {
+  const wantsTemplate = flow.send_mode === "template";
+  const windowClosesAt = conv.last_inbound_at
+    ? new Date(conv.last_inbound_at).getTime() + CLOUD_WINDOW_MS
+    : null;
+
+  let releaseAt = nextSendWindowStart(now);
+  let forcedByWindow = false;
+
+  if (!wantsTemplate) {
+    const deadline = (windowClosesAt ?? 0) - WINDOW_SAFETY_MS;
+    if (deadline <= now.getTime()) {
+      // Ya no hay ventana: en modo texto no queda nada que mandar. Se reserva
+      // igual —con el motivo— para no volver a evaluar esta racha en cada
+      // vuelta y para que el "por qué no salió" esté escrito en algún lado.
+      await reserveAndClose(
+        supabase,
+        flow,
+        conv,
+        anchor,
+        now,
+        conv.last_inbound_at
+          ? "La ventana de 24 h ya estaba cerrada al detectar el silencio. Un seguimiento así solo puede salir con una plantilla aprobada."
+          : "La clienta nunca escribió a este número, así que no hay ventana de 24 h abierta. Un seguimiento así solo puede salir con una plantilla aprobada.",
+      );
+      return;
+    }
+    if (deadline < releaseAt.getTime()) {
+      releaseAt = now;
+      forcedByWindow = true;
+    }
+  }
+
+  const { error: execErr } = await supabase
+    .from("automation_executions")
+    .insert({
+      flow_id: flow.id,
+      conversation_id: conv.id,
+      client_id: conv.client_id,
+      silence_anchor_at: anchor,
+      scheduled_for: releaseAt.toISOString(),
+      status: "pending",
+    });
+
+  if (execErr) {
+    // 23505 = otra vuelta (u otro proceso) ya reservó esta racha.
+    if (execErr.code !== "23505") {
+      console.error(
+        `[automations] silence claim error for flow ${flow.id}:`,
+        execErr.message,
+      );
+    }
+    return;
+  }
+
+  const who = conv.clients?.full_name ?? conv.display_name ?? conv.id;
+  if (releaseAt.getTime() <= now.getTime()) {
+    console.log(
+      `⚡ automation "${flow.name}" → seguimiento a ${who}${forcedByWindow ? " (sale ya: se cierra la ventana de 24 h)" : ""}`,
+    );
+  } else {
+    console.log(
+      `⏳ automation "${flow.name}" → seguimiento a ${who} en cola para ${releaseAt.toISOString()}`,
+    );
+  }
+
+  // La cola se vacía en la pasada siguiente, no acá: así el envío pasa por el
+  // mismo control (¿contestó?, ¿sigue activo el flujo?) sin importar si esperó
+  // ocho horas o ninguna.
+}
+
+/** Reserva la racha solo para dejar escrito por qué no se mandó nada. */
+async function reserveAndClose(
+  supabase: SupabaseClient<Database>,
+  flow: AutomationFlow,
+  conv: SilentConversationRow,
+  anchor: string,
+  now: Date,
+  reason: string,
+) {
+  const { error } = await supabase.from("automation_executions").insert({
+    flow_id: flow.id,
+    conversation_id: conv.id,
+    client_id: conv.client_id,
+    silence_anchor_at: anchor,
+    scheduled_for: now.toISOString(),
+    executed_at: now.toISOString(),
+    status: "skipped",
+    error: reason.slice(0, 500),
+  });
+
+  if (error && error.code !== "23505") {
+    console.error(
+      `[automations] silence skip insert error for flow ${flow.id}:`,
+      error.message,
+    );
+  }
+}
+
+type QueuedFollowUp = {
+  id: string;
+  silence_anchor_at: string;
+  automation_flows: AutomationFlow | null;
+  conversations:
+    | {
+        id: string;
+        display_name: string | null;
+        archived: boolean;
+        last_inbound_at: string | null;
+        clients: { full_name: string } | null;
+      }
+    | null;
+};
+
+/**
+ * Manda los seguimientos que ya tienen la hora cumplida. A las 9 de la mañana
+ * esto es lo que vacía de una todo lo que se juntó durante la noche.
+ */
+async function drainNoReplyQueue(
+  supabase: SupabaseClient<Database>,
+  now: Date,
+) {
+  const { data, error } = await supabase
+    .from("automation_executions")
+    .select(
+      `id, silence_anchor_at,
+       automation_flows ( * ),
+       conversations ( id, display_name, archived, last_inbound_at, clients ( full_name ) )`,
+    )
+    .eq("status", "pending")
+    .not("silence_anchor_at", "is", null)
+    .lte("scheduled_for", now.toISOString())
+    .order("scheduled_for", { ascending: true })
+    .limit(NO_REPLY_BATCH);
+
+  if (error) {
+    console.error("[automations] no-reply queue read error:", error.message);
+    return;
+  }
+
+  const rows = (data ?? []) as unknown as QueuedFollowUp[];
+  if (rows.length === NO_REPLY_BATCH) {
+    console.warn(
+      `[automations] la cola de seguimientos venía con más de ${NO_REPLY_BATCH}; el resto sale en la vuelta siguiente.`,
+    );
+  }
+
+  for (const row of rows) {
+    try {
+      await releaseFollowUp(supabase, row, now);
+    } catch (err) {
+      console.error(
+        `[automations] no-reply release ${row.id} failed:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+}
+
+async function releaseFollowUp(
+  supabase: SupabaseClient<Database>,
+  row: QueuedFollowUp,
+  now: Date,
+) {
+  const flow = row.automation_flows;
+  const conv = row.conversations;
+
+  if (!flow || !conv) {
+    await closeExecution(
+      supabase,
+      row.id,
+      "failed",
+      "El flujo o el chat dejaron de existir mientras el mensaje esperaba.",
+    );
+    return;
+  }
+
+  // Todo lo que sigue pasó DESPUÉS de reservar el envío. Es el motivo de que
+  // la cola exista: entre que se detecta el silencio y que se cumple la hora
+  // pueden pasar horas, y en esas horas el envío puede quedar sin sentido.
+  if (!flow.active) {
+    await closeExecution(
+      supabase,
+      row.id,
+      "skipped",
+      "El flujo se desactivó mientras el mensaje esperaba la hora de envío.",
+    );
+    return;
+  }
+
+  if (conv.archived) {
+    await closeExecution(
+      supabase,
+      row.id,
+      "skipped",
+      "El chat se archivó mientras el mensaje esperaba la hora de envío.",
+    );
+    return;
+  }
+
+  // La que importa: contestó. Mandarle igual un "¿pudiste verlo?" encima de su
+  // respuesta es exactamente lo que el flujo no tiene que hacer.
+  const anchorMs = new Date(row.silence_anchor_at).getTime();
+  const inboundMs = conv.last_inbound_at
+    ? new Date(conv.last_inbound_at).getTime()
+    : null;
+  if (inboundMs !== null && inboundMs > anchorMs) {
+    await closeExecution(
+      supabase,
+      row.id,
+      "skipped",
+      "La clienta contestó antes de la hora de envío.",
+    );
+    return;
+  }
+
+  if (flow.send_mode !== "template") {
+    const open =
+      inboundMs !== null && now.getTime() - inboundMs < CLOUD_WINDOW_MS;
+    if (!open) {
+      await closeExecution(
+        supabase,
+        row.id,
+        "skipped",
+        "La ventana de 24 h se cerró mientras el mensaje esperaba. Para que un seguimiento salga a cualquier hora hace falta una plantilla aprobada.",
+      );
+      return;
+    }
+  }
+
+  const fullName = conv.clients?.full_name ?? conv.display_name ?? "";
+  const built = await buildFlowMessage(
+    supabase,
+    flow,
+    conversationFlowContext(fullName, flow.review_salon_name),
+  );
+
+  if (!built.ok) {
+    await closeExecution(supabase, row.id, "failed", built.error);
+    console.error(
+      `[automations] flow ${flow.name} sin mensaje que mandar:`,
+      built.error,
+    );
+    return;
+  }
+
+  const queued = await queueFlowMessage(supabase, row.id, conv.id, built.content);
+  if (!queued) return;
+
+  if (!isWithinSendWindow(now)) {
+    console.log(
+      `⚡ automation "${flow.name}" → seguimiento fuera de horario para ${fullName || conv.id}: se cerraba la ventana de 24 h.`,
+    );
+    return;
+  }
 
   console.log(
-    `⚡ automation "${flow.name}" → message queued for ${apt.clients?.full_name ?? apt.client_id}`,
+    `⚡ automation "${flow.name}" → seguimiento encolado para ${fullName || conv.id}`,
   );
 }

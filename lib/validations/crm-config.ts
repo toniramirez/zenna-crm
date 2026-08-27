@@ -42,7 +42,8 @@ export type AutomationTrigger =
   | "before_appointment"
   | "after_appointment"
   | "after_payment"
-  | "on_inbound_after_inactivity";
+  | "on_inbound_after_inactivity"
+  | "no_reply_after_outbound";
 
 export const TRIGGERS: {
   value: AutomationTrigger;
@@ -55,6 +56,10 @@ export const TRIGGERS: {
     value: "on_inbound_after_inactivity",
     label: "Mensaje entrante tras inactividad",
   },
+  {
+    value: "no_reply_after_outbound",
+    label: "La clienta no contestó",
+  },
 ];
 
 export const TRIGGER_LABEL: Record<AutomationTrigger, string> = {
@@ -62,6 +67,7 @@ export const TRIGGER_LABEL: Record<AutomationTrigger, string> = {
   after_appointment: "Después del turno",
   after_payment: "Después de cobrar",
   on_inbound_after_inactivity: "Mensaje entrante",
+  no_reply_after_outbound: "Sin respuesta",
 };
 
 /** Triggers that operate on appointments and accept service filtering. */
@@ -70,6 +76,12 @@ export const APPOINTMENT_TRIGGERS: AutomationTrigger[] = [
   "after_appointment",
   "after_payment",
 ];
+
+/**
+ * Lo mínimo que puede esperar un flujo `no_reply_after_outbound` antes de dar
+ * un chat por "sin respuesta".
+ */
+export const MIN_NO_REPLY_OFFSET_MINUTES = 15;
 
 /** Los dos editores del panel: texto simple, o encuesta de reseña. */
 export type AutomationKind = "message" | "review";
@@ -175,6 +187,7 @@ export const automationFlowSchema = z
       "after_appointment",
       "after_payment",
       "on_inbound_after_inactivity",
+      "no_reply_after_outbound",
     ] as const),
     triggerOffsetMinutes: z
       .number()
@@ -204,6 +217,32 @@ export const automationFlowSchema = z
   .refine(
     (v) => v.sendMode === "template" || v.messageBody.trim().length >= 2,
     { message: "El mensaje es muy corto.", path: ["messageBody"] },
+  )
+  // Un seguimiento con espera de cero saldría sobre cualquier chat que
+  // estuviera en silencio un segundo, o sea: sobre toda la bandeja.
+  .refine(
+    (v) =>
+      v.trigger !== "no_reply_after_outbound" ||
+      v.triggerOffsetMinutes >= MIN_NO_REPLY_OFFSET_MINUTES,
+    {
+      message: `El seguimiento tiene que esperar al menos ${MIN_NO_REPLY_OFFSET_MINUTES} minutos.`,
+      path: ["triggerOffsetMinutes"],
+    },
+  )
+  // Con más de 24 h de espera la ventana de la Cloud API ya está cerrada por
+  // definición —el silencio se cuenta después del último mensaje de ella— y el
+  // texto libre no llegaría nunca. Se corta acá y no en el worker para que el
+  // problema se vea al guardar el flujo y no un día en los logs.
+  .refine(
+    (v) =>
+      v.trigger !== "no_reply_after_outbound" ||
+      v.sendMode === "template" ||
+      v.triggerOffsetMinutes < 1440,
+    {
+      message:
+        "Después de 24 h la ventana de WhatsApp ya está cerrada: un seguimiento así solo llega con una plantilla aprobada.",
+      path: ["triggerOffsetMinutes"],
+    },
   )
   .refine((v) => v.sendMode !== "template" || Boolean(v.templateName?.trim()), {
     message: TEMPLATE_REQUIRED_MESSAGE,

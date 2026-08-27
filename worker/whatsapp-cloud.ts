@@ -24,7 +24,10 @@ import {
   OUTSIDE_WINDOW_ERROR,
 } from "@/lib/whatsapp-cloud/window";
 import type { Database } from "@/types/database.types";
-import { processAutomations } from "./automations";
+import {
+  processAutomations,
+  processNoReplyAutomations,
+} from "./automations";
 
 /**
  * Worker de salida de la WhatsApp Cloud API (canal `whatsapp_cloud`).
@@ -425,6 +428,11 @@ setInterval(() => void rescueStuckSending(), RESCUE_INTERVAL_MS);
 // de reseña). Independiente de pollOutgoing: solo encola mensajes, que la
 // vuelta siguiente del poller levanta como cualquier otro.
 setInterval(() => void processAutomations(supabase), AUTOMATION_TICK_MS);
+
+// El barrido de los seguimientos ("no contestó") va en su propio intervalo:
+// no mira turnos sino la bandeja, y además vacía la cola de los que esperaban
+// a que fuera una hora razonable para escribir.
+setInterval(() => void processNoReplyAutomations(supabase), AUTOMATION_TICK_MS);
 
 // El chequeo de arranque avisa en logs si la cuenta no está lista, que es la
 // pregunta número uno cuando "no sale nada".

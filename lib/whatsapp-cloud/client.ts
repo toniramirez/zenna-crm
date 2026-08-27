@@ -17,6 +17,14 @@ export type GraphError = {
   code?: number;
   error_subcode?: number;
   error_data?: { details?: string };
+  /*
+   * El motivo en castellano de andar por casa. Meta manda medio rechazo en
+   * `message` —casi siempre el genérico "Invalid parameter"— y el motivo de
+   * verdad en estos dos, que es lo único que le sirve a quien está mirando la
+   * pantalla. Pasa sobre todo en el endpoint de plantillas.
+   */
+  error_user_title?: string;
+  error_user_msg?: string;
 };
 
 /**
@@ -40,6 +48,9 @@ export class WhatsappApiError extends Error {
   readonly code?: number;
   readonly subcode?: number;
   readonly details?: string;
+  /** `error_user_title` / `error_user_msg`: el motivo listo para mostrar. */
+  readonly userTitle?: string;
+  readonly userMessage?: string;
 
   constructor(message: string, status: number, graph?: GraphError) {
     super(message);
@@ -48,6 +59,19 @@ export class WhatsappApiError extends Error {
     this.code = graph?.code;
     this.subcode = graph?.error_subcode;
     this.details = graph?.error_data?.details;
+    this.userTitle = graph?.error_user_title;
+    this.userMessage = graph?.error_user_msg;
+  }
+
+  /** Todo lo que Meta dijo, sin repetir, para logs y mensajes de último recurso. */
+  get fullMessage(): string {
+    const parts = [this.message];
+    const human = [this.userTitle, this.userMessage].filter(Boolean).join(": ");
+    if (human && !this.message.includes(human)) parts.push(human);
+    if (this.details && !this.message.includes(this.details)) {
+      parts.push(this.details);
+    }
+    return parts.join(" — ");
   }
 
   /**
@@ -102,12 +126,23 @@ async function graphFetch<T>(
   if (!res.ok) {
     const graph = (json as { error?: GraphError } | null)?.error;
     const details = graph?.error_data?.details;
-    throw new WhatsappApiError(
+    const error = new WhatsappApiError(
       (graph?.message ?? `HTTP ${res.status}: ${text.slice(0, 200)}`) +
         (details ? ` — ${details}` : ""),
       res.status,
       graph,
     );
+    // El error entero al log del servidor: es lo único que queda cuando el
+    // mensaje que ve el usuario resulta ser un "Invalid parameter" pelado.
+    console.error(
+      `[wa-cloud] ${res.status} ${new URL(url).pathname}:`,
+      JSON.stringify({
+        code: graph?.code,
+        subcode: graph?.error_subcode,
+        message: error.fullMessage,
+      }),
+    );
+    throw error;
   }
 
   return json as T;

@@ -217,6 +217,7 @@ export type Database = {
           id: string
           message_id: string | null
           scheduled_for: string
+          silence_anchor_at: string | null
           status: string
         }
         Insert: {
@@ -230,6 +231,7 @@ export type Database = {
           id?: string
           message_id?: string | null
           scheduled_for: string
+          silence_anchor_at?: string | null
           status?: string
         }
         Update: {
@@ -243,6 +245,7 @@ export type Database = {
           id?: string
           message_id?: string | null
           scheduled_for?: string
+          silence_anchor_at?: string | null
           status?: string
         }
         Relationships: [
@@ -1742,6 +1745,7 @@ export type Database = {
         | "after_appointment"
         | "after_payment"
         | "on_inbound_after_inactivity"
+        | "no_reply_after_outbound"
       commission_status: "pending" | "paid"
       expense_category:
         | "insumos"
@@ -1927,6 +1931,7 @@ export const Constants = {
         "after_appointment",
         "after_payment",
         "on_inbound_after_inactivity",
+        "no_reply_after_outbound",
       ],
       commission_status: ["pending", "paid"],
       expense_category: [

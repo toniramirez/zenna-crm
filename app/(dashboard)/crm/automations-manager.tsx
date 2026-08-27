@@ -44,6 +44,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { SEND_WINDOW_LABEL } from "@/lib/automations/quiet-hours";
 import {
   APPOINTMENT_TRIGGERS,
   automationFlowSchema,
@@ -222,6 +223,15 @@ export function AutomationsManager({
                       ))}
                     </span>
                   )}
+                </div>
+              ) : f.trigger === "no_reply_after_outbound" ? (
+                <div className="text-xs text-muted-foreground">
+                  Sale cuando pasan{" "}
+                  <strong className="text-foreground">
+                    {formatOffsetMinutes(f.trigger_offset_minutes)}
+                  </strong>{" "}
+                  desde nuestro último mensaje sin que la clienta conteste, y
+                  solo {SEND_WINDOW_LABEL}.
                 </div>
               ) : (
                 <div className="text-xs text-muted-foreground">
@@ -517,9 +527,16 @@ function FlowDialog({
                     ? "después de que termine el turno"
                     : form.watch("trigger") === "after_payment"
                       ? "después de que se cobre el turno"
-                      : "de inactividad mínima entre mensajes entrantes (las conversaciones nuevas siempre disparan)"}
+                      : form.watch("trigger") === "no_reply_after_outbound"
+                        ? "sin respuesta de la clienta, contadas desde el último mensaje que le mandamos"
+                        : "de inactividad mínima entre mensajes entrantes (las conversaciones nuevas siempre disparan)"}
                 .
               </p>
+              {form.formState.errors.triggerOffsetMinutes ? (
+                <p className="text-xs font-medium text-destructive">
+                  {form.formState.errors.triggerOffsetMinutes.message}
+                </p>
+              ) : null}
             </div>
 
             {APPOINTMENT_TRIGGERS.includes(form.watch("trigger")) ? (
@@ -588,10 +605,23 @@ function FlowDialog({
                 }}
               />
             ) : (
-              <div className="rounded-md border border-dashed bg-muted/10 p-3 text-xs text-muted-foreground">
-                Este trigger reacciona a mensajes entrantes de WhatsApp, no a
-                turnos. Solo <code>{`{{nombre}}`}</code> tiene valor (las otras
-                variables quedan vacías).
+              <div className="rounded-md border border-dashed bg-muted/10 p-3 text-xs text-muted-foreground space-y-1.5">
+                <p>
+                  Este trigger mira la bandeja de WhatsApp, no los turnos. Solo{" "}
+                  <code>{`{{nombre}}`}</code> tiene valor (las otras variables
+                  quedan vacías).
+                </p>
+                {form.watch("trigger") === "no_reply_after_outbound" ? (
+                  <p>
+                    Se manda una sola vez por silencio: se rearma recién cuando
+                    la clienta vuelve a escribir. Sale solo{" "}
+                    <strong className="text-foreground">
+                      {SEND_WINDOW_LABEL}
+                    </strong>{" "}
+                    — lo que se cumple de noche espera a la mañana, salvo que se
+                    esté por cerrar la ventana de 24 h.
+                  </p>
+                ) : null}
               </div>
             )}
 
