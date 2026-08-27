@@ -110,6 +110,23 @@ export function templateVariables(
 }
 
 /**
+ * Los botones de respuesta rápida de la plantilla, en orden.
+ *
+ * Son los únicos que vuelven al CRM cuando la clienta los toca: los de URL
+ * abren el navegador y los de teléfono llaman, sin avisarle a Meta. Por eso
+ * son también los únicos a los que un flujo puede tenerle una respuesta
+ * preparada.
+ */
+export function quickReplyButtons(components: TemplateComponent[]): string[] {
+  const buttons =
+    components.find((c) => c.type?.toUpperCase() === "BUTTONS")?.buttons ?? [];
+  return buttons
+    .filter((b) => b.type?.toUpperCase() === "QUICK_REPLY")
+    .map((b) => b.text?.trim() ?? "")
+    .filter((text) => text.length > 0);
+}
+
+/**
  * Botones que no piden parámetros al enviar. Todo lo demás (OTP de las
  * plantillas de autenticación, COPY_CODE de cupones, FLOW, catálogo…)
  * requiere un componente `buttons` en el payload que todavía no armamos:

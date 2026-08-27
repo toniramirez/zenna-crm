@@ -133,6 +133,78 @@ export type Database = {
           },
         ]
       }
+      automation_button_events: {
+        Row: {
+          button_text: string
+          conversation_id: string
+          created_at: string
+          error: string | null
+          flow_id: string
+          id: string
+          inbound_message_id: string
+          reply_message_id: string | null
+          source_message_id: string | null
+        }
+        Insert: {
+          button_text: string
+          conversation_id: string
+          created_at?: string
+          error?: string | null
+          flow_id: string
+          id?: string
+          inbound_message_id: string
+          reply_message_id?: string | null
+          source_message_id?: string | null
+        }
+        Update: {
+          button_text?: string
+          conversation_id?: string
+          created_at?: string
+          error?: string | null
+          flow_id?: string
+          id?: string
+          inbound_message_id?: string
+          reply_message_id?: string | null
+          source_message_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_button_events_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_button_events_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "automation_flows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_button_events_inbound_message_id_fkey"
+            columns: ["inbound_message_id"]
+            isOneToOne: true
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_button_events_reply_message_id_fkey"
+            columns: ["reply_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_button_events_source_message_id_fkey"
+            columns: ["source_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       automation_executions: {
         Row: {
           appointment_id: string | null
@@ -214,6 +286,7 @@ export type Database = {
       automation_flows: {
         Row: {
           active: boolean
+          button_replies: Json
           created_at: string
           id: string
           kind: string
@@ -235,6 +308,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          button_replies?: Json
           created_at?: string
           id?: string
           kind?: string
@@ -256,6 +330,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          button_replies?: Json
           created_at?: string
           id?: string
           kind?: string
@@ -580,6 +655,7 @@ export type Database = {
           display_name: string | null
           external_id: string
           id: string
+          last_inbound_at: string | null
           last_message_at: string | null
           legacy_redirect_at: string | null
           last_message_preview: string | null
@@ -598,6 +674,7 @@ export type Database = {
           display_name?: string | null
           external_id: string
           id?: string
+          last_inbound_at?: string | null
           last_message_at?: string | null
           legacy_redirect_at?: string | null
           last_message_preview?: string | null
@@ -616,6 +693,7 @@ export type Database = {
           display_name?: string | null
           external_id?: string
           id?: string
+          last_inbound_at?: string | null
           last_message_at?: string | null
           legacy_redirect_at?: string | null
           last_message_preview?: string | null
