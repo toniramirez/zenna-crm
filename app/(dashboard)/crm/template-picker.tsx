@@ -38,14 +38,28 @@ export function TemplatePicker({
   conversationId,
   disabled,
   prominent,
+  open: openProp,
+  onOpenChange,
 }: {
   templates: WhatsappTemplateRow[];
   conversationId: string;
   disabled?: boolean;
   /** Con la ventana cerrada el botón pasa a ser la acción principal. */
   prominent?: boolean;
+  /**
+   * Modo controlado, sin botón propio: lo usa la burbuja de un mensaje que
+   * rebotó por la ventana de 24 h, que ofrece el "Enviar plantilla" en el
+   * lugar donde se ve el problema y abre este mismo diálogo desde afuera.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const controlled = openProp !== undefined;
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlled ? openProp : uncontrolledOpen;
+  const setOpen = controlled
+    ? (next: boolean) => onOpenChange?.(next)
+    : setUncontrolledOpen;
   const [selected, setSelected] = useState<WhatsappTemplateRow | null>(null);
   const [values, setValues] = useState<TemplateVariableValues>({
     header: {},
@@ -102,7 +116,7 @@ export function TemplatePicker({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      {prominent ? (
+      {controlled ? null : prominent ? (
         <Button
           type="button"
           size="sm"

@@ -16,6 +16,7 @@ import {
   FileText,
   Forward,
   Hourglass,
+  LayoutTemplate,
   Lock,
   MessageCircle,
   MoreHorizontal,
@@ -61,6 +62,11 @@ import { createClient } from "@/lib/supabase/client";
 import { useVisiblePoll } from "@/lib/use-visible-poll";
 import { cn } from "@/lib/utils";
 import type { WhatsappTemplateRow } from "@/lib/whatsapp-cloud/templates";
+import {
+  formatWindowLeft,
+  isOutsideWindowError,
+  windowLeftMs,
+} from "@/lib/whatsapp-cloud/window";
 import {
   editMessageAction,
   markConversationReadAction,
@@ -299,6 +305,12 @@ export function CrmView({
   const [editing, setEditing] = useState<MessageRow | null>(null);
   /** Mensaje elegido para reenviar; abre el selector de chats. */
   const [forwarding, setForwarding] = useState<MessageRow | null>(null);
+  /**
+   * Selector de plantillas abierto desde una burbuja roja: el mensaje rebotó
+   * por la ventana de 24 h y el arreglo (mandar una plantilla) se ofrece ahí
+   * mismo, sin obligar a bajar hasta el composer a buscar el botón.
+   */
+  const [templateOpen, setTemplateOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLInputElement | null>(null);
   /**
@@ -638,7 +650,6 @@ export function CrmView({
    * Las reacciones no cuentan: para Meta la ventana la abre un mensaje real,
    * no un emoji sobre uno nuestro (misma regla que aplica el worker).
    */
-  const CLOUD_WINDOW_MS = 24 * 60 * 60 * 1000;
   const lastInboundAt = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
@@ -651,13 +662,29 @@ export function CrmView({
   // un dato incompleto sería peor — se lo damos por abierto y el worker,
   // que mira la conversación entera, corta lo que esté fuera de ventana.
   const messagesMaybeTruncated = messages.length >= 500;
-  const cloudWindowClosed =
+  /** Chat donde la ventana es un dato real: canal Cloud y mensajes completos. */
+  const windowKnown =
     selected?.channel === WA_CLOUD_CHANNEL &&
     !loadingMessages &&
     !messagesMaybeTruncated &&
-    now !== null &&
-    (!lastInboundAt ||
-      now - new Date(lastInboundAt).getTime() > CLOUD_WINDOW_MS);
+    now !== null;
+  /**
+   * Cuánto le queda a la ventana, en ms. null = nunca escribieron (o todavía
+   * no lo sabemos): ahí no hay contador que mostrar, solo ventana cerrada.
+   */
+  const windowLeft =
+    windowKnown && now !== null ? windowLeftMs(lastInboundAt, now) : null;
+  const cloudWindowClosed =
+    windowKnown && (windowLeft === null || windowLeft <= 0);
+  /** El último tramo: el contador se pone en ámbar y avisa qué pasa después. */
+  const windowUrgent =
+    windowLeft !== null && windowLeft > 0 && windowLeft <= 2 * 60 * 60 * 1000;
+
+  /** ¿Hay con qué reabrir una conversación cerrada? */
+  const hasApprovedTemplates = useMemo(
+    () => waTemplates.some((t) => t.status.toUpperCase() === "APPROVED"),
+    [waTemplates],
+  );
 
   const filteredConversations = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -1507,6 +1534,12 @@ export function CrmView({
                     channel={selected.channel}
                     onEdit={startEdit}
                     onForward={setForwarding}
+                    onSendTemplate={
+                      selected.channel === WA_CLOUD_CHANNEL &&
+                      hasApprovedTemplates
+                        ? () => setTemplateOpen(true)
+                        : undefined
+                    }
                   />
                 )}
               </div>
@@ -1548,14 +1581,17 @@ export function CrmView({
                   camino que sí funciona — mandar una plantilla.
                 */
                 <div className="flex items-center gap-3 p-3 pb-[calc(0.75rem+var(--safe-bottom))] sm:px-4 md:pb-3">
-                  <Hourglass className="size-4 shrink-0 text-[var(--wa-text-2)]" />
+                  <Hourglass className="size-4 shrink-0 text-[var(--wa-wait-cold)]" />
                   <p className="min-w-0 flex-1 text-[0.8125rem] leading-snug text-[var(--wa-text-2)]">
-                    Pasaron más de 24 h del último mensaje de la clienta.
-                    {waTemplates.some(
-                      (t) => t.status.toUpperCase() === "APPROVED",
-                    )
-                      ? " Para reabrir la conversación mandá una plantilla."
-                      : " Necesitás una plantilla aprobada en Meta para reabrirla (se sincronizan desde Configuración)."}
+                    <strong className="font-medium text-[var(--wa-text)]">
+                      Ventana de 24 h cerrada
+                    </strong>
+                    {windowLeft === null
+                      ? " · la clienta nunca escribió a este número."
+                      : ` · cerró hace ${formatWindowLeft(-windowLeft)}.`}
+                    {hasApprovedTemplates
+                      ? " Un mensaje escrito acá no llega: para reabrir la conversación mandá una plantilla."
+                      : " Un mensaje escrito acá no llega, y para reabrirla necesitás una plantilla aprobada en Meta (se sincronizan desde Configuración)."}
                   </p>
                   <TemplatePicker
                     templates={waTemplates}
@@ -1565,6 +1601,36 @@ export function CrmView({
                   />
                 </div>
               ) : (
+              <>
+              {/*
+                Contador de la ventana. Es la única forma de saber, antes de
+                escribir, si el mensaje va a salir: 24 h después del último
+                mensaje de la clienta el texto libre deja de entrar, y sin
+                contador eso se descubre recién con la burbuja en rojo. Late
+                una vez por minuto, como el resto de la bandeja.
+              */}
+              {windowLeft !== null && windowLeft > 0 ? (
+                <div
+                  className={cn(
+                    "flex items-center gap-2 px-3 pt-2 text-[0.75rem] leading-snug sm:px-4",
+                    windowUrgent
+                      ? "text-[var(--wa-wait-warm)]"
+                      : "text-[var(--wa-text-2)]",
+                  )}
+                >
+                  <Hourglass className="size-3.5 shrink-0" />
+                  <p className="min-w-0 flex-1">
+                    Ventana de 24 h: quedan{" "}
+                    <strong className="font-medium tabular-nums">
+                      {formatWindowLeft(windowLeft)}
+                    </strong>{" "}
+                    para responder sin plantilla.
+                    {windowUrgent
+                      ? " Después, para escribirle hay que mandar una plantilla aprobada."
+                      : null}
+                  </p>
+                </div>
+              ) : null}
               <form
                 onSubmit={handleSend}
                 className="wa-composer flex items-center gap-1.5 p-2 pb-[calc(0.5rem+var(--safe-bottom))] sm:gap-2 sm:px-4 md:pb-2"
@@ -1636,6 +1702,7 @@ export function CrmView({
                   </span>
                 </Button>
               </form>
+              </>
               )}
             </div>
           </>
@@ -1660,6 +1727,19 @@ export function CrmView({
         paymentMethods={paymentMethods}
       />
 
+      {/*
+        Instancia controlada, sin botón: la abren las burbujas que rebotaron
+        por la ventana. La del composer es otra y sigue con su propio estado.
+      */}
+      {selected && selected.channel === WA_CLOUD_CHANNEL ? (
+        <TemplatePicker
+          templates={waTemplates}
+          conversationId={selected.id}
+          open={templateOpen}
+          onOpenChange={setTemplateOpen}
+        />
+      ) : null}
+
       <ForwardDialog
         message={forwarding}
         conversations={activeConversations}
@@ -1679,12 +1759,15 @@ function MessagesRender({
   channel,
   onEdit,
   onForward,
+  onSendTemplate,
 }: {
   messages: MessageRow[];
   conversationId: string;
   channel: string;
   onEdit: (message: MessageRow) => void;
   onForward: (message: MessageRow) => void;
+  /** Abre el selector de plantillas; ausente si no hay ninguna aprobada. */
+  onSendTemplate?: () => void;
 }) {
   // Index by external_id so we can resolve "this message replies to X"
   const byExternalId = new Map<string, MessageRow>();
@@ -1765,6 +1848,7 @@ function MessagesRender({
             channel={channel}
             onEdit={onEdit}
             onForward={onForward}
+            onSendTemplate={onSendTemplate}
             tail={it.tail}
             replyTo={
               it.m.reply_to_external_id
@@ -1828,6 +1912,7 @@ function Bubble({
   tail,
   onEdit,
   onForward,
+  onSendTemplate,
 }: {
   message: MessageRow;
   conversationId: string;
@@ -1838,6 +1923,7 @@ function Bubble({
   tail: boolean;
   onEdit: (message: MessageRow) => void;
   onForward: (message: MessageRow) => void;
+  onSendTemplate?: () => void;
 }) {
   const isOutbound = message.direction === "outbound";
   const revoked = !!message.revoked_at;
@@ -1858,6 +1944,11 @@ function Bubble({
   // su propia fila para no montarse sobre el error.
   const inlineMeta =
     !revoked && !isMedia && !!message.body && message.status !== "failed";
+  /** Rebotó por la ventana de 24 h: el arreglo es mandar una plantilla. */
+  const needsTemplate =
+    !revoked &&
+    message.status === "failed" &&
+    isOutsideWindowError(message.error);
   const metaGap = (isOutbound ? 3.5 : 2.5) + (message.edited_at ? 2.75 : 0);
 
   const actions = (
@@ -1962,12 +2053,32 @@ function Bubble({
             <StatusIcon status={message.status} />
           ) : null}
         </div>
-        {!revoked && message.status === "failed" && message.error ? (
-          <div
-            className="mt-0.5 text-[0.6875rem] text-destructive"
-            title={message.error}
-          >
-            Error · {message.error.slice(0, 60)}
+        {!revoked && message.status === "failed" ? (
+          /*
+            Un mensaje que no salió lo dice con todas las letras y con el
+            motivo entero: recortado a 60 caracteres, el error de la ventana
+            de 24 h se cortaba justo antes de la única parte accionable
+            ("mandá una plantilla"). Si el rebote fue por la ventana, el
+            arreglo va acá mismo como botón.
+          */
+          <div className="mt-1 border-t border-red-200 pt-1 text-[0.6875rem] leading-snug text-destructive">
+            <div className="flex items-start gap-1">
+              <CircleAlert className="mt-[1px] size-3 shrink-0" />
+              <span className="min-w-0 flex-1">
+                <strong className="font-medium">No se envió</strong>
+                {message.error ? ` · ${message.error}` : null}
+              </span>
+            </div>
+            {needsTemplate && onSendTemplate ? (
+              <button
+                type="button"
+                onClick={onSendTemplate}
+                className="mt-1 inline-flex items-center gap-1 rounded-full bg-[var(--wa-accent)] px-2 py-0.5 font-medium text-white hover:bg-[var(--wa-accent-strong)]"
+              >
+                <LayoutTemplate className="size-3" />
+                Enviar plantilla
+              </button>
+            ) : null}
           </div>
         ) : null}
 

@@ -19,6 +19,10 @@ import {
   type WhatsappCloudAccount,
 } from "@/lib/whatsapp-cloud/config";
 import { parseStoredTemplatePayload } from "@/lib/whatsapp-cloud/templates";
+import {
+  CLOUD_WINDOW_MS,
+  OUTSIDE_WINDOW_ERROR,
+} from "@/lib/whatsapp-cloud/window";
 import type { Database } from "@/types/database.types";
 import { processAutomations } from "./automations";
 
@@ -51,13 +55,6 @@ const BATCH_SIZE = 10;
  * todo junto una semana tarde es peor que no entregar.
  */
 const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
-
-/**
- * Ventana de servicio de la Cloud API: 24 h desde el último mensaje del
- * cliente. Afuera de ella Meta solo acepta plantillas aprobadas (error
- * 131047 para todo lo demás) — acá no existe el HUMAN_AGENT de Instagram.
- */
-const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /** Las URLs firmadas tienen que sobrevivir a que Meta baje el archivo. */
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
@@ -114,6 +111,9 @@ async function signedMediaUrl(path: string): Promise<string | null> {
 /**
  * ¿La ventana de 24 h está cerrada para esta conversación?
  *
+ * Cerrada, Meta rechaza todo lo que no sea plantilla con un 131047: acá no
+ * existe el `HUMAN_AGENT` que en Instagram estira el plazo a 7 días.
+ *
  * Se excluyen las reacciones a propósito: para Meta la ventana la abre un
  * mensaje real del cliente, no un emoji sobre uno nuestro — contarlas haría
  * pasar el pre-chequeo y el envío rebotaría igual con 131047.
@@ -130,7 +130,7 @@ async function isOutsideReplyWindow(conversationId: string): Promise<boolean> {
     .maybeSingle();
 
   if (!data?.sent_at) return true; // Nunca escribieron: no hay ventana abierta.
-  return Date.now() - new Date(data.sent_at).getTime() > REPLY_WINDOW_MS;
+  return Date.now() - new Date(data.sent_at).getTime() > CLOUD_WINDOW_MS;
 }
 
 /**
@@ -266,8 +266,7 @@ async function pollOutgoing(): Promise<void> {
           .from("messages")
           .update({
             status: "failed",
-            error:
-              "Fuera de la ventana de 24 h: mandá una plantilla para reabrir la conversación.",
+            error: OUTSIDE_WINDOW_ERROR,
             failed_at: new Date().toISOString(),
           })
           .eq("id", m.id)
@@ -328,9 +327,7 @@ async function pollOutgoing(): Promise<void> {
       const permanent = !isApiError || err.isPermanent;
 
       const friendly =
-        isApiError && err.isOutsideWindow
-          ? "Fuera de la ventana de 24 h: mandá una plantilla para reabrir la conversación."
-          : message;
+        isApiError && err.isOutsideWindow ? OUTSIDE_WINDOW_ERROR : message;
 
       // Un fallo transitorio (red, 500 de Meta, rate limit) vuelve a 'queued'
       // y se reintenta solo en la próxima vuelta. Uno permanente queda

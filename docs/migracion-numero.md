@@ -50,6 +50,15 @@ La Cloud API solo acepta texto libre dentro de las 24 h posteriores al último
 mensaje del cliente. Fuera de esa ventana la única forma de escribir es una
 **plantilla aprobada** por Meta, que además reabre la conversación.
 
+En la bandeja la ventana se ve antes de escribir: arriba del campo hay un
+contador de lo que le queda ("quedan 5 h 12 min", en ámbar en las últimas
+2 h), y cuando llega a cero el campo se reemplaza por el botón de plantilla,
+diciendo hace cuánto cerró. Si un mensaje rebota igual, la burbuja queda en
+rojo con **"No se envió"**, el motivo entero de Meta y —cuando el motivo es la
+ventana— un botón para mandar la plantilla ahí mismo. El plazo, el texto de
+ese error y el formato del contador viven en `lib/whatsapp-cloud/window.ts`,
+que es lo que mantiene alineados al worker, al webhook y a la bandeja.
+
 Un recordatorio "24 h antes del turno" casi nunca cae dentro de la ventana: la
 clienta reservó hace dos semanas. Por eso cada flujo elige cómo se manda:
 

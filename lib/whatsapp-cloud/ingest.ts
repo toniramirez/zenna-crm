@@ -14,6 +14,7 @@ import {
   type CloudStatus,
   type CloudTemplateStatusValue,
 } from "./webhook";
+import { OUTSIDE_WINDOW_ERROR } from "./window";
 
 const BUCKET = "wa-media";
 
@@ -552,9 +553,7 @@ async function handleStatus(supabase: Db, status: CloudStatus): Promise<void> {
         .filter(Boolean)
         .join(" — ") || "Meta rechazó el mensaje.";
     const friendly =
-      first?.code === 131047
-        ? "Fuera de la ventana de 24 h: mandá una plantilla para reabrir la conversación."
-        : reason;
+      first?.code === 131047 ? OUTSIDE_WINDOW_ERROR : reason;
 
     await updateOutboundByWamid(
       supabase,
