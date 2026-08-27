@@ -244,7 +244,10 @@ export async function createFlowAction(
   const { error } = await supabase
     .from("automation_flows")
     .insert(flowRow(parsed.data));
-  if (error) return { error: "No pudimos crear el flujo." };
+  if (error) {
+    console.error("[crm-config] flow insert failed:", error.code, error.message);
+    return { error: "No pudimos crear el flujo." };
+  }
   revalidatePath("/crm");
   return { success: true };
 }
@@ -262,7 +265,10 @@ export async function updateFlowAction(
     .from("automation_flows")
     .update(flowRow(parsed.data))
     .eq("id", id);
-  if (error) return { error: "No pudimos guardar los cambios." };
+  if (error) {
+    console.error("[crm-config] flow update failed:", error.code, error.message);
+    return { error: "No pudimos guardar los cambios." };
+  }
   revalidatePath("/crm");
   return { success: true };
 }
@@ -341,7 +347,10 @@ export async function createReviewFlowAction(
   const { error } = await supabase
     .from("automation_flows")
     .insert(reviewFlowRow(parsed.data));
-  if (error) return { error: "No pudimos crear el pedido de reseña." };
+  if (error) {
+    console.error("[crm-config] review flow insert failed:", error.code, error.message);
+    return { error: "No pudimos crear el pedido de reseña." };
+  }
   revalidatePath("/crm");
   return { success: true };
 }
@@ -359,7 +368,10 @@ export async function updateReviewFlowAction(
     .from("automation_flows")
     .update(reviewFlowRow(parsed.data))
     .eq("id", id);
-  if (error) return { error: "No pudimos guardar los cambios." };
+  if (error) {
+    console.error("[crm-config] review flow update failed:", error.code, error.message);
+    return { error: "No pudimos guardar los cambios." };
+  }
   revalidatePath("/crm");
   return { success: true };
 }
