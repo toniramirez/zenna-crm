@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { notifyInboundMessage } from "@/lib/push/send";
 import type { Database } from "@/types/database.types";
 import { processInboundAutomations } from "@/worker/automations";
+import { processInboundButtonReply } from "@/worker/button-replies";
 import { processInboundReview } from "@/worker/reviews";
 import { transcribeAndStore } from "@/worker/transcribe";
 import { downloadMedia, fetchMediaInfo } from "./client";
@@ -311,6 +312,30 @@ function textualBody(message: CloudInboundMessage): string | null {
 }
 
 /**
+ * Los textos con los que vino un click de botón, o lista vacía si el mensaje
+ * no es un click.
+ *
+ * Meta manda dos cosas para el mismo botón: el label visible (`text`) y el
+ * `payload` con el que se creó la plantilla. En las que arma el CRM son
+ * idénticos, pero una plantilla hecha en el WhatsApp Manager puede tener un
+ * payload distinto del texto, así que se prueban los dos.
+ */
+function buttonLabelsOf(message: CloudInboundMessage): string[] {
+  if (message.type === "button") {
+    return [message.button?.text, message.button?.payload].filter(
+      (v): v is string => Boolean(v && v.trim()),
+    );
+  }
+  if (message.type === "interactive") {
+    return [
+      message.interactive?.button_reply?.title,
+      message.interactive?.button_reply?.id,
+    ].filter((v): v is string => Boolean(v && v.trim()));
+  }
+  return [];
+}
+
+/**
  * Lo que se dispara cuando entra un mensaje real de una clienta: primero la
  * encuesta de reseña, después las automatizaciones de mensaje entrante.
  *
@@ -319,9 +344,17 @@ function textualBody(message: CloudInboundMessage): string | null {
  * exacto del bloque que tenía el worker de Baileys, que dejó de correrlo
  * cuando el número viejo pasó a ser archivo.
  *
- * El orden no es casual: si este "5" era la respuesta a una encuesta abierta,
- * la reseña se lo queda y corta. Sin eso, el mismo mensaje dispararía además
- * el saludo de reactivación y la clienta recibiría dos respuestas encimadas.
+ * El orden no es casual, y va de lo más específico a lo más general:
+ *
+ *   1. El click de un botón de una plantilla de flujo, que se ata al mensaje
+ *      exacto que lo originó y por eso no se puede confundir con otra cosa.
+ *   2. La respuesta a una encuesta de reseña abierta: si este "5" era el
+ *      puntaje, se lo queda y corta.
+ *   3. Recién ahí las automatizaciones de mensaje entrante.
+ *
+ * Cada una que conteste corta la cadena. Sin eso, un mismo mensaje podría
+ * disparar la respuesta al botón y además el saludo de reactivación, y la
+ * clienta recibiría dos respuestas encimadas.
  *
  * Se hace `await` a propósito, no fire-and-forget: esto corre dentro del
  * `after()` de la ruta, y una promesa suelta puede quedar cortada cuando el
@@ -334,9 +367,23 @@ async function runInboundHooks(
     messageId: string;
     body: string | null;
     sentAt: Date;
+    /** `context.id`: el wamid al que responde este mensaje, si responde a uno. */
+    contextExternalId: string | null;
+    /** Vacío salvo que el mensaje sea el click de un botón. */
+    buttonLabels: string[];
   },
 ): Promise<void> {
   try {
+    if (args.buttonLabels.length > 0) {
+      const answered = await processInboundButtonReply(supabase, {
+        conversationId: args.conversationId,
+        inboundMessageId: args.messageId,
+        contextExternalId: args.contextExternalId,
+        labels: args.buttonLabels,
+      });
+      if (answered) return;
+    }
+
     const consumed = await processInboundReview(
       supabase,
       args.conversationId,
@@ -444,6 +491,9 @@ async function handleInboundMessage(
         messageId: insertedId,
         body: media.media.caption?.trim() || null,
         sentAt: new Date(sentAt),
+        contextExternalId: message.context?.id ?? null,
+        // Un adjunto nunca es el click de un botón.
+        buttonLabels: [],
       });
     }
     return;
@@ -478,6 +528,8 @@ async function handleInboundMessage(
       messageId: insertedId,
       body,
       sentAt: new Date(sentAt),
+      contextExternalId: message.context?.id ?? null,
+      buttonLabels: buttonLabelsOf(message),
     });
   }
 }

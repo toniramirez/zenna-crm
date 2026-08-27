@@ -21,8 +21,9 @@ Baileys se toca ahí.
 
 ## Puesta en marcha
 
-1. **SQL** — correr `scripts/sql/whatsapp-migration.sql` y
-   `scripts/sql/whatsapp-template-editor.sql` en el SQL Editor de Supabase
+1. **SQL** — correr `scripts/sql/whatsapp-migration.sql`,
+   `scripts/sql/whatsapp-template-editor.sql` y
+   `scripts/sql/whatsapp-flow-buttons.sql` en el SQL Editor de Supabase
    (idempotentes). Requieren haber corrido antes `whatsapp-cloud-api.sql`.
 2. **Conectar el número nuevo** — Configuración → *WhatsApp API*. Ver
    [`docs/whatsapp-api.md`](./whatsapp-api.md) para el detalle de credenciales
@@ -83,6 +84,46 @@ URL dinámica —que solo pueden venir del WhatsApp Manager— quedan afuera.
 Si la plantilla se armó desde el CRM sus variables se llaman igual que las del
 CRM (`{{nombre}}`, `{{fecha}}`…), y el mapeo de cada `{{…}}` viene precargado
 al elegirla.
+
+## Cuando la clienta toca un botón de la plantilla
+
+Una plantilla puede llevar botones de **respuesta rápida** ("Confirmar",
+"Reprogramar"…). Cuando la clienta toca uno, Meta manda ese click al webhook
+como un mensaje entrante más — y con el wamid de la plantilla sobre la que lo
+tocó. Eso es lo que permite atar el click al flujo exacto que lo originó, en
+vez de adivinar por el texto del botón.
+
+Y hay algo que cambia todo: **ese click abre la ventana de 24 h**. Es un
+mensaje de la clienta como cualquier otro. Por eso la respuesta al botón ya no
+tiene que ser una plantilla, y se puede mandar lo que se quiera:
+
+- texto libre, con las mismas variables del flujo (`{{nombre}}`, `{{fecha}}`,
+  `{{hora}}`, `{{servicio}}`, `{{profesional}}`) resueltas contra el turno que
+  disparó el flujo — el mismo turno del mensaje que llevaba el botón;
+- una **imagen** (JPG o PNG, hasta 5 MB) o un **video** (MP4 o 3GP, hasta
+  16 MB), con el texto de epígrafe. Va como un solo mensaje, no como dos
+  burbujas.
+
+Se configura en el mismo editor del flujo, debajo de la vista previa de la
+plantilla: aparece una fila por botón de respuesta rápida. Los botones de link
+y de llamada no figuran porque no le avisan a Meta cuando se tocan, así que no
+hay nada que contestar. Un botón que se deja vacío tampoco es un error:
+significa que ese click lo sigue contestando una persona desde la bandeja.
+
+El registro de cada click contestado queda en `automation_button_events`, con
+el mensaje entrante, la plantilla que lo originó y la respuesta que salió. El
+único sobre el mensaje entrante es lo que garantiza que un mismo click no se
+conteste dos veces.
+
+Dos límites a tener presentes:
+
+- Solo aplica a plantillas mandadas **por un flujo**. Una plantilla enviada a
+  mano desde la bandeja no tiene respuesta automática configurable.
+- Con el flujo pausado no se contesta, aunque el mensaje ya haya salido:
+  *activo* es el interruptor de todo lo que el flujo hace solo.
+
+La encuesta de reseña queda afuera a propósito: su respuesta la decide el
+puntaje, no el botón, y por eso su editor no muestra este bloque.
 
 ## Cómo llega una automatización a alguien que nunca escribió al número nuevo
 

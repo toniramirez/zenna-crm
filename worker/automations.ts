@@ -16,7 +16,7 @@ type ConversationRow = {
   clients: { full_name: string } | null;
 };
 
-type AppointmentRow = {
+export type AppointmentRow = {
   id: string;
   client_id: string;
   starts_at: string;
@@ -31,12 +31,40 @@ type AppointmentRow = {
 
 const TICK_WINDOW_MS = 60_000;
 
-const APPOINTMENT_SELECT = `
+export const APPOINTMENT_SELECT = `
   id, client_id, starts_at, ends_at,
   clients ( full_name, phone ),
   professionals ( full_name ),
   appointment_services ( service_id, services ( name ) )
 `;
+
+/**
+ * Las variables del CRM con los datos de un turno. Es lo que se le pasa a
+ * `renderTemplate` para resolver `{{fecha}}`, `{{hora}}`…
+ *
+ * Vive acá y no en el llamador porque lo usan dos caminos que tienen que
+ * decir exactamente lo mismo: el mensaje que sale con el flujo y la respuesta
+ * al botón que la clienta toque sobre ese mensaje. Que el recordatorio diga
+ * "jueves 14:30" y la confirmación otra cosa sería peor que no confirmar.
+ */
+export function appointmentFlowContext(
+  apt: AppointmentRow,
+  salonName: string | null,
+): Record<string, string> {
+  const services = apt.appointment_services
+    .map((s) => s.services?.name)
+    .filter(Boolean)
+    .join(" + ");
+
+  return {
+    nombre: apt.clients?.full_name?.split(" ")[0] ?? "",
+    servicio: services || "tu turno",
+    fecha: format(parseISO(apt.starts_at), "EEEE d 'de' MMMM", { locale: es }),
+    hora: format(parseISO(apt.starts_at), "HH:mm"),
+    profesional: apt.professionals?.full_name ?? "",
+    salon: salonName ?? "",
+  };
+}
 
 /**
  * Run one pass over all active automation flows. Per flow:
@@ -385,6 +413,9 @@ async function fireForAppointment(
       flow_id: flow.id,
       appointment_id: apt.id,
       client_id: apt.client_id,
+      // Guardar el chat, y no solo el turno, es lo que después permite atar el
+      // click de un botón de esta plantilla a este flujo.
+      conversation_id: conversationId,
       scheduled_for: now.toISOString(),
       status: conversationId ? "pending" : "skipped",
     })
@@ -415,25 +446,11 @@ async function fireForAppointment(
     return;
   }
 
-  const services = apt.appointment_services
-    .map((s) => s.services?.name)
-    .filter(Boolean)
-    .join(" + ");
-  const fechaStr = format(
-    parseISO(apt.starts_at),
-    "EEEE d 'de' MMMM",
-    { locale: es },
+  const built = await buildFlowMessage(
+    supabase,
+    flow,
+    appointmentFlowContext(apt, flow.review_salon_name),
   );
-  const horaStr = format(parseISO(apt.starts_at), "HH:mm");
-
-  const built = await buildFlowMessage(supabase, flow, {
-    nombre: apt.clients?.full_name?.split(" ")[0] ?? "",
-    servicio: services || "tu turno",
-    fecha: fechaStr,
-    hora: horaStr,
-    profesional: apt.professionals?.full_name ?? "",
-    salon: flow.review_salon_name ?? "",
-  });
 
   // Una plantilla despublicada, o una variable que quedó vacía porque el turno
   // no tenía profesional: el motivo queda en la ejecución, que es donde se

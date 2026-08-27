@@ -109,6 +109,38 @@ export const EMPTY_TEMPLATE_PARAMS_INPUT: TemplateParamsInput = {
 };
 
 /**
+ * Qué contesta el flujo cuando la clienta toca un botón de la plantilla.
+ *
+ * Las claves van en snake_case porque es la forma exacta con la que se
+ * guardan en `automation_flows.button_replies` y con la que las lee el
+ * worker: un mapeo camelCase↔snake_case en el medio sería una traducción de
+ * ida y vuelta sin nada que ganar.
+ *
+ * Una respuesta sin texto ni archivo es válida: significa "este botón no
+ * tiene respuesta automática", que es el estado normal de casi todos.
+ */
+export const buttonReplySchema = z.object({
+  button: z
+    .string()
+    .trim()
+    .min(1, "El botón no puede estar vacío.")
+    .max(60, "El texto del botón es muy largo."),
+  body: z.string().max(4000, "La respuesta es demasiado larga."),
+  media_type: z.enum(["image", "video"] as const).nullable(),
+  media_url: z.string().max(500).nullable(),
+  media_mime: z.string().max(200).nullable(),
+  media_filename: z.string().max(300).nullable(),
+});
+
+export const buttonRepliesSchema = z
+  .array(buttonReplySchema)
+  // Meta admite hasta 10 botones por plantilla; más que eso es un JSON
+  // manipulado, no un formulario.
+  .max(10, "Demasiadas respuestas de botón.");
+
+export type ButtonReplyInput = z.infer<typeof buttonReplySchema>;
+
+/**
  * Los campos de plantilla que comparten el flujo común y el de reseña. Se
  * definen una sola vez: los dos editan la misma tabla y tienen que aceptar y
  * rechazar exactamente lo mismo.
@@ -152,6 +184,9 @@ export const automationFlowSchema = z
     serviceFilterIds: z.array(z.string().uuid()),
     messageBody: z.string().max(4000, "El mensaje es demasiado largo."),
     ...templateFields,
+    // Solo el flujo común: la encuesta de reseña espera un puntaje, y su
+    // respuesta ya la decide el puntaje, no el botón.
+    buttonReplies: buttonRepliesSchema,
     active: z.boolean(),
   })
   .refine(

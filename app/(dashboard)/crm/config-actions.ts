@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import {
   type AutomationFlowInput,
   automationFlowSchema,
+  type ButtonReplyInput,
+  buttonRepliesSchema,
   clientTagSchema,
   EMPTY_TEMPLATE_PARAMS_INPUT,
   paymentMethodSchema,
@@ -178,12 +180,29 @@ function parseTemplateParams(raw: FormDataEntryValue | null): TemplateParamsInpu
   }
 }
 
+/**
+ * Las respuestas a los botones viajan como JSON por el mismo motivo que los
+ * `templateParams`: es una lista de objetos y aplanarla en campos del
+ * FormData no le haría bien a nadie.
+ */
+function parseButtonReplies(raw: FormDataEntryValue | null): ButtonReplyInput[] {
+  if (typeof raw !== "string" || raw.length === 0) return [];
+  try {
+    const parsed = buttonRepliesSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Los campos de plantilla, tal como los guarda `automation_flows`. */
 function templateRow(data: {
   sendMode: "text" | "template";
   templateName?: string;
   templateLanguage?: string;
   templateParams: TemplateParamsInput;
+  /** Solo el flujo común las tiene; la encuesta de reseña no. */
+  buttonReplies?: ButtonReplyInput[];
 }) {
   const isTemplate = data.sendMode === "template";
   return {
@@ -197,6 +216,14 @@ function templateRow(data: {
     template_params: isTemplate
       ? data.templateParams
       : EMPTY_TEMPLATE_PARAMS_INPUT,
+    // Sin plantilla no hay botones que contestar. Se guardan solo las que
+    // tienen algo que mandar: una fila vacía es "este botón no tiene
+    // respuesta automática", y no hace falta persistirla.
+    button_replies: isTemplate
+      ? (data.buttonReplies ?? []).filter(
+          (r) => r.body.trim().length > 0 || Boolean(r.media_url),
+        )
+      : [],
   };
 }
 
@@ -217,6 +244,7 @@ function parseFlow(formData: FormData) {
     templateName: formData.get("templateName") ?? "",
     templateLanguage: formData.get("templateLanguage") ?? "",
     templateParams: parseTemplateParams(formData.get("templateParams")),
+    buttonReplies: parseButtonReplies(formData.get("buttonReplies")),
     active: formData.get("active") === "true",
   });
 }

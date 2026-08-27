@@ -56,6 +56,7 @@ import {
   TRIGGER_LABEL,
   TRIGGERS,
 } from "@/lib/validations/crm-config";
+import { buttonRepliesOf } from "@/lib/automations/buttons";
 import { templateParamsOf } from "@/lib/automations/message";
 import type { WhatsappTemplateRow } from "@/lib/whatsapp-cloud/templates";
 import { REVIEW_CASE_THRESHOLD } from "@/lib/reviews";
@@ -337,6 +338,7 @@ function FlowDialog({
       templateName: "",
       templateLanguage: "",
       templateParams: EMPTY_TEMPLATE_PARAMS_INPUT,
+      buttonReplies: [],
       active: true,
     },
   });
@@ -357,6 +359,7 @@ function FlowDialog({
         templateName: flow.template_name ?? "",
         templateLanguage: flow.template_language ?? "",
         templateParams: templateParamsOf(flow.template_params),
+        buttonReplies: buttonRepliesOf(flow.button_replies),
         active: flow.active,
       });
     } else {
@@ -372,6 +375,7 @@ function FlowDialog({
         templateName: "",
         templateLanguage: "",
         templateParams: EMPTY_TEMPLATE_PARAMS_INPUT,
+        buttonReplies: [],
         active: true,
       });
     }
@@ -400,6 +404,7 @@ function FlowDialog({
     formData.set("templateName", values.templateName ?? "");
     formData.set("templateLanguage", values.templateLanguage ?? "");
     formData.set("templateParams", JSON.stringify(values.templateParams));
+    formData.set("buttonReplies", JSON.stringify(values.buttonReplies));
     formData.set("active", String(values.active));
 
     startTransition(async () => {
@@ -604,6 +609,10 @@ function FlowDialog({
               }}
               params={form.watch("templateParams")}
               onParamsChange={(next) => form.setValue("templateParams", next)}
+              buttonReplies={form.watch("buttonReplies")}
+              onButtonRepliesChange={(next) =>
+                form.setValue("buttonReplies", next)
+              }
               variables={TEMPLATE_VARIABLES}
               error={form.formState.errors.templateName?.message}
             />
