@@ -612,15 +612,27 @@ function FlowDialog({
                   quedan vacías).
                 </p>
                 {form.watch("trigger") === "no_reply_after_outbound" ? (
-                  <p>
-                    Se manda una sola vez por silencio: se rearma recién cuando
-                    la clienta vuelve a escribir. Sale solo{" "}
-                    <strong className="text-foreground">
-                      {SEND_WINDOW_LABEL}
-                    </strong>{" "}
-                    — lo que se cumple de noche espera a la mañana, salvo que se
-                    esté por cerrar la ventana de 24 h.
-                  </p>
+                  <>
+                    <p>
+                      Se manda una sola vez por silencio: se rearma recién
+                      cuando la clienta vuelve a escribir. Sale solo{" "}
+                      <strong className="text-foreground">
+                        {SEND_WINDOW_LABEL}
+                      </strong>{" "}
+                      — lo que se cumple de noche espera a la mañana, salvo que
+                      se esté por cerrar la ventana de 24 h.
+                    </p>
+                    <p>
+                      Solo persigue chats{" "}
+                      <strong className="text-foreground">
+                        en etapa de venta
+                      </strong>
+                      : si ya tiene turno agendado, o vino en los últimos 7
+                      días, el flujo no se mete. Y nunca persigue un mensaje que
+                      mandó el sistema —un recordatorio, una encuesta—, solo los
+                      que escribe una persona.
+                    </p>
+                  </>
                 ) : null}
               </div>
             )}

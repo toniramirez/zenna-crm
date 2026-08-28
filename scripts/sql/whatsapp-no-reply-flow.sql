@@ -76,6 +76,17 @@ create unique index if not exists automation_executions_silence_racha_uidx
 -- sale en el momento, porque esperar sería perder el mensaje.
 
 -- 4 ─── el barrido del worker ─────────────────────────────────────────────
+-- No todo silencio es una venta esperando respuesta, así que el worker
+-- descarta dos casos antes de encolar nada, y los dos salen de datos que ya
+-- están en la base:
+--
+--   · `messages.sent_by` — null es "lo mandó el sistema". Un recordatorio de
+--     turno o una encuesta no esperan respuesta: solo se persigue lo que
+--     escribió una persona.
+--   · `appointments` — con turno agendado la venta ya se cerró, y con un turno
+--     atendido en los últimos días el chat es post-servicio (el comprobante,
+--     el "gracias"), no venta.
+--
 -- Cada vuelta busca conversaciones por `last_message_at` dentro de una
 -- ventana. La bandeja ya ordena por esa columna, así que el índice casi seguro
 -- existe con otro nombre; se crea solo si no hay ninguno que la cubra, para no

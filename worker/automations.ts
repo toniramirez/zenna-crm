@@ -579,6 +579,14 @@ const NO_REPLY_MAX_PAGES = 5;
 const NO_REPLY_BATCH = 200;
 
 /**
+ * Cuántos días después de un turno atendido el chat sigue siendo post-venta y
+ * no venta. Es la ventana en la que llega el comprobante, el "gracias" del día
+ * siguiente y la encuesta de reseña: nada de eso espera respuesta nuestra, y
+ * mucho menos un "¿pudiste verlo?".
+ */
+const POST_SERVICE_QUIET_DAYS = 7;
+
+/**
  * Margen contra el cierre de la ventana de 24 h. Un envío que sale clavado
  * sobre la hora se arriesga a que Meta lo evalúe del otro lado del límite.
  */
@@ -750,6 +758,89 @@ async function claimSilentPage(
 }
 
 /**
+ * ¿Este chat está en etapa de venta?
+ *
+ * Es el filtro que separa "le mandé un presupuesto y no contestó" —que sí
+ * merece un empujón— de las dos conversaciones que NO hay que perseguir:
+ *
+ *   · La que ya se cerró en un turno. Si tiene turno agendado la venta salió,
+ *     y los recordatorios de ese turno son laburo de otro flujo.
+ *   · La de post-servicio. El comprobante que llega al otro día, el "gracias":
+ *     ahí el último mensaje es nuestro y nadie espera nada.
+ *
+ * Las dos se responden con la misma pregunta a `appointments` —¿hay algún
+ * turno vivo desde hace una semana para acá?— porque `ends_at >= hoy - 7 días`
+ * agarra tanto los que vienen como los recién atendidos.
+ *
+ * Un chat sin clienta cargada no tiene turnos que mirar: es una consulta que
+ * todavía no se convirtió en nada, o sea el caso de venta más puro que hay.
+ */
+async function isSalesStage(
+  supabase: SupabaseClient<Database>,
+  clientId: string | null,
+  now: Date,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (!clientId) return { ok: true };
+
+  const since = new Date(
+    now.getTime() - POST_SERVICE_QUIET_DAYS * 24 * 60 * 60 * 1000,
+  );
+
+  const { data, error } = await supabase
+    .from("appointments")
+    .select("id, starts_at, ends_at")
+    .eq("client_id", clientId)
+    .gte("ends_at", since.toISOString())
+    .not("status", "in", '("cancelled","no_show")')
+    .order("ends_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    // Sin la respuesta no se puede afirmar que sea una venta abierta, y entre
+    // mandar de más y no mandar, no mandar.
+    console.error("[automations] sales-stage check error:", error.message);
+    return { ok: false, reason: "No se pudo verificar si el chat tenía turnos." };
+  }
+
+  if (!data) return { ok: true };
+
+  return {
+    ok: false,
+    reason:
+      new Date(data.starts_at).getTime() > now.getTime()
+        ? "La clienta ya tiene turno agendado: la venta está cerrada y el recordatorio del turno es otro flujo."
+        : `Hubo un turno atendido en los últimos ${POST_SERVICE_QUIET_DAYS} días: el chat está en post-servicio, no en venta.`,
+  };
+}
+
+/**
+ * ¿El último mensaje del chat lo escribió una persona?
+ *
+ * Todo lo que sale del panel lleva `sent_by` con el usuario que lo mandó, y
+ * todo lo que encola el worker —recordatorios, encuestas, respuestas a un
+ * botón— lo deja en null. Es la diferencia exacta entre un mensaje que espera
+ * respuesta y uno que solo avisa algo: nadie contesta un recordatorio de turno,
+ * y perseguir a alguien por no hacerlo sería la peor versión de esta función.
+ */
+async function lastOutboundIsHuman(
+  supabase: SupabaseClient<Database>,
+  conversationId: string,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("messages")
+    .select("sent_by")
+    .eq("conversation_id", conversationId)
+    .eq("direction", "outbound")
+    .neq("type", "reaction")
+    .order("sent_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return Boolean(data?.sent_by);
+}
+
+/**
  * Reserva el seguimiento de una racha y le pone hora de salida.
  *
  * La hora es lo único que tiene vuelta de tuerca. Por defecto es la próxima
@@ -766,6 +857,22 @@ async function claimSilenceFollowUp(
   anchor: string,
   now: Date,
 ) {
+  // Primero el estado del chat, que es lo que decide si acá hay una venta
+  // abierta. Se reserva la racha con el motivo: tener turno agendado o venir de
+  // un servicio no es algo que vaya a cambiar dentro de esta misma racha, así
+  // que no tiene sentido volver a preguntarlo en cada vuelta.
+  const sales = await isSalesStage(supabase, conv.client_id, now);
+  if (!sales.ok) {
+    await reserveAndClose(supabase, flow, conv, anchor, now, sales.reason);
+    return;
+  }
+
+  // Este NO se reserva a propósito: que el último mensaje lo haya mandado el
+  // sistema es transitorio. Si mañana una persona escribe de verdad sobre el
+  // mismo silencio, ese mensaje sí merece seguimiento, y una racha quemada acá
+  // se lo impediría para siempre.
+  if (!(await lastOutboundIsHuman(supabase, conv.id))) return;
+
   const wantsTemplate = flow.send_mode === "template";
   const windowClosesAt = conv.last_inbound_at
     ? new Date(conv.last_inbound_at).getTime() + CLOUD_WINDOW_MS
@@ -871,6 +978,7 @@ type QueuedFollowUp = {
   conversations:
     | {
         id: string;
+        client_id: string | null;
         display_name: string | null;
         archived: boolean;
         last_inbound_at: string | null;
@@ -892,7 +1000,7 @@ async function drainNoReplyQueue(
     .select(
       `id, silence_anchor_at,
        automation_flows ( * ),
-       conversations ( id, display_name, archived, last_inbound_at, clients ( full_name ) )`,
+       conversations ( id, client_id, display_name, archived, last_inbound_at, clients ( full_name ) )`,
     )
     .eq("status", "pending")
     .not("silence_anchor_at", "is", null)
@@ -978,6 +1086,15 @@ async function releaseFollowUp(
       "skipped",
       "La clienta contestó antes de la hora de envío.",
     );
+    return;
+  }
+
+  // Se vuelve a preguntar por los turnos porque entre la detección y la hora
+  // de salida pueden haber pasado horas, y en el medio el salón pudo agendarle
+  // el turno por teléfono: la venta se cerró aunque ella nunca contestó el chat.
+  const sales = await isSalesStage(supabase, conv.client_id, now);
+  if (!sales.ok) {
+    await closeExecution(supabase, row.id, "skipped", sales.reason);
     return;
   }
 
