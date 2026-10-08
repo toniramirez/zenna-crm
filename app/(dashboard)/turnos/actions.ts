@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireProfile, requireRole } from "@/lib/auth";
+import { todayDateStr } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/server";
 import {
   appointmentSchema,
@@ -12,6 +13,8 @@ import { fieldErrorsFromZod } from "@/lib/zod-helpers";
 
 export type ActionState = {
   error?: string;
+  /** La operación salió, pero algo secundario no (p.ej. la seña). */
+  warning?: string;
   fieldErrors?: Record<string, string>;
   success?: boolean;
 };
@@ -86,10 +89,6 @@ export async function createAppointmentAction(
       ends_at: parsed.data.endsAt,
       status: parsed.data.status,
       notes: parsed.data.notes || null,
-      deposit_amount: parsed.data.depositAmount,
-      deposit_method: parsed.data.depositAmount > 0
-        ? parsed.data.depositMethod ?? null
-        : null,
       created_by: ctx.userId,
     })
     .select("id")
@@ -116,6 +115,32 @@ export async function createAppointmentAction(
     // Roll back the parent appointment so we don't leave orphans
     await supabase.from("appointments").delete().eq("id", appt.id);
     return { error: "No pudimos guardar los servicios del turno." };
+  }
+
+  // La seña va recién ahora, con el turno ya completo: al grabarla, un trigger
+  // la registra como pago en la caja de HOY. Si fuera en el insert de arriba,
+  // el rollback de los servicios tendría que borrar también ese pago.
+  if (parsed.data.depositAmount > 0) {
+    const { error: depositError } = await supabase
+      .from("appointments")
+      .update({
+        deposit_amount: parsed.data.depositAmount,
+        deposit_method: parsed.data.depositMethod ?? null,
+        deposit_paid_on: todayDateStr(),
+      })
+      .eq("id", appt.id);
+
+    if (depositError) {
+      console.error("[appointments] deposit update failed:", depositError);
+      revalidatePath("/turnos");
+      revalidatePath("/caja");
+      return {
+        success: true,
+        warning:
+          "El turno se creó, pero no pudimos registrar la seña. Editá el turno y cargala de nuevo.",
+      };
+    }
+    revalidatePath("/caja");
   }
 
   revalidatePath("/turnos");
@@ -152,6 +177,22 @@ export async function updateAppointmentAction(
 
   const supabase = await createClient();
 
+  // El día de caja de la seña se fija cuando se cobra y no se mueve al editar
+  // el turno: si se cargó el lunes, sigue en la caja del lunes aunque después
+  // se cambie el monto o el método. Sólo una seña nueva cae en la caja de hoy.
+  const { data: current } = await supabase
+    .from("appointments")
+    .select("deposit_amount, deposit_paid_on")
+    .eq("id", id)
+    .single();
+
+  const hasDeposit = parsed.data.depositAmount > 0;
+  const depositPaidOn = !hasDeposit
+    ? null
+    : Number(current?.deposit_amount ?? 0) > 0 && current?.deposit_paid_on
+      ? current.deposit_paid_on
+      : todayDateStr();
+
   const { error: updError } = await supabase
     .from("appointments")
     .update({
@@ -162,9 +203,8 @@ export async function updateAppointmentAction(
       status: parsed.data.status,
       notes: parsed.data.notes || null,
       deposit_amount: parsed.data.depositAmount,
-      deposit_method: parsed.data.depositAmount > 0
-        ? parsed.data.depositMethod ?? null
-        : null,
+      deposit_method: hasDeposit ? parsed.data.depositMethod ?? null : null,
+      deposit_paid_on: depositPaidOn,
     })
     .eq("id", id);
 
@@ -221,6 +261,7 @@ export async function updateAppointmentAction(
   }
 
   revalidatePath("/turnos");
+  revalidatePath("/caja");
   return { success: true };
 }
 

@@ -48,8 +48,8 @@ export function CobrarDialog({
   const [notes, setNotes] = useState("");
   const [isPending, startTransition] = useTransition();
 
-  // Seña / adelanto ya cobrado al agendar. El saldo a cobrar hoy es el total
-  // menos la seña; la seña se registra aparte (con su método) en el server.
+  // Seña / adelanto ya cobrado al agendar: ya es un pago propio, en la caja
+  // del día en que se cobró. Acá sólo se cobra lo que falta.
   const deposit = appointment?.deposit_amount ?? 0;
   const balanceDue = appointment
     ? Math.max(0, appointment.total_price - deposit)
@@ -72,6 +72,10 @@ export function CobrarDialog({
   // Diferencia contra el saldo (lo que falta cobrar hoy), no contra el total.
   const diff = appointment ? total - balanceDue : 0;
 
+  function payAllWith(method: PaymentMethod) {
+    setLines([{ method, amount: balanceDue }]);
+  }
+
   function addLine() {
     setLines((prev) => [...prev, { method: "transfer", amount: 0 }]);
   }
@@ -87,9 +91,7 @@ export function CobrarDialog({
   function onSubmit() {
     if (!appointment) return;
     const validLines = lines.filter((l) => l.amount > 0);
-    // Con seña, el saldo puede ser cero (la seña cubre todo): en ese caso se
-    // registra sólo la seña en el server. Sin seña, hace falta al menos una línea.
-    if (validLines.length === 0 && deposit <= 0) {
+    if (validLines.length === 0) {
       toast.error("El total cobrado tiene que ser mayor a cero.");
       return;
     }
@@ -172,9 +174,39 @@ export function CobrarDialog({
             ) : null}
           </div>
 
+          {/* Lo que falta pagar, bien a la vista */}
+          <div className="flex items-center justify-between rounded-md bg-foreground text-background px-4 py-3">
+            <span className="text-sm">Falta pagar</span>
+            <span className="text-2xl font-semibold tabular-nums">
+              {formatCurrency(balanceDue)}
+            </span>
+          </div>
+
           {/* Payment lines */}
           <div className="space-y-2">
-            <Label>Líneas de pago</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label>¿Cómo paga?</Label>
+              <div className="flex gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => payAllWith("cash")}
+                >
+                  Todo efectivo
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => payAllWith("transfer")}
+                >
+                  Todo transferencia
+                </Button>
+              </div>
+            </div>
             <div className="space-y-2">
               {lines.map((line, idx) => (
                 <div key={idx} className="grid grid-cols-[1fr_140px_36px] gap-2">

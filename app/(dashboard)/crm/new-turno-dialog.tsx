@@ -32,16 +32,14 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency, formatDuration } from "@/lib/format";
-import {
-  PAYMENT_METHODS,
-  type PaymentMethod,
-} from "@/lib/validations/payments";
+import { type PaymentMethod } from "@/lib/validations/payments";
 import { CATEGORY_LABEL } from "@/lib/validations/services";
 import {
   createClientQuickAction,
   type QuickClient,
 } from "../clientas/actions";
 import { createAppointmentAction } from "../turnos/actions";
+import { DepositField } from "../turnos/deposit-field";
 import type {
   AppointmentWithRelations,
   ClientRow,
@@ -459,6 +457,7 @@ export function NewTurnoDialog({
         return;
       }
       if (!result?.success) return;
+      if (result.warning) toast.warning(result.warning);
 
       // Queue a WhatsApp confirmation in the same conversation. We do this
       // best-effort: a messaging failure shouldn't undo the booking.
@@ -736,51 +735,16 @@ export function NewTurnoDialog({
               />
             </div>
 
-            {/* Seña / adelanto (opcional) */}
-            <div className="space-y-1">
-              <Label htmlFor="new-turno-deposit" className="text-xs">
-                Seña / adelanto (opcional)
-              </Label>
-              <div className="grid grid-cols-[120px_1fr] gap-2">
-                <Input
-                  id="new-turno-deposit"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step={500}
-                  value={depositAmount || ""}
-                  placeholder="0"
-                  onChange={(e) =>
-                    setDepositAmount(Number(e.target.value) || 0)
-                  }
-                  className="text-right tabular-nums text-sm"
-                />
-                <Select
-                  value={depositMethod}
-                  onValueChange={(v) => setDepositMethod(v as PaymentMethod)}
-                  disabled={depositAmount <= 0}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Método" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PAYMENT_METHODS.map((m) => (
-                      <SelectItem key={m.value} value={m.value}>
-                        {m.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {depositAmount > 0 && totalPrice > 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  Saldo a cobrar:{" "}
-                  <strong className="text-foreground">
-                    {formatCurrency(Math.max(0, totalPrice - depositAmount))}
-                  </strong>
-                </p>
-              ) : null}
-            </div>
+            {/* Seña: entra a la caja del día en que se cobra */}
+            <DepositField
+              id="new-turno-deposit"
+              amount={depositAmount}
+              method={depositMethod}
+              onAmountChange={setDepositAmount}
+              onMethodChange={setDepositMethod}
+              totalPrice={totalPrice}
+              compact
+            />
           </div>
         </div>
 

@@ -45,3 +45,14 @@ export const recordPaymentSchema = z.object({
 });
 
 export type RecordPaymentInput = z.infer<typeof recordPaymentSchema>;
+
+export const closeCajaSchema = z.object({
+  cajaDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida."),
+  countedCash: z
+    .number({ message: "Ingresá cuánto efectivo contaste." })
+    .min(0, "El efectivo contado no puede ser negativo.")
+    .max(99999999, "Importe fuera de rango."),
+  notes: z.string().max(500).optional().or(z.literal("")),
+});
+
+export type CloseCajaInput = z.infer<typeof closeCajaSchema>;

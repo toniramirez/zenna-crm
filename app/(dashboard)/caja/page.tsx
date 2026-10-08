@@ -1,5 +1,8 @@
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
+import { FolderArchive } from "lucide-react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { requireRole } from "@/lib/auth";
 import {
   dayRangeISO,
@@ -9,13 +12,19 @@ import {
 } from "@/lib/dates";
 import { formatCurrency } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
-import { PAYMENT_METHOD_LABEL, PAYMENT_METHODS } from "@/lib/validations/payments";
+import { CloseCajaCard } from "./close-caja";
 import { CajaDateNav } from "./date-nav";
+import { computeDayTotals, METHOD_GROUPS, methodGroup } from "./day-totals";
 import { NewExpenseButton } from "./expense-dialog";
 import { ExpensesList } from "./expenses-list";
 import { PaymentsList } from "./payments-list";
 import { CajaSummaryCards } from "./summary-cards";
-import type { ExpenseRow, PaymentWithDetails, UnpaidAppointment } from "./types";
+import type {
+  CashClosingRow,
+  ExpenseRow,
+  PaymentWithDetails,
+  UnpaidAppointment,
+} from "./types";
 import { UnpaidList } from "./unpaid-list";
 
 export const dynamic = "force-dynamic";
@@ -38,15 +47,16 @@ export default async function CajaPage({ searchParams }: Props) {
 
   const supabase = await createClient();
 
-  // Payments for the selected day — la caja pertenece al día del TURNO (starts_at),
-  // no al momento en que se registró el cobro. Así, si la recepcionista carga
-  // hoy un servicio de ayer, el cobro aparece en la caja de ayer.
+  // Pagos de la caja del día. `caja_date` lo fija la base: un cobro de turno
+  // va a la caja del día del TURNO (si la recepcionista carga hoy un servicio
+  // de ayer, cae en la caja de ayer) y una seña va a la caja del día en que se
+  // cobró, aunque el turno sea otro día.
   const paymentsResult = await supabase
     .from("payments")
     .select(
       `
       *,
-      appointments!inner (
+      appointments (
         id, starts_at, professional_id,
         professionals ( id, full_name, color ),
         clients ( id, full_name ),
@@ -54,9 +64,14 @@ export default async function CajaPage({ searchParams }: Props) {
       )
     `,
     )
-    .gte("appointments.starts_at", dayStart)
-    .lte("appointments.starts_at", dayEnd)
+    .eq("caja_date", selectedDate)
     .order("paid_at", { ascending: false });
+
+  const closingResult = await supabase
+    .from("cash_closings")
+    .select("*")
+    .eq("caja_date", selectedDate)
+    .maybeSingle();
 
   // Expenses for the whole month (only owner — receptionist gets empty)
   const expensesResult = isOwner
@@ -85,7 +100,7 @@ export default async function CajaPage({ searchParams }: Props) {
       professionals ( id, full_name, color ),
       clients ( id, full_name, phone ),
       appointment_services ( id, professional_id, price_at_booking, duration_at_booking, services ( name ) ),
-      payments ( id )
+      payments ( id, is_deposit )
     `,
     )
     .gte("starts_at", dayStart)
@@ -103,6 +118,9 @@ export default async function CajaPage({ searchParams }: Props) {
   }
   if (paymentsResult.error) {
     console.error("[caja] payments query failed:", paymentsResult.error);
+  }
+  if (closingResult.error) {
+    console.error("[caja] closing query failed:", closingResult.error);
   }
 
   const payments = (paymentsResult.data as PaymentWithDetails[] | null) ?? [];
@@ -124,13 +142,22 @@ export default async function CajaPage({ searchParams }: Props) {
       duration_at_booking: number;
       services: { name: string } | null;
     }[];
-    payments: { id: string }[];
+    payments: { id: string; is_deposit: boolean }[];
   };
 
+  const totalOf = (a: UnpaidRow) =>
+    a.appointment_services.reduce((acc, s) => acc + Number(s.price_at_booking), 0);
+
+  // Pendiente = todavía no se cobró el saldo. La seña no cuenta como cobro;
+  // y si la seña cubrió todo el precio no queda nada que cobrar.
   const unpaid: UnpaidAppointment[] = (
     (unpaidResult.data as UnpaidRow[] | null) ?? []
   )
-    .filter((a) => (a.payments ?? []).length === 0)
+    .filter(
+      (a) =>
+        !(a.payments ?? []).some((p) => !p.is_deposit) &&
+        totalOf(a) - Number(a.deposit_amount ?? 0) > 0,
+    )
     .map((a) => ({
       id: a.id,
       starts_at: a.starts_at,
@@ -145,37 +172,39 @@ export default async function CajaPage({ searchParams }: Props) {
         duration_minutes: s.duration_at_booking,
         professional_id: s.professional_id,
       })),
-      total_price: a.appointment_services.reduce(
-        (acc, s) => acc + Number(s.price_at_booking),
-        0,
-      ),
+      total_price: totalOf(a),
       deposit_amount: Number(a.deposit_amount ?? 0),
       deposit_method: a.deposit_method,
     }));
 
   // ── Totals
-  const totalsByMethod = new Map<string, { amount: number; count: number }>();
-  for (const p of payments) {
-    const prev = totalsByMethod.get(p.method) ?? { amount: 0, count: 0 };
-    totalsByMethod.set(p.method, {
-      amount: prev.amount + Number(p.amount),
-      count: prev.count + 1,
-    });
-  }
-  const totalIncome = payments.reduce((acc, p) => acc + Number(p.amount), 0);
-  const cashIncome = totalsByMethod.get("cash")?.amount ?? 0;
-
   // Cash expenses ATTRIBUTED to this specific day's caja.
   // Only counts when cash_source_date is set — null means the expense isn't
   // tied to any particular till (e.g., fixed-expense payments from templates).
-  const cashExpensesForDay = expenses
-    .filter(
-      (e) =>
-        e.payment_method === "cash" && e.cash_source_date === selectedDate,
-    )
-    .reduce((acc, e) => acc + Number(e.amount), 0);
+  // La recepción no ve el detalle de egresos, pero sí el total que salió del
+  // cajón ese día: sin eso el efectivo esperado no le cierra nunca al contar.
+  const cashExpensesForDay = (
+    isOwner
+      ? expenses.filter(
+          (e) =>
+            e.payment_method === "cash" && e.cash_source_date === selectedDate,
+        )
+      : ((
+          await supabase
+            .from("expenses")
+            .select("amount")
+            .eq("payment_method", "cash")
+            .eq("cash_source_date", selectedDate)
+        ).data ?? [])
+  ).reduce((acc, e) => acc + Number(e.amount), 0);
 
-  const cashToRender = cashIncome - cashExpensesForDay;
+  const totals = computeDayTotals(payments, cashExpensesForDay);
+  const totalIncome = totals.total;
+  const cashIncome = totals.cash;
+  const cashToRender = totals.expectedCash;
+  const closing = (closingResult.data as CashClosingRow | null) ?? null;
+
+  const byGroup = (g: string) => payments.filter((p) => methodGroup(p.method) === g);
 
   const totalExpensesMonth = expenses.reduce(
     (acc, e) => acc + Number(e.amount),
@@ -194,7 +223,15 @@ export default async function CajaPage({ searchParams }: Props) {
           <h1 className="text-2xl font-semibold tracking-tight">Caja</h1>
           <CajaDateNav dateStr={selectedDate} />
         </div>
-        {isOwner ? <NewExpenseButton defaultDate={selectedDate} /> : null}
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/caja/archivo?month=${selectedDate.slice(0, 7)}`}>
+              <FolderArchive className="size-4" />
+              Archivo de cajas
+            </Link>
+          </Button>
+          {isOwner ? <NewExpenseButton defaultDate={selectedDate} /> : null}
+        </div>
       </div>
 
       {/* Top cards */}
@@ -210,33 +247,49 @@ export default async function CajaPage({ searchParams }: Props) {
         monthLabel={monthLabel}
       />
 
-      {/* Breakdown by method */}
-      {payments.length > 0 ? (
-        <div className="rounded-xl border bg-card p-5 shadow-sm">
-          <h2 className="text-sm font-semibold mb-3 uppercase tracking-wider text-muted-foreground">
-            Por método de pago
-          </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {PAYMENT_METHODS.map((m) => {
-              const t = totalsByMethod.get(m.value);
-              if (!t) return null;
-              return (
-                <div key={m.value} className="rounded-md border bg-muted/20 p-3">
-                  <div className="text-xs text-muted-foreground">
-                    {PAYMENT_METHOD_LABEL[m.value]}
-                  </div>
-                  <div className="mt-1 text-base font-semibold tabular-nums">
-                    {formatCurrency(t.amount)}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {t.count} cobro{t.count === 1 ? "" : "s"}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
+      {/* Separado por cómo se controla: efectivo en el cajón, transferencias
+          en el banco, el resto en sus resúmenes. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {METHOD_GROUPS.map((g) => {
+          const amount = totals[g.value];
+          const rows = byGroup(g.value);
+          const count = rows.length;
+          const deposits = rows
+            .filter((p) => p.is_deposit)
+            .reduce((acc, p) => acc + Number(p.amount), 0);
+          return (
+            <div key={g.value} className="rounded-xl border bg-card p-4 shadow-sm">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-xs uppercase tracking-wider text-muted-foreground">
+                  {g.label}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {count} cobro{count === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="mt-1 text-2xl font-semibold tabular-nums">
+                {formatCurrency(amount)}
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {g.hint}
+                {deposits > 0 ? ` · incluye señas ${formatCurrency(deposits)}` : ""}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      <CloseCajaCard
+        cajaDate={selectedDate}
+        isOwner={isOwner}
+        isFuture={selectedDate > today}
+        expectedCash={cashToRender}
+        cashIncome={cashIncome}
+        cashExpenses={cashExpensesForDay}
+        transferIncome={totals.transfer}
+        closing={closing}
+        loadError={closingResult.error?.message ?? null}
+      />
 
       {/* Pendientes del día seleccionado */}
       <section className="space-y-2">
@@ -254,7 +307,19 @@ export default async function CajaPage({ searchParams }: Props) {
         <h2 className="text-base font-semibold tracking-tight">
           {isToday ? "Cobros del día" : `Cobros del día seleccionado`}
         </h2>
-        <PaymentsList payments={payments} />
+        {paymentsResult.error ? (
+          // Igual que los pendientes: un error no puede verse como "sin cobros".
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 p-6 text-center">
+            <p className="text-sm font-medium text-destructive">
+              No pudimos cargar los cobros de esta caja.
+            </p>
+            <p className="mt-2 text-xs font-mono text-muted-foreground break-all">
+              {paymentsResult.error.message}
+            </p>
+          </div>
+        ) : (
+          <PaymentsList payments={payments} cajaDate={selectedDate} />
+        )}
       </section>
 
       {/* Egresos del mes (owner) */}

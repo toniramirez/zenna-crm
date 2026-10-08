@@ -325,6 +325,9 @@ async function findPaidAppointments(
   const { data: paid, error: payErr } = await supabase
     .from("payments")
     .select("appointment_id")
+    // La seña se paga al agendar, antes del turno: no es "la clienta pagó el
+    // servicio" y no puede disparar flujos post-cobro como la reseña.
+    .eq("is_deposit", false)
     .gte("paid_at", lo.toISOString())
     .lt("paid_at", hi.toISOString());
 
@@ -1095,6 +1098,20 @@ async function releaseFollowUp(
   const sales = await isSalesStage(supabase, conv.client_id, now);
   if (!sales.ok) {
     await closeExecution(supabase, row.id, "skipped", sales.reason);
+    return;
+  }
+
+  // Y se vuelve a mirar quién escribió lo último, por el mismo motivo: en esas
+  // horas pudo salir un recordatorio de turno o la respuesta de una encuesta de
+  // reseña. Un "¿pudiste ver?" pegado encima de un mensaje que mandó el propio
+  // sistema es la peor forma en que puede fallar esto.
+  if (!(await lastOutboundIsHuman(supabase, conv.id))) {
+    await closeExecution(
+      supabase,
+      row.id,
+      "skipped",
+      "Mientras el mensaje esperaba, el último del chat pasó a ser uno que mandó el sistema (un recordatorio, una encuesta): ya no hay nada que seguir.",
+    );
     return;
   }
 

@@ -54,10 +54,7 @@ import {
   STATUS_LABEL,
   type AppointmentStatus,
 } from "@/lib/validations/appointments";
-import {
-  PAYMENT_METHODS,
-  type PaymentMethod,
-} from "@/lib/validations/payments";
+import { type PaymentMethod } from "@/lib/validations/payments";
 import { CATEGORY_LABEL } from "@/lib/validations/services";
 import {
   createClientQuickAction,
@@ -68,6 +65,7 @@ import {
   createAppointmentAction,
   updateAppointmentAction,
 } from "./actions";
+import { DepositField } from "./deposit-field";
 import type {
   AppointmentWithRelations,
   ClientRow,
@@ -395,7 +393,8 @@ export function AppointmentDialog({
       if (result?.error) {
         toast.error(result.error);
       } else if (result?.success) {
-        toast.success(editing ? "Turno actualizado." : "Turno creado.");
+        if (result.warning) toast.warning(result.warning);
+        else toast.success(editing ? "Turno actualizado." : "Turno creado.");
         onOpenChange(false);
       }
     });
@@ -865,50 +864,20 @@ export function AppointmentDialog({
             </div>
           )}
 
-          {/* Seña / adelanto (opcional) */}
-          <div className="space-y-2">
-            <Label htmlFor="deposit-amount">Seña / adelanto (opcional)</Label>
-            <div className="grid grid-cols-[140px_1fr] gap-2">
-              <Input
-                id="deposit-amount"
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step={500}
-                value={depositAmount || ""}
-                placeholder="0"
-                onChange={(e) =>
-                  setDepositAmount(Number(e.target.value) || 0)
-                }
-                className="text-right tabular-nums"
-              />
-              <Select
-                value={depositMethod}
-                onValueChange={(v) => setDepositMethod(v as PaymentMethod)}
-                disabled={depositAmount <= 0}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Método" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PAYMENT_METHODS.map((m) => (
-                    <SelectItem key={m.value} value={m.value}>
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {depositAmount > 0 && totalPrice > 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Saldo a cobrar en el turno:{" "}
-                <strong className="text-foreground">
-                  {formatCurrency(Math.max(0, totalPrice - depositAmount))}
-                </strong>{" "}
-                · la seña se registra como ingreso al cobrar.
-              </p>
-            ) : null}
-          </div>
+          {/* Seña: entra a la caja del día en que se cobra */}
+          <DepositField
+            id="deposit-amount"
+            amount={depositAmount}
+            method={depositMethod}
+            onAmountChange={setDepositAmount}
+            onMethodChange={setDepositMethod}
+            totalPrice={totalPrice}
+            paidOn={
+              mode?.type === "edit" && Number(mode.appointment.deposit_amount) > 0
+                ? mode.appointment.deposit_paid_on
+                : null
+            }
+          />
 
           {/* Notas */}
           <div className="space-y-2">

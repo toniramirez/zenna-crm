@@ -73,6 +73,7 @@ export type Database = {
           created_by: string | null
           deposit_amount: number
           deposit_method: Database["public"]["Enums"]["payment_method"] | null
+          deposit_paid_on: string | null
           ends_at: string
           id: string
           notes: string | null
@@ -87,6 +88,7 @@ export type Database = {
           created_by?: string | null
           deposit_amount?: number
           deposit_method?: Database["public"]["Enums"]["payment_method"] | null
+          deposit_paid_on?: string | null
           ends_at: string
           id?: string
           notes?: string | null
@@ -101,6 +103,7 @@ export type Database = {
           created_by?: string | null
           deposit_amount?: number
           deposit_method?: Database["public"]["Enums"]["payment_method"] | null
+          deposit_paid_on?: string | null
           ends_at?: string
           id?: string
           notes?: string | null
@@ -531,6 +534,53 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      cash_closings: {
+        Row: {
+          caja_date: string
+          cash_expenses: number
+          cash_income: number
+          closed_at: string
+          closed_by: string | null
+          counted_cash: number
+          expected_cash: number
+          notes: string | null
+          other_income: number
+          transfer_income: number
+        }
+        Insert: {
+          caja_date: string
+          cash_expenses?: number
+          cash_income?: number
+          closed_at?: string
+          closed_by?: string | null
+          counted_cash: number
+          expected_cash?: number
+          notes?: string | null
+          other_income?: number
+          transfer_income?: number
+        }
+        Update: {
+          caja_date?: string
+          cash_expenses?: number
+          cash_income?: number
+          closed_at?: string
+          closed_by?: string | null
+          counted_cash?: number
+          expected_cash?: number
+          notes?: string | null
+          other_income?: number
+          transfer_income?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_closings_closed_by_fkey"
+            columns: ["closed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       clients: {
         Row: {
@@ -1138,9 +1188,11 @@ export type Database = {
         Row: {
           amount: number
           appointment_id: string
+          caja_date: string
           created_at: string
           created_by: string | null
           id: string
+          is_deposit: boolean
           method: Database["public"]["Enums"]["payment_method"]
           notes: string | null
           paid_at: string
@@ -1149,9 +1201,11 @@ export type Database = {
         Insert: {
           amount: number
           appointment_id: string
+          caja_date?: string
           created_at?: string
           created_by?: string | null
           id?: string
+          is_deposit?: boolean
           method: Database["public"]["Enums"]["payment_method"]
           notes?: string | null
           paid_at?: string
@@ -1160,9 +1214,11 @@ export type Database = {
         Update: {
           amount?: number
           appointment_id?: string
+          caja_date?: string
           created_at?: string
           created_by?: string | null
           id?: string
+          is_deposit?: boolean
           method?: Database["public"]["Enums"]["payment_method"]
           notes?: string | null
           paid_at?: string
@@ -1726,6 +1782,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cobrar_turno: {
+        Args: { p_appointment_id: string; p_lines: Json; p_notes?: string }
+        Returns: number
+      }
       record_appointment_payment: {
         Args: { p_appointment_id: string; p_lines: Json; p_notes?: string }
         Returns: number

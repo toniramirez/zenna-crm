@@ -2,10 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
+import { todayDateStr } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/server";
 import { expenseSchema } from "@/lib/validations/expenses";
-import { recordPaymentSchema } from "@/lib/validations/payments";
+import { closeCajaSchema, recordPaymentSchema } from "@/lib/validations/payments";
 import { fieldErrorsFromZod } from "@/lib/zod-helpers";
+import { computeDayTotals } from "./day-totals";
 
 export type ActionState = {
   error?: string;
@@ -30,38 +32,19 @@ export async function recordPaymentAction(
     }
   }
 
-  const appointmentId = formData.get("appointmentId");
-
-  const supabase = await createClient();
-
-  // Seña / adelanto: si el turno tiene una seña cargada, la registramos como
-  // una línea de pago más (con su método original) además del saldo que cobra
-  // la recepción. Así el ingreso queda registrado completo el día del turno.
-  if (typeof appointmentId === "string" && Array.isArray(lines)) {
-    const { data: appt } = await supabase
-      .from("appointments")
-      .select("deposit_amount, deposit_method")
-      .eq("id", appointmentId)
-      .single();
-
-    const depositAmount = Number(appt?.deposit_amount ?? 0);
-    if (depositAmount > 0 && appt?.deposit_method) {
-      lines = [
-        ...lines,
-        { method: appt.deposit_method, amount: depositAmount },
-      ];
-    }
-  }
-
   const parsed = recordPaymentSchema.safeParse({
-    appointmentId,
+    appointmentId: formData.get("appointmentId"),
     lines,
     notes: formData.get("notes") || undefined,
   });
 
   if (!parsed.success) return { fieldErrors: fieldErrorsFromZod(parsed) };
 
-  const { error } = await supabase.rpc("record_appointment_payment", {
+  const supabase = await createClient();
+
+  // Sólo el saldo: la seña ya es un pago propio (en la caja del día en que se
+  // cobró), y cobrar_turno la deja intacta.
+  const { error } = await supabase.rpc("cobrar_turno", {
     p_appointment_id: parsed.data.appointmentId,
     p_lines: parsed.data.lines.filter((l) => l.amount > 0),
     p_notes: parsed.data.notes || undefined,
@@ -73,6 +56,9 @@ export async function recordPaymentAction(
     }
     if (error.code === "P0002") {
       return { error: "El turno ya no existe." };
+    }
+    if (error.hint === "ya_cobrado") {
+      return { error: "Este turno ya estaba cobrado. Recargá la página." };
     }
     console.error("[caja] record_appointment_payment failed:", error);
     if (process.env.NODE_ENV !== "production") {
@@ -139,5 +125,106 @@ export async function deleteExpenseAction(id: string): Promise<ActionState> {
   if (error) return { error: "No pudimos eliminar el egreso." };
 
   revalidatePath("/caja");
+  return { success: true };
+}
+
+// ───────────────────────────────────────────── Cierre de caja
+
+export async function closeCajaAction(
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await requireRole(["owner", "receptionist"]);
+
+  const parsed = closeCajaSchema.safeParse({
+    cajaDate: formData.get("cajaDate"),
+    // Vacío no es "$0": el cierre exige que alguien haya contado.
+    countedCash:
+      formData.get("countedCash") === ""
+        ? Number.NaN
+        : Number(formData.get("countedCash")),
+    notes: formData.get("notes") || undefined,
+  });
+
+  if (!parsed.success) return { fieldErrors: fieldErrorsFromZod(parsed) };
+  if (parsed.data.cajaDate > todayDateStr()) {
+    return { error: "No se puede cerrar una caja de un día que todavía no llegó." };
+  }
+
+  const supabase = await createClient();
+  const isOwner = ctx.profile.role === "owner";
+
+  // Los montos se recalculan acá, no se confían al cliente: el cierre es la
+  // foto de lo que el sistema dice que tendría que haber.
+  const [paymentsResult, expensesResult] = await Promise.all([
+    supabase
+      .from("payments")
+      .select("method, amount, is_deposit")
+      .eq("caja_date", parsed.data.cajaDate),
+    supabase
+      .from("expenses")
+      .select("amount")
+      .eq("payment_method", "cash")
+      .eq("cash_source_date", parsed.data.cajaDate),
+  ]);
+
+  if (paymentsResult.error || expensesResult.error) {
+    console.error(
+      "[caja] close totals failed:",
+      paymentsResult.error ?? expensesResult.error,
+    );
+    return { error: "No pudimos calcular los totales de la caja." };
+  }
+
+  const cashExpenses = (expensesResult.data ?? []).reduce(
+    (acc, e) => acc + Number(e.amount),
+    0,
+  );
+  const totals = computeDayTotals(paymentsResult.data ?? [], cashExpenses);
+
+  const row = {
+    caja_date: parsed.data.cajaDate,
+    cash_income: totals.cash,
+    cash_expenses: totals.cashExpenses,
+    expected_cash: totals.expectedCash,
+    counted_cash: parsed.data.countedCash,
+    transfer_income: totals.transfer,
+    other_income: totals.other,
+    notes: parsed.data.notes || null,
+    closed_by: ctx.userId,
+    closed_at: new Date().toISOString(),
+  };
+
+  // La recepción cierra una vez; corregir un cierre ya hecho es de la dueña
+  // (la política de RLS lo hace cumplir igual).
+  const { error } = isOwner
+    ? await supabase.from("cash_closings").upsert(row)
+    : await supabase.from("cash_closings").insert(row);
+
+  if (error) {
+    if (error.code === "23505") {
+      return { error: "Esta caja ya está cerrada. Sólo la dueña puede corregirla." };
+    }
+    console.error("[caja] close failed:", error);
+    return { error: "No pudimos cerrar la caja." };
+  }
+
+  revalidatePath("/caja");
+  revalidatePath("/caja/archivo");
+  return { success: true };
+}
+
+export async function reopenCajaAction(cajaDate: string): Promise<ActionState> {
+  await requireRole("owner");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("cash_closings")
+    .delete()
+    .eq("caja_date", cajaDate);
+
+  if (error) return { error: "No pudimos reabrir la caja." };
+
+  revalidatePath("/caja");
+  revalidatePath("/caja/archivo");
   return { success: true };
 }
