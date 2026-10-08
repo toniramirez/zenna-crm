@@ -210,7 +210,7 @@ export function AppointmentDialog({
   const [status, setStatus] = useState<AppointmentStatus>("scheduled");
   const [notes, setNotes] = useState("");
   const [depositAmount, setDepositAmount] = useState<number>(0);
-  const [depositMethod, setDepositMethod] = useState<PaymentMethod>("cash");
+  const [depositMethod, setDepositMethod] = useState<PaymentMethod | null>(null);
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [clientPickerOpen, setClientPickerOpen] = useState(false);
   const [servicesPickerOpen, setServicesPickerOpen] = useState(false);
@@ -241,7 +241,7 @@ export function AppointmentDialog({
       setStatus("scheduled");
       setNotes("");
       setDepositAmount(0);
-      setDepositMethod("cash");
+      setDepositMethod(null);
       setSelectedServiceIds([]);
     } else {
       const a = mode.appointment;
@@ -253,7 +253,7 @@ export function AppointmentDialog({
       setStatus(a.status);
       setNotes(a.notes ?? "");
       setDepositAmount(Number(a.deposit_amount ?? 0));
-      setDepositMethod((a.deposit_method as PaymentMethod) ?? "cash");
+      setDepositMethod((a.deposit_method as PaymentMethod) ?? null);
       setSelectedServiceIds(
         a.appointment_services
           .map((s) => s.services?.id)
@@ -368,6 +368,10 @@ export function AppointmentDialog({
       toast.error("Elegí al menos un servicio.");
       return;
     }
+    if (depositAmount > 0 && !depositMethod) {
+      toast.error("Elegí cómo se abonó la seña (efectivo o transferencia).");
+      return;
+    }
     if (!startsAt || !endsAt) {
       toast.error("Falta el horario.");
       return;
@@ -382,7 +386,7 @@ export function AppointmentDialog({
     formData.set("notes", notes);
     formData.set("serviceIds", selectedServiceIds.join(","));
     formData.set("depositAmount", String(depositAmount > 0 ? depositAmount : 0));
-    formData.set("depositMethod", depositAmount > 0 ? depositMethod : "");
+    formData.set("depositMethod", depositAmount > 0 ? depositMethod ?? "" : "");
 
     startTransition(async () => {
       const result =

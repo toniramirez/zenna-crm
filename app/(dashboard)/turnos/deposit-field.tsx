@@ -43,9 +43,10 @@ export function DepositField({
 }: {
   id: string;
   amount: number;
-  method: PaymentMethod;
+  /** null = todavía no se eligió. Sin default: una seña mal clasificada descuadra la caja. */
+  method: PaymentMethod | null;
   onAmountChange: (amount: number) => void;
-  onMethodChange: (method: PaymentMethod) => void;
+  onMethodChange: (method: PaymentMethod | null) => void;
   totalPrice: number;
   /** Día de caja en que ya se registró la seña (al editar un turno). */
   paidOn?: string | null;
@@ -61,12 +62,13 @@ export function DepositField({
     setAnsweredYes(yes);
     if (!yes) {
       onAmountChange(0);
-      onMethodChange("cash");
+      onMethodChange(null);
     }
   }
 
   const labelClass = compact ? "text-xs" : undefined;
-  const otherSelected = method !== "cash" && method !== "transfer";
+  const otherSelected =
+    method !== null && method !== "cash" && method !== "transfer";
 
   return (
     <div className="space-y-2">
@@ -126,20 +128,20 @@ export function DepositField({
             </span>
             <div className="grid grid-cols-2 gap-2">
               <MethodButton
-                active={method === "cash"}
-                onClick={() => onMethodChange("cash")}
-                icon={<Banknote className="size-4" />}
-                label="Efectivo"
-              />
-              <MethodButton
                 active={method === "transfer"}
                 onClick={() => onMethodChange("transfer")}
                 icon={<Landmark className="size-4" />}
                 label="Transferencia"
               />
+              <MethodButton
+                active={method === "cash"}
+                onClick={() => onMethodChange("cash")}
+                icon={<Banknote className="size-4" />}
+                label="Efectivo"
+              />
             </div>
             <Select
-              value={otherSelected ? method : ""}
+              value={otherSelected ? (method ?? "") : ""}
               onValueChange={(v) => onMethodChange(v as PaymentMethod)}
             >
               <SelectTrigger
@@ -159,6 +161,12 @@ export function DepositField({
               </SelectContent>
             </Select>
           </div>
+
+          {amount > 0 && !method ? (
+            <p className="text-xs text-amber-700">
+              Elegí cómo se abonó: así la seña va a efectivo o a transferencias.
+            </p>
+          ) : null}
 
           {amount > 0 ? (
             <div className="space-y-0.5 text-xs text-muted-foreground border-t pt-2">

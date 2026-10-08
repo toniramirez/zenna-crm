@@ -265,7 +265,7 @@ export function NewTurnoDialog({
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [depositAmount, setDepositAmount] = useState<number>(0);
-  const [depositMethod, setDepositMethod] = useState<PaymentMethod>("cash");
+  const [depositMethod, setDepositMethod] = useState<PaymentMethod | null>(null);
   const [isPending, startTransition] = useTransition();
 
   // Mobile detection — the embedded FullCalendar is unusable on phones
@@ -302,7 +302,7 @@ export function NewTurnoDialog({
     setSelectedServiceIds([]);
     setNotes("");
     setDepositAmount(0);
-    setDepositMethod("cash");
+    setDepositMethod(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, conversationId]);
 
@@ -422,6 +422,10 @@ export function NewTurnoDialog({
       toast.error("Elegí al menos un servicio.");
       return;
     }
+    if (depositAmount > 0 && !depositMethod) {
+      toast.error("Elegí cómo se abonó la seña (efectivo o transferencia).");
+      return;
+    }
     if (!professionalId || !startsAt) {
       toast.error("Tocá un horario libre en la agenda.");
       return;
@@ -448,7 +452,7 @@ export function NewTurnoDialog({
     formData.set("notes", notes);
     formData.set("serviceIds", selectedServiceIds.join(","));
     formData.set("depositAmount", String(depositAmount > 0 ? depositAmount : 0));
-    formData.set("depositMethod", depositAmount > 0 ? depositMethod : "");
+    formData.set("depositMethod", depositAmount > 0 ? depositMethod ?? "" : "");
 
     startTransition(async () => {
       const result = await createAppointmentAction(formData);
