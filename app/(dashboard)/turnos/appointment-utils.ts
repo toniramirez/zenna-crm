@@ -1,10 +1,10 @@
 import type { AppointmentWithRelations } from "./types";
 
 /**
- * Ventana de turnos que precarga la página. Navegar día/semana dentro de este
- * rango no vuelve a pegarle al servidor; fuera de él, sencillamente no hay
- * datos hasta recargar — y por eso la agenda móvil lo avisa en vez de mostrar
- * un día vacío que parece libre.
+ * Ventana de turnos que precarga la página, alrededor del día que se está
+ * mirando. Navegar día/semana dentro de este rango no vuelve a pegarle al
+ * servidor; al salirse, la agenda pide la ventana nueva (ver
+ * ./use-appointment-window).
  */
 export const WINDOW_DAYS_BACK = 14;
 export const WINDOW_DAYS_FORWARD = 42;

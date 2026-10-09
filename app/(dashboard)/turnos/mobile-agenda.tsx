@@ -26,14 +26,17 @@ import {
   firstName,
   money,
   servicesLabel,
-  WINDOW_DAYS_BACK,
-  WINDOW_DAYS_FORWARD,
 } from "./appointment-utils";
 import type { AppointmentWithRelations, ProfessionalRow } from "./types";
+import {
+  type LoadedWindow,
+  useAppointmentWindow,
+} from "./use-appointment-window";
 
 type Props = {
   professionals: ProfessionalRow[];
   appointments: AppointmentWithRelations[];
+  loadedWindow: LoadedWindow;
   onOpenAppointment: (appointment: AppointmentWithRelations) => void;
   onCreate: (startsAtIso: string, professionalId: string) => void;
   /** Abre el WhatsApp de la clienta del turno. */
@@ -72,6 +75,7 @@ type Row =
 export function MobileAgenda({
   professionals,
   appointments,
+  loadedWindow,
   onOpenAppointment,
   onCreate,
   onMessageClient,
@@ -166,15 +170,11 @@ export function MobileAgenda({
   }, [visible]);
 
   /**
-   * ¿El día visible cae fuera de lo que precargó el server? Si es así el día
-   * se ve vacío aunque tenga turnos, y hay que decirlo: un "no hay turnos"
-   * mentiroso hace que alguien sobrevenda una fecha.
+   * ¿El día visible todavía no llegó del server? Mientras tanto se ve vacío
+   * aunque tenga turnos, y hay que decirlo: un "no hay turnos" mentiroso hace
+   * que alguien sobrevenda una fecha.
    */
-  const outsideWindow = useMemo(() => {
-    const first = startOfDay(addDays(now, -WINDOW_DAYS_BACK));
-    const last = startOfDay(addDays(now, WINDOW_DAYS_FORWARD));
-    return range.start < first || range.start >= last;
-  }, [now, range.start]);
+  const loadingRange = useAppointmentWindow(range, loadedWindow);
 
   const title = useMemo(() => {
     if (view === "week") {
@@ -369,19 +369,18 @@ export function MobileAgenda({
         {groups.length === 0 ? (
           <div className="px-8 py-14 text-center">
             <p className="text-sm font-medium text-foreground">
-              {outsideWindow
-                ? "Fecha fuera de la agenda cargada"
+              {loadingRange
+                ? "Cargando turnos…"
                 : proFilter === "all"
                   ? "No hay turnos"
                   : "Sin turnos para esta profesional"}
             </p>
-            <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">
-              {outsideWindow
-                ? "Recargá la página para traer los turnos de esta fecha."
-                : `Tocá el botón «+» para agendar ${
-                    view === "week" ? "en esta semana" : "en este día"
-                  }.`}
-            </p>
+            {loadingRange ? null : (
+              <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">
+                Tocá el botón «+» para agendar{" "}
+                {view === "week" ? "en esta semana" : "en este día"}.
+              </p>
+            )}
           </div>
         ) : (
           groups.map((group) => (

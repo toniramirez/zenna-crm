@@ -1,4 +1,4 @@
-import { addDays, startOfDay } from "date-fns";
+import { addDays, isValid, parseISO, startOfDay } from "date-fns";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -11,22 +11,36 @@ import type { AppointmentWithRelations } from "./types";
 export const dynamic = "force-dynamic";
 
 /**
- * Window of appointments to load. We pre-load a generous range so navigating
- * day/week within FullCalendar doesn't require a re-fetch. Anything outside
- * this window simply won't render until the user reloads.
- *
- * 2 weeks back + 6 weeks forward = ~8 weeks of context.
+ * Ventana de turnos que se carga: 2 semanas antes y 6 después de `anchor`.
+ * Navegar día/semana adentro de ese rango no vuelve a pegarle al servidor.
+ * Cuando la agenda se sale (ir a diciembre desde octubre) mueve `?fecha=` al
+ * día visible y esta página trae la ventana nueva — ver
+ * ./use-appointment-window.
  */
-function appointmentWindow(now: Date) {
-  const start = startOfDay(addDays(now, -WINDOW_DAYS_BACK));
-  const end = startOfDay(addDays(now, WINDOW_DAYS_FORWARD));
+function appointmentWindow(anchor: Date) {
+  const start = startOfDay(addDays(anchor, -WINDOW_DAYS_BACK));
+  const end = startOfDay(addDays(anchor, WINDOW_DAYS_FORWARD));
   return { start, end };
 }
 
-export default async function TurnosPage() {
+/** `?fecha=2026-12-15` → ese día; cualquier otra cosa → hoy. */
+function parseAnchor(value: string | string[] | undefined): Date {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const date = parseISO(value);
+    if (isValid(date)) return date;
+  }
+  return new Date();
+}
+
+export default async function TurnosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ fecha?: string | string[] }>;
+}) {
   await requireRole(["owner", "receptionist"]);
+  const { fecha } = await searchParams;
   const supabase = await createClient();
-  const { start, end } = appointmentWindow(new Date());
+  const { start, end } = appointmentWindow(parseAnchor(fecha));
 
   const [
     professionalsResult,
@@ -74,6 +88,7 @@ export default async function TurnosPage() {
       services={services}
       clients={clients}
       appointments={appointments}
+      loadedWindow={{ start: start.toISOString(), end: end.toISOString() }}
     />
   );
 }

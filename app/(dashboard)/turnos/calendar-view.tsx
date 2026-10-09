@@ -49,6 +49,10 @@ import type {
   ProfessionalRow,
   ServiceRow,
 } from "./types";
+import {
+  type LoadedWindow,
+  useAppointmentWindow,
+} from "./use-appointment-window";
 import { WhatsAppDialog } from "./whatsapp-dialog";
 
 /*
@@ -71,6 +75,7 @@ type Props = {
   services: ServiceRow[];
   clients: Pick<ClientRow, "id" | "full_name" | "phone">[];
   appointments: AppointmentWithRelations[];
+  loadedWindow: LoadedWindow;
 };
 
 /**
@@ -133,6 +138,7 @@ export function CalendarView({
   services,
   clients,
   appointments,
+  loadedWindow,
 }: Props) {
   const router = useRouter();
   const calendarRef = useRef<FullCalendar | null>(null);
@@ -161,6 +167,7 @@ export function CalendarView({
   // título, de los totales y del resaltado del date-picker: así el toolbar
   // sigue en sincronía aunque se navegue con el teclado o arrastrando.
   const [range, setRange] = useState<{ start: Date; end: Date } | null>(null);
+  const loadingRange = useAppointmentWindow(range, loadedWindow);
 
   // Hydration-safe initial date. De paso fijamos el scroll inicial una hora
   // antes de "ahora", que es lo que hace que al abrir la agenda se vea el
@@ -536,6 +543,7 @@ export function CalendarView({
         <MobileAgenda
           professionals={professionals}
           appointments={appointments}
+          loadedWindow={loadedWindow}
           onOpenAppointment={(appointment) => {
             setDialogMode({ type: "edit", appointment });
             setDialogOpen(true);
@@ -640,8 +648,14 @@ export function CalendarView({
             {title}
           </div>
           <div className="text-[0.8125rem] text-muted-foreground tabular-nums">
-            {totals.count} {totals.count === 1 ? "turno" : "turnos"} ·{" "}
-            {money(totals.revenue)}
+            {loadingRange ? (
+              "Cargando turnos…"
+            ) : (
+              <>
+                {totals.count} {totals.count === 1 ? "turno" : "turnos"} ·{" "}
+                {money(totals.revenue)}
+              </>
+            )}
           </div>
         </div>
 
