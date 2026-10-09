@@ -33,14 +33,20 @@ export const paymentLineSchema = z.object({
 
 export type PaymentLineInput = z.infer<typeof paymentLineSchema>;
 
+/**
+ * Cierre de la venta de un turno. Sin líneas es válido: es el caso en que la
+ * seña cubrió todo (la base lo rechaza si el turno no tiene seña).
+ */
 export const recordPaymentSchema = z.object({
   appointmentId: z.string().uuid("Falta el turno."),
-  lines: z
-    .array(paymentLineSchema)
-    .min(1, "Cargá al menos una línea de pago.")
-    .refine((arr) => arr.some((l) => l.amount > 0), {
-      message: "Al menos una línea tiene que tener importe > 0.",
+  lines: z.array(
+    paymentLineSchema.extend({
+      amount: z
+        .number()
+        .positive("Cada pago tiene que tener importe.")
+        .max(99999999, "Importe fuera de rango."),
     }),
+  ),
   notes: z.string().max(500).optional().or(z.literal("")),
 });
 

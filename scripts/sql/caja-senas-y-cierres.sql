@@ -1,6 +1,9 @@
 -- ─────────────────────────────────────────────────────────────────────────
 -- Señas que entran a la caja del día en que se cobran + cierres de caja
 --
+-- (Seguido por caja-ventas-y-controles.sql, que corrige cuándo un turno
+-- está cobrado y mueve las señas viejas al día en que entraron.)
+--
 -- Correr una sola vez en el SQL Editor de Supabase, DESPUÉS de
 -- appointments-deposit.sql. Es idempotente: se puede volver a correr.
 --

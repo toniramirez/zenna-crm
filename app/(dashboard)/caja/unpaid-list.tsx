@@ -1,7 +1,8 @@
 "use client";
 
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
+import { formatInTimeZone } from "date-fns-tz";
 import { Wallet } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -13,22 +14,24 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ZENNA_TZ } from "@/lib/dates";
 import { formatCurrency } from "@/lib/format";
+import { PAYMENT_METHODS } from "@/lib/validations/payments";
 import { CobrarDialog } from "./cobrar-dialog";
-import type { UnpaidAppointment } from "./types";
+import type { DayAppointment } from "./types";
 
 export function UnpaidList({
   appointments,
   loadError = null,
 }: {
-  appointments: UnpaidAppointment[];
+  appointments: DayAppointment[];
   /** Mensaje de error si la consulta falló. Nunca lo disfrazamos de lista vacía. */
   loadError?: string | null;
 }) {
-  const [target, setTarget] = useState<UnpaidAppointment | null>(null);
+  const [target, setTarget] = useState<DayAppointment | null>(null);
   const [open, setOpen] = useState(false);
 
-  function openCobrar(a: UnpaidAppointment) {
+  function openCobrar(a: DayAppointment) {
     setTarget(a);
     setOpen(true);
   }
@@ -56,7 +59,7 @@ export function UnpaidList({
     return (
       <div className="rounded-md border bg-card p-6 text-center">
         <p className="text-sm text-muted-foreground">
-          No hay turnos pendientes de cobro hoy.
+          No hay turnos pendientes de cobro.
         </p>
       </div>
     );
@@ -72,7 +75,8 @@ export function UnpaidList({
               <TableHead>Clienta</TableHead>
               <TableHead>Profesional</TableHead>
               <TableHead>Servicios</TableHead>
-              <TableHead className="text-right">Total</TableHead>
+              <TableHead>Seña</TableHead>
+              <TableHead className="text-right">Precio</TableHead>
               <TableHead className="w-[110px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -80,7 +84,7 @@ export function UnpaidList({
             {appointments.map((a) => (
               <TableRow key={a.id}>
                 <TableCell className="tabular-nums text-sm">
-                  {format(new Date(a.starts_at), "HH:mm", { locale: es })}
+                  {formatInTimeZone(a.starts_at, ZENNA_TZ, "HH:mm", { locale: es })}
                 </TableCell>
                 <TableCell className="font-medium">
                   {a.client?.full_name ?? "—"}
@@ -103,16 +107,41 @@ export function UnpaidList({
                 <TableCell className="text-sm text-muted-foreground truncate max-w-[280px]">
                   {a.services.map((s) => s.name).join(" + ") || "—"}
                 </TableCell>
-                <TableCell className="text-right tabular-nums font-medium">
-                  {formatCurrency(a.total_price)}
+                <TableCell className="text-sm">
                   {a.deposit_amount > 0 ? (
-                    <span className="block text-xs font-normal text-emerald-700">
-                      seña −{formatCurrency(a.deposit_amount)} · saldo{" "}
-                      {formatCurrency(
-                        Math.max(0, a.total_price - a.deposit_amount),
-                      )}
+                    <>
+                      <span className="tabular-nums font-medium text-emerald-700">
+                        {formatCurrency(a.deposit_amount)}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        {methodShort(a.deposit_method)}
+                        {a.deposit_paid_on
+                          ? ` · ${format(parseISO(a.deposit_paid_on + "T12:00:00"), "d/M", { locale: es })}`
+                          : ""}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {a.total_price > 0 ? (
+                    <>
+                      {formatCurrency(a.total_price)}
+                      {a.deposit_amount > 0 ? (
+                        <span className="block text-xs text-muted-foreground">
+                          falta{" "}
+                          {formatCurrency(
+                            Math.max(0, a.total_price - a.deposit_amount),
+                          )}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      a definir
                     </span>
-                  ) : null}
+                  )}
                 </TableCell>
                 <TableCell>
                   <Button size="sm" onClick={() => openCobrar(a)}>
@@ -136,4 +165,8 @@ export function UnpaidList({
       />
     </>
   );
+}
+
+function methodShort(method: DayAppointment["deposit_method"]): string {
+  return PAYMENT_METHODS.find((m) => m.value === method)?.short ?? "";
 }

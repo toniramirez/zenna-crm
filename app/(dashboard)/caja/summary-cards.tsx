@@ -13,8 +13,9 @@ type Props = {
   cashToRender: number;
   cashIncome: number;
   cashExpensesForDay: number;
-  totalIncome: number;
-  paymentsCount: number;
+  salesTotal: number;
+  salesCount: number;
+  pendingCount: number;
   totalExpensesMonth: number;
   netResultDay: number;
   monthLabel: string;
@@ -25,8 +26,9 @@ export function CajaSummaryCards({
   cashToRender,
   cashIncome,
   cashExpensesForDay,
-  totalIncome,
-  paymentsCount,
+  salesTotal,
+  salesCount,
+  pendingCount,
   totalExpensesMonth,
   netResultDay,
   monthLabel,
@@ -91,7 +93,7 @@ export function CajaSummaryCards({
             {money(cashToRender)}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Cobrado en efectivo {money(cashIncome)}
+            Entró en efectivo {money(cashIncome)}
             {cashExpensesForDay > 0
               ? ` − egresos atribuidos a esta caja ${money(cashExpensesForDay)}`
               : ""}
@@ -101,13 +103,17 @@ export function CajaSummaryCards({
         <div className="rounded-xl border bg-card p-5 shadow-sm">
           <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
             <ArrowUpRight className="size-3.5 text-emerald-600" />
-            Ingresos del día
+            Ventas del día
           </div>
           <div className="mt-2 text-3xl font-semibold tabular-nums">
-            {money(totalIncome)}
+            {money(salesTotal)}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {paymentsCount} cobro{paymentsCount === 1 ? "" : "s"}
+            {salesCount} turno{salesCount === 1 ? "" : "s"} cobrado
+            {salesCount === 1 ? "" : "s"}
+            {pendingCount > 0
+              ? ` · ${pendingCount} pendiente${pendingCount === 1 ? "" : "s"}`
+              : ""}
           </p>
         </div>
 

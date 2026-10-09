@@ -304,14 +304,13 @@ async function findMatchingAppointments(
 }
 
 /**
- * Turnos cobrados hace `offset`. Se entra por `payments` y no por
- * `appointments` porque el cobro no deja fecha en el turno: un turno del
- * martes que se cobró el jueves tiene que disparar el jueves.
+ * Turnos cobrados hace `offset`. El cobro es el cierre de la venta
+ * (`charged_at`), no la fecha del turno: un turno del martes que se cobró el
+ * jueves tiene que disparar el jueves.
  *
- * Un cobro son varias filas de `payments` (una por método) insertadas en la
- * misma transacción, así que la lista se deduplica por turno antes de salir.
- * Aun así el único de la tabla de destino es la garantía real: dos cobros
- * parciales en momentos distintos caerían en ventanas distintas.
+ * La seña no cuenta: se paga al agendar y no es "la clienta pagó el servicio".
+ * Y un turno que la seña cubrió entero también dispara, aunque al cerrarlo no
+ * haya entrado ningún pago nuevo.
  */
 async function findPaidAppointments(
   supabase: SupabaseClient<Database>,
@@ -322,27 +321,11 @@ async function findPaidAppointments(
   const lo = new Date(now.getTime() - offsetMs - TICK_WINDOW_MS);
   const hi = new Date(now.getTime() - offsetMs);
 
-  const { data: paid, error: payErr } = await supabase
-    .from("payments")
-    .select("appointment_id")
-    // La seña se paga al agendar, antes del turno: no es "la clienta pagó el
-    // servicio" y no puede disparar flujos post-cobro como la reseña.
-    .eq("is_deposit", false)
-    .gte("paid_at", lo.toISOString())
-    .lt("paid_at", hi.toISOString());
-
-  if (payErr) {
-    console.error("[automations] payments query error:", payErr.message);
-    return [];
-  }
-
-  const appointmentIds = [...new Set((paid ?? []).map((p) => p.appointment_id))];
-  if (appointmentIds.length === 0) return [];
-
   const { data, error } = await supabase
     .from("appointments")
     .select(APPOINTMENT_SELECT)
-    .in("id", appointmentIds)
+    .gte("charged_at", lo.toISOString())
+    .lt("charged_at", hi.toISOString())
     .not("status", "in", '("cancelled","no_show")');
 
   if (error) {

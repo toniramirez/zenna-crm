@@ -581,7 +581,8 @@ function AppointmentRow({
 
           {showProfessional ||
           appointment.status !== "scheduled" ||
-          appointment.deposit_amount > 0 ? (
+          appointment.deposit_amount > 0 ||
+          appointment.charged_at ? (
             <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
               {showProfessional && professional ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[0.6875rem] text-muted-foreground">
@@ -605,9 +606,15 @@ function AppointmentRow({
                   {STATUS_LABEL[appointment.status]}
                 </span>
               ) : null}
-              {appointment.deposit_amount > 0 ? (
-                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[0.6875rem] font-medium text-emerald-900 tabular-nums">
-                  Seña {money(appointment.deposit_amount)}
+              {/* Verde sólo cuando se cerró la venta. Una seña es plata a
+                  cuenta, no un turno pago: va en ámbar hasta que se cobre. */}
+              {appointment.charged_at ? (
+                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[0.6875rem] font-medium text-emerald-900">
+                  Cobrado
+                </span>
+              ) : appointment.deposit_amount > 0 ? (
+                <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[0.6875rem] font-medium text-amber-900 tabular-nums">
+                  Seña {money(appointment.deposit_amount)} · falta cobrar
                 </span>
               ) : null}
             </span>

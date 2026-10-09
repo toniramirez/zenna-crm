@@ -69,6 +69,7 @@ export type Database = {
       appointments: {
         Row: {
           client_id: string
+          charged_at: string | null
           created_at: string
           created_by: string | null
           deposit_amount: number
@@ -84,6 +85,7 @@ export type Database = {
         }
         Insert: {
           client_id: string
+          charged_at?: string | null
           created_at?: string
           created_by?: string | null
           deposit_amount?: number
@@ -99,6 +101,7 @@ export type Database = {
         }
         Update: {
           client_id?: string
+          charged_at?: string | null
           created_at?: string
           created_by?: string | null
           deposit_amount?: number

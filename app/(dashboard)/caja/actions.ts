@@ -42,11 +42,12 @@ export async function recordPaymentAction(
 
   const supabase = await createClient();
 
-  // Sólo el saldo: la seña ya es un pago propio (en la caja del día en que se
-  // cobró), y cobrar_turno la deja intacta.
+  // Sólo lo que falta: la seña ya es un movimiento propio (en la caja del día
+  // en que entró) y cobrar_turno la deja intacta. Sin líneas, cierra la venta
+  // de un turno que la seña cubrió entera.
   const { error } = await supabase.rpc("cobrar_turno", {
     p_appointment_id: parsed.data.appointmentId,
-    p_lines: parsed.data.lines.filter((l) => l.amount > 0),
+    p_lines: parsed.data.lines,
     p_notes: parsed.data.notes || undefined,
   });
 
@@ -59,6 +60,9 @@ export async function recordPaymentAction(
     }
     if (error.hint === "ya_cobrado") {
       return { error: "Este turno ya estaba cobrado. Recargá la página." };
+    }
+    if (error.hint === "sin_monto") {
+      return { error: "El turno no tiene seña: cargá lo que pagó." };
     }
     console.error("[caja] record_appointment_payment failed:", error);
     if (process.env.NODE_ENV !== "production") {

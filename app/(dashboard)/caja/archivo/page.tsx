@@ -1,5 +1,6 @@
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
+import { formatInTimeZone } from "date-fns-tz";
 import { ArrowLeft, Lock, LockOpen } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -13,91 +14,106 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { requireRole } from "@/lib/auth";
-import { monthBounds, todayDateStr } from "@/lib/dates";
+import { monthBounds, todayDateStr, ZENNA_TZ } from "@/lib/dates";
 import { formatCurrency } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
-import type { PaymentMethod } from "@/lib/validations/payments";
+import { cn } from "@/lib/utils";
 import { MonthNav } from "../../finanzas/month-nav";
 import {
   computeDayTotals,
   type DayTotals,
   diffClass,
   formatDiff,
+  type MethodGroup,
 } from "../day-totals";
 import type { CashClosingRow } from "../types";
+import { CajaControls } from "./controls";
+import { fetchMonthPayments, fetchMonthSales } from "./data";
+import { MovementsLedger, type MovementType } from "./movements";
 
 export const dynamic = "force-dynamic";
 
-const PAGE_SIZE = 1000;
-
 type Props = {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{
+    month?: string;
+    vista?: string;
+    metodo?: string;
+    tipo?: string;
+  }>;
 };
 
-type PaymentLite = {
-  caja_date: string;
-  method: PaymentMethod;
-  amount: number;
-  is_deposit: boolean;
+type DayRow = {
+  day: string;
+  sales: number;
+  totals: DayTotals;
+  closing: CashClosingRow | null;
 };
 
 /**
- * Archivo de cajas: una fila por día del mes con movimiento, con el efectivo
- * y las transferencias por separado y el cierre (contado vs esperado) si se
- * hizo. Los totales se calculan en vivo; el cierre es la foto guardada.
+ * Archivo de cajas del mes, en dos vistas:
+ *   · Por día: ventas del día (turnos de ese día) y, aparte, el dinero que
+ *     entró ese día (efectivo / transferencias / otros) con su cierre.
+ *   · Movimientos: cada peso que entró, para rastrearlo contra el banco y el
+ *     cajón.
+ * Arriba, los controles: lo que debería estar y no está.
  */
 export default async function CajaArchivoPage({ searchParams }: Props) {
   await requireRole(["owner", "receptionist"]);
 
-  const { month: monthParam } = await searchParams;
+  const params = await searchParams;
   const today = todayDateStr();
   const month =
-    monthParam && /^\d{4}-\d{2}$/.test(monthParam)
-      ? monthParam
+    params.month && /^\d{4}-\d{2}$/.test(params.month)
+      ? params.month
       : today.slice(0, 7);
+  const view = params.vista === "movimientos" ? "movimientos" : "dias";
+  const method: MethodGroup | "all" =
+    params.metodo === "cash" ||
+    params.metodo === "transfer" ||
+    params.metodo === "other"
+      ? params.metodo
+      : "all";
+  const type: MovementType =
+    params.tipo === "deposit" || params.tipo === "charge" ? params.tipo : "all";
   const { firstDay, lastDay } = monthBounds(`${month}-01`);
 
   const supabase = await createClient();
 
-  // Un mes con mucho movimiento puede pasar el tope de filas de PostgREST.
-  const payments: PaymentLite[] = [];
-  let paymentsError: string | null = null;
-  for (let page = 0; ; page += 1) {
-    const { data, error } = await supabase
-      .from("payments")
-      .select("caja_date, method, amount, is_deposit")
-      .gte("caja_date", firstDay)
-      .lte("caja_date", lastDay)
-      .order("id")
-      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
-    if (error) {
-      console.error("[caja/archivo] payments query failed:", error);
-      paymentsError = error.message;
-      break;
-    }
-    payments.push(...(data ?? []));
-    if ((data ?? []).length < PAGE_SIZE) break;
-  }
-
   // Sólo el total de egresos en efectivo de cada caja (sin detalle): es lo
   // que hace falta para saber cuánto efectivo tendría que haber.
-  const [expensesResult, closingsResult] = await Promise.all([
-    supabase
-      .from("expenses")
-      .select("amount, cash_source_date")
-      .eq("payment_method", "cash")
-      .gte("cash_source_date", firstDay)
-      .lte("cash_source_date", lastDay),
-    supabase
-      .from("cash_closings")
-      .select("*")
-      .gte("caja_date", firstDay)
-      .lte("caja_date", lastDay),
-  ]);
+  const [paymentsResult, salesResult, expensesResult, closingsResult] =
+    await Promise.all([
+      fetchMonthPayments(supabase, firstDay, lastDay),
+      fetchMonthSales(supabase, firstDay, lastDay),
+      supabase
+        .from("expenses")
+        .select("amount, cash_source_date")
+        .eq("payment_method", "cash")
+        .gte("cash_source_date", firstDay)
+        .lte("cash_source_date", lastDay),
+      supabase
+        .from("cash_closings")
+        .select("*")
+        .gte("caja_date", firstDay)
+        .lte("caja_date", lastDay),
+    ]);
 
-  if (closingsResult.error) {
-    console.error("[caja/archivo] closings query failed:", closingsResult.error);
+  for (const [label, error] of [
+    ["payments", paymentsResult.error],
+    ["sales", salesResult.error],
+    ["expenses", expensesResult.error?.message ?? null],
+    ["closings", closingsResult.error?.message ?? null],
+  ] as const) {
+    if (error) console.error(`[caja/archivo] ${label} query failed:`, error);
   }
+  const loadError =
+    paymentsResult.error ??
+    salesResult.error ??
+    expensesResult.error?.message ??
+    closingsResult.error?.message ??
+    null;
+
+  const payments = paymentsResult.rows;
 
   const cashExpensesByDay = new Map<string, number>();
   for (const e of expensesResult.data ?? []) {
@@ -108,11 +124,19 @@ export default async function CajaArchivoPage({ searchParams }: Props) {
     );
   }
 
-  const paymentsByDay = new Map<string, PaymentLite[]>();
+  const paymentsByDay = new Map<string, typeof payments>();
   for (const p of payments) {
     const list = paymentsByDay.get(p.caja_date) ?? [];
     list.push(p);
     paymentsByDay.set(p.caja_date, list);
+  }
+
+  // La venta es del día del turno (en hora de Córdoba).
+  const salesByDay = new Map<string, number>();
+  for (const a of salesResult.rows) {
+    const day = formatInTimeZone(a.starts_at, ZENNA_TZ, "yyyy-MM-dd");
+    const total = a.payments.reduce((acc, p) => acc + Number(p.amount), 0);
+    salesByDay.set(day, (salesByDay.get(day) ?? 0) + total);
   }
 
   const closings = new Map<string, CashClosingRow>(
@@ -125,23 +149,25 @@ export default async function CajaArchivoPage({ searchParams }: Props) {
   const days = [
     ...new Set([
       ...paymentsByDay.keys(),
+      ...salesByDay.keys(),
       ...cashExpensesByDay.keys(),
       ...closings.keys(),
     ]),
   ].sort((a, b) => b.localeCompare(a));
 
-  const rows: { day: string; totals: DayTotals; closing: CashClosingRow | null }[] =
-    days.map((day) => ({
-      day,
-      totals: computeDayTotals(
-        paymentsByDay.get(day) ?? [],
-        cashExpensesByDay.get(day) ?? 0,
-      ),
-      closing: closings.get(day) ?? null,
-    }));
+  const rows: DayRow[] = days.map((day) => ({
+    day,
+    sales: salesByDay.get(day) ?? 0,
+    totals: computeDayTotals(
+      paymentsByDay.get(day) ?? [],
+      cashExpensesByDay.get(day) ?? 0,
+    ),
+    closing: closings.get(day) ?? null,
+  }));
 
   const sum = (pick: (t: DayTotals) => number) =>
     rows.reduce((acc, r) => acc + pick(r.totals), 0);
+  const salesTotal = rows.reduce((acc, r) => acc + r.sales, 0);
   const diffTotal = rows.reduce(
     (acc, r) =>
       r.closing
@@ -149,12 +175,17 @@ export default async function CajaArchivoPage({ searchParams }: Props) {
         : acc,
     0,
   );
-  const openPastDays = rows.filter(
-    (r) => !r.closing && r.day < today && r.totals.cash > 0,
-  ).length;
+  const openCashDays = rows
+    .filter((r) => !r.closing && r.day < today && r.totals.cash > 0)
+    .map((r) => r.day);
+
+  const viewHref = (v: "dias" | "movimientos") =>
+    v === "dias"
+      ? `/caja/archivo?month=${month}`
+      : `/caja/archivo?month=${month}&vista=movimientos`;
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="space-y-8 max-w-6xl">
       <div className="space-y-3">
         <Button asChild variant="ghost" size="sm" className="-ml-2">
           <Link href="/caja">
@@ -168,27 +199,39 @@ export default async function CajaArchivoPage({ searchParams }: Props) {
               Archivo de cajas
             </h1>
             <p className="text-sm text-muted-foreground">
-              Cada día con su efectivo, sus transferencias y el cierre.
+              Las ventas de cada día, el dinero que entró y los cierres.
             </p>
           </div>
-          <MonthNav month={month} basePath="/caja/archivo" />
+          <MonthNav
+            month={month}
+            basePath="/caja/archivo"
+            extraParams={view === "movimientos" ? "vista=movimientos" : ""}
+          />
         </div>
       </div>
 
-      {paymentsError ? (
+      {loadError ? (
         <div className="rounded-md border border-destructive/40 bg-destructive/5 p-6 text-center">
           <p className="text-sm font-medium text-destructive">
-            No pudimos cargar los cobros del mes.
+            No pudimos cargar todo el mes: los números de abajo pueden estar
+            incompletos.
           </p>
           <p className="mt-2 text-xs font-mono text-muted-foreground break-all">
-            {paymentsError}
+            {loadError}
           </p>
         </div>
       ) : null}
 
-      {/* Totales del mes */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat label="Efectivo cobrado" value={formatCurrency(sum((t) => t.cash))} />
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <Stat
+          label="Ventas del mes"
+          value={formatCurrency(salesTotal)}
+          hint="Turnos cobrados, por día del turno"
+        />
+        <Stat
+          label="Efectivo que entró"
+          value={formatCurrency(sum((t) => t.cash))}
+        />
         <Stat
           label="Transferencias"
           value={formatCurrency(sum((t) => t.transfer))}
@@ -201,136 +244,228 @@ export default async function CajaArchivoPage({ searchParams }: Props) {
           label="Diferencias de cierre"
           value={formatDiff(diffTotal)}
           valueClass={diffClass(diffTotal)}
-          hint={
-            openPastDays > 0
-              ? `${openPastDays} día${openPastDays === 1 ? "" : "s"} con efectivo sin cerrar`
-              : "Todos los días con efectivo están cerrados"
-          }
         />
       </div>
 
-      {rows.length === 0 && !paymentsError ? (
-        <div className="rounded-md border bg-card p-6 text-center">
-          <p className="text-sm text-muted-foreground">
-            No hay movimientos en este mes.
-          </p>
+      <CajaControls
+        firstDay={firstDay}
+        lastDay={lastDay}
+        today={today}
+        openCashDays={openCashDays}
+      />
+
+      <section className="space-y-3">
+        <div className="inline-flex rounded-md border p-0.5 bg-muted/40">
+          {(
+            [
+              { value: "dias", label: "Por día" },
+              { value: "movimientos", label: "Movimientos" },
+            ] as const
+          ).map((v) => (
+            <Link
+              key={v.value}
+              href={viewHref(v.value)}
+              className={cn(
+                "px-3 py-1.5 text-sm rounded-[5px] transition-colors",
+                view === v.value
+                  ? "bg-background shadow-sm font-medium"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {v.label}
+            </Link>
+          ))}
         </div>
-      ) : rows.length > 0 ? (
-        <div className="rounded-md border bg-card overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Día</TableHead>
-                <TableHead className="text-right">Efectivo</TableHead>
-                <TableHead className="text-right">Egresos ef.</TableHead>
-                <TableHead className="text-right">Esperado</TableHead>
-                <TableHead className="text-right">Contado</TableHead>
-                <TableHead className="text-right">Diferencia</TableHead>
-                <TableHead className="text-right">Transferencias</TableHead>
-                <TableHead className="text-right">Otros</TableHead>
-                <TableHead>Estado</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map(({ day, totals, closing }) => {
-                const diff = closing
-                  ? Number(closing.counted_cash) - Number(closing.expected_cash)
-                  : null;
-                const changed =
-                  closing &&
-                  Math.abs(Number(closing.expected_cash) - totals.expectedCash) >= 0.01;
-                return (
-                  <TableRow key={day}>
-                    <TableCell className="font-medium whitespace-nowrap">
-                      <Link
-                        href={day === today ? "/caja" : `/caja?date=${day}`}
-                        className="hover:underline capitalize-first"
-                      >
-                        {format(parseISO(day + "T12:00:00"), "EEE d/M", {
-                          locale: es,
-                        })}
-                      </Link>
-                      {totals.deposits > 0 ? (
-                        <span className="block text-xs font-normal text-muted-foreground">
-                          incluye señas {formatCurrency(totals.deposits)}
-                        </span>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatCurrency(totals.cash)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-rose-700">
-                      {totals.cashExpenses > 0
-                        ? `−${formatCurrency(totals.cashExpenses)}`
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">
-                      {formatCurrency(totals.expectedCash)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {closing ? formatCurrency(closing.counted_cash) : "—"}
-                    </TableCell>
-                    <TableCell
-                      className={`text-right tabular-nums font-medium ${diff !== null ? diffClass(diff) : ""}`}
+
+        {view === "movimientos" ? (
+          <MovementsLedger
+            payments={payments}
+            month={month}
+            method={method}
+            type={type}
+          />
+        ) : (
+          <DaysTable
+            rows={rows}
+            today={today}
+            salesTotal={salesTotal}
+            sum={sum}
+            diffTotal={diffTotal}
+          />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function DaysTable({
+  rows,
+  today,
+  salesTotal,
+  sum,
+  diffTotal,
+}: {
+  rows: DayRow[];
+  today: string;
+  salesTotal: number;
+  sum: (pick: (t: DayTotals) => number) => number;
+  diffTotal: number;
+}) {
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-md border bg-card p-6 text-center">
+        <p className="text-sm text-muted-foreground">
+          No hay movimientos en este mes.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="rounded-md border bg-card overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead rowSpan={2}>Día</TableHead>
+              <TableHead rowSpan={2} className="text-right border-r">
+                Ventas
+              </TableHead>
+              <TableHead
+                colSpan={5}
+                className="text-center border-r h-8 text-xs uppercase tracking-wider"
+              >
+                Efectivo
+              </TableHead>
+              <TableHead
+                colSpan={2}
+                className="text-center h-8 text-xs uppercase tracking-wider"
+              >
+                Otros medios
+              </TableHead>
+              <TableHead rowSpan={2}>Caja</TableHead>
+            </TableRow>
+            <TableRow>
+              <TableHead className="text-right">Entró</TableHead>
+              <TableHead className="text-right">Egresos</TableHead>
+              <TableHead className="text-right">Esperado</TableHead>
+              <TableHead className="text-right">Contado</TableHead>
+              <TableHead className="text-right border-r">Diferencia</TableHead>
+              <TableHead className="text-right">Transferencias</TableHead>
+              <TableHead className="text-right">Tarjetas y otros</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map(({ day, sales, totals, closing }) => {
+              const diff = closing
+                ? Number(closing.counted_cash) - Number(closing.expected_cash)
+                : null;
+              const changed =
+                closing &&
+                Math.abs(Number(closing.expected_cash) - totals.expectedCash) >=
+                  0.01;
+              return (
+                <TableRow key={day}>
+                  <TableCell className="font-medium whitespace-nowrap">
+                    <Link
+                      href={day === today ? "/caja" : `/caja?date=${day}`}
+                      className="hover:underline capitalize-first"
                     >
-                      {diff !== null ? formatDiff(diff) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatCurrency(totals.transfer)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatCurrency(totals.other)}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-xs">
-                      {closing ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-700">
-                          <Lock className="size-3" />
-                          Cerrada
-                          {changed ? (
-                            <span className="text-amber-700">· cambió</span>
-                          ) : null}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-muted-foreground">
-                          <LockOpen className="size-3" />
-                          {day > today ? "Futura" : "Abierta"}
-                        </span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-            <TableFooter>
-              <TableRow>
-                <TableCell>Total del mes</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatCurrency(sum((t) => t.cash))}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-rose-700">
-                  −{formatCurrency(sum((t) => t.cashExpenses))}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatCurrency(sum((t) => t.expectedCash))}
-                </TableCell>
-                <TableCell />
-                <TableCell
-                  className={`text-right tabular-nums ${diffClass(diffTotal)}`}
-                >
-                  {formatDiff(diffTotal)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatCurrency(sum((t) => t.transfer))}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatCurrency(sum((t) => t.other))}
-                </TableCell>
-                <TableCell />
-              </TableRow>
-            </TableFooter>
-          </Table>
-        </div>
-      ) : null}
+                      {format(parseISO(day + "T12:00:00"), "EEE d/M", {
+                        locale: es,
+                      })}
+                    </Link>
+                    {totals.deposits > 0 ? (
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        entraron señas por {formatCurrency(totals.deposits)}
+                      </span>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums font-medium border-r">
+                    {sales > 0 ? formatCurrency(sales) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatCurrency(totals.cash)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-rose-700">
+                    {totals.cashExpenses > 0
+                      ? `−${formatCurrency(totals.cashExpenses)}`
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums font-medium">
+                    {formatCurrency(totals.expectedCash)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {closing ? formatCurrency(closing.counted_cash) : "—"}
+                  </TableCell>
+                  <TableCell
+                    className={`text-right tabular-nums font-medium border-r ${diff !== null ? diffClass(diff) : ""}`}
+                  >
+                    {diff !== null ? formatDiff(diff) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatCurrency(totals.transfer)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatCurrency(totals.other)}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-xs">
+                    {closing ? (
+                      <span className="inline-flex items-center gap-1 text-emerald-700">
+                        <Lock className="size-3" />
+                        Cerrada
+                        {changed ? (
+                          <span className="text-amber-700">· cambió</span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-muted-foreground">
+                        <LockOpen className="size-3" />
+                        {day > today ? "Futura" : "Abierta"}
+                      </span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+          <TableFooter>
+            <TableRow>
+              <TableCell>Total del mes</TableCell>
+              <TableCell className="text-right tabular-nums border-r">
+                {formatCurrency(salesTotal)}
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                {formatCurrency(sum((t) => t.cash))}
+              </TableCell>
+              <TableCell className="text-right tabular-nums text-rose-700">
+                −{formatCurrency(sum((t) => t.cashExpenses))}
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                {formatCurrency(sum((t) => t.expectedCash))}
+              </TableCell>
+              <TableCell />
+              <TableCell
+                className={`text-right tabular-nums border-r ${diffClass(diffTotal)}`}
+              >
+                {formatDiff(diffTotal)}
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                {formatCurrency(sum((t) => t.transfer))}
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                {formatCurrency(sum((t) => t.other))}
+              </TableCell>
+              <TableCell />
+            </TableRow>
+          </TableFooter>
+        </Table>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Ventas = turnos de ese día ya cobrados (seña + cobro al atender). Lo que
+        entró = plata que llegó ese día, incluidas las señas de turnos de otros
+        días. Por eso las dos columnas no tienen por qué coincidir.
+      </p>
     </div>
   );
 }
