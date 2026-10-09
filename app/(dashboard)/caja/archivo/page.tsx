@@ -19,6 +19,7 @@ import { formatCurrency } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import { MonthNav } from "../../finanzas/month-nav";
+import { PinGate } from "../../finanzas/pin-gate";
 import {
   computeDayTotals,
   type DayTotals,
@@ -30,6 +31,8 @@ import type { CashClosingRow } from "../types";
 import { CajaControls } from "./controls";
 import { fetchMonthPayments, fetchMonthSales } from "./data";
 import { MovementsLedger, type MovementType } from "./movements";
+import { submitArchivoPin } from "./pin-actions";
+import { hasArchivoPinAccess } from "./pin-config";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +62,25 @@ type DayRow = {
  */
 export default async function CajaArchivoPage({ searchParams }: Props) {
   await requireRole(["owner", "receptionist"]);
+
+  // Con PIN, como Finanzas: el historial de cajas y las diferencias de cierre
+  // no son para cualquiera que tenga la sesión abierta en el mostrador.
+  if (!(await hasArchivoPinAccess())) {
+    return (
+      <div className="space-y-6 max-w-6xl">
+        <Button asChild variant="ghost" size="sm" className="-ml-2">
+          <Link href="/caja">
+            <ArrowLeft className="size-4" />
+            Volver a la caja
+          </Link>
+        </Button>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Archivo de cajas
+        </h1>
+        <PinGate title="Archivo bloqueado" submit={submitArchivoPin} />
+      </div>
+    );
+  }
 
   const params = await searchParams;
   const today = todayDateStr();

@@ -12,9 +12,20 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { submitFinanzasPin } from "./pin-actions";
+import { type PinActionState, submitFinanzasPin } from "./pin-actions";
 
-export function PinGate() {
+/**
+ * Candado por PIN. Por defecto es el de Finanzas; otras secciones (el archivo
+ * de cajas) pasan su propio título y su propia acción, que guarda el permiso
+ * en una cookie atada a su ruta.
+ */
+export function PinGate({
+  title = "Finanzas bloqueadas",
+  submit = submitFinanzasPin,
+}: {
+  title?: string;
+  submit?: (formData: FormData) => Promise<PinActionState>;
+} = {}) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -24,7 +35,7 @@ export function PinGate() {
     const formData = new FormData(event.currentTarget);
     setError(null);
     startTransition(async () => {
-      const result = await submitFinanzasPin(formData);
+      const result = await submit(formData);
       if (result?.error) {
         setError(result.error);
         if (inputRef.current) {
@@ -42,7 +53,7 @@ export function PinGate() {
           <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
             <Lock className="size-5 text-muted-foreground" />
           </div>
-          <CardTitle>Finanzas bloqueadas</CardTitle>
+          <CardTitle>{title}</CardTitle>
           <CardDescription>
             Ingresá el PIN para acceder a esta sección.
           </CardDescription>
