@@ -11,8 +11,9 @@ import {
   startOfWeek,
 } from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarCheck, ChevronDown, MessageCircle, Plus } from "lucide-react";
+import { CalendarCheck, ChevronDown, Plus } from "lucide-react";
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { MobileChromeAccount } from "@/components/dashboard/mobile-chrome";
 import {
   FilterChip,
@@ -24,12 +25,14 @@ import {
   SWIPE_FOLLOW,
   useHorizontalSwipe,
 } from "@/components/dashboard/use-horizontal-swipe";
+import { WhatsAppIcon } from "@/components/icons/whatsapp";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { phoneDigits } from "@/lib/channels";
 import { cn } from "@/lib/utils";
 import {
   type AppointmentStatus,
@@ -56,8 +59,6 @@ type Props = {
   loadedWindow: LoadedWindow;
   onOpenAppointment: (appointment: AppointmentWithRelations) => void;
   onCreate: (startsAtIso: string, professionalId: string) => void;
-  /** Abre el WhatsApp de la clienta del turno. */
-  onMessageClient: (appointment: AppointmentWithRelations) => void;
 };
 
 type Row =
@@ -131,7 +132,6 @@ export function MobileAgenda({
   loadedWindow,
   onOpenAppointment,
   onCreate,
-  onMessageClient,
 }: Props) {
   // Este árbol sólo se monta en el cliente (el padre lo decide con
   // matchMedia), así que podemos leer el reloj al inicializar el estado.
@@ -415,7 +415,6 @@ export function MobileAgenda({
             new Date(row.appointment.ends_at) < now
           }
           onOpen={() => onOpenAppointment(row.appointment)}
-          onMessage={() => onMessageClient(row.appointment)}
         />
       );
     });
@@ -804,14 +803,12 @@ function AppointmentCard({
   showProfessional,
   past,
   onOpen,
-  onMessage,
 }: {
   appointment: AppointmentWithRelations;
   professional: ProfessionalRow | undefined;
   showProfessional: boolean;
   past: boolean;
   onOpen: () => void;
-  onMessage: () => void;
 }) {
   const start = new Date(appointment.starts_at);
   const end = new Date(appointment.ends_at);
@@ -821,6 +818,7 @@ function AppointmentCard({
     appointment.status === "cancelled" || appointment.status === "no_show";
   const color = professional?.color ?? FALLBACK_COLOR;
   const clientName = appointment.clients?.full_name ?? "Sin clienta";
+  const phone = phoneDigits(appointment.clients?.phone);
 
   const showStatus = appointment.status !== "scheduled";
   const showPayment = appointment.charged_at || appointment.deposit_amount > 0;
@@ -928,16 +926,37 @@ function AppointmentCard({
           Escribirle por WhatsApp, en su propia columna y no encima de la
           tarjeta: acá el dedo elige entre "abrir el turno" y "mandarle un
           mensaje", y dos blancos que se pisan terminan siempre en el toque
-          equivocado.
+          equivocado. Desde el teléfono va directo a la app de WhatsApp con
+          el chat de la clienta abierto, sin pasar por un diálogo.
         */}
-        <button
-          type="button"
-          onClick={onMessage}
-          aria-label={`Mandarle un WhatsApp a ${appointment.clients?.full_name ?? "la clienta"}`}
-          className="flex w-12 shrink-0 items-center justify-center border-l border-white/5 text-[var(--wa-accent)] active:bg-white/5"
-        >
-          <MessageCircle className="size-5" strokeWidth={1.9} />
-        </button>
+        {phone ? (
+          <a
+            href={`https://wa.me/${phone}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Abrir el WhatsApp de ${appointment.clients?.full_name ?? "la clienta"}`}
+            className="flex w-12 shrink-0 items-center justify-center border-l border-white/5 text-[#25D366] active:bg-white/5"
+          >
+            <WhatsAppIcon className="size-[1.375rem]" />
+          </a>
+        ) : (
+          // Sin teléfono no hay a dónde ir, pero el ícono se queda (apagado)
+          // para que la columna no baile entre tarjetas y el toque explique
+          // por qué no abre nada.
+          <button
+            type="button"
+            aria-disabled="true"
+            onClick={() =>
+              toast.error(
+                "Esta clienta no tiene un teléfono cargado. Agregalo desde Clientas para poder escribirle.",
+              )
+            }
+            aria-label={`${appointment.clients?.full_name ?? "La clienta"} no tiene teléfono cargado`}
+            className="flex w-12 shrink-0 items-center justify-center border-l border-white/5 text-[var(--wa-text-3)] opacity-50"
+          >
+            <WhatsAppIcon className="size-[1.375rem]" />
+          </button>
+        )}
       </div>
     </li>
   );

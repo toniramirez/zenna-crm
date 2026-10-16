@@ -552,7 +552,6 @@ export function CalendarView({
             setDialogMode({ type: "create", professionalId, startsAt });
             setDialogOpen(true);
           }}
-          onMessageClient={setMessaging}
         />
         <AppointmentDialog
           open={dialogOpen}
