@@ -22,10 +22,12 @@ import {
 const RADIUS = 46;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-const STYLES = {
-  ok: "bg-[var(--wa-chip-on)] text-[var(--wa-chip-on-text)]",
-  warm: "bg-[var(--wa-wait-warm-bg)] text-[var(--wa-wait-warm)]",
-  urgent: "bg-[var(--wa-wait-cold-bg)] text-[var(--wa-wait-cold)]",
+// Solo el anillo lleva el color del tramo: el círculo va vacío y el número
+// en el color del texto de la lista, para que la fila no se vuelva un semáforo.
+const RING = {
+  ok: "text-[var(--wa-accent)]",
+  warm: "text-[var(--wa-wait-warm)]",
+  urgent: "text-[var(--wa-wait-cold)]",
 } as const;
 
 export function windowTimerLabel(leftMs: number | null): string {
@@ -60,30 +62,28 @@ export function WindowTimer({
     <span
       aria-hidden
       className={cn(
-        "relative flex size-full flex-col items-center justify-center rounded-full leading-none tabular-nums",
-        STYLES[level],
+        "relative flex size-full flex-col items-center justify-center rounded-full leading-none tabular-nums text-[var(--wa-text)]",
         className,
       )}
     >
       <svg
         viewBox="0 0 100 100"
-        className="absolute inset-0 size-full -rotate-90"
+        className={cn("absolute inset-0 size-full -rotate-90", RING[level])}
         fill="none"
       >
         <circle
           cx="50"
           cy="50"
           r={RADIUS}
-          stroke="currentColor"
-          strokeWidth="7"
-          className="opacity-20"
+          stroke="var(--wa-border)"
+          strokeWidth="6"
         />
         <circle
           cx="50"
           cy="50"
           r={RADIUS}
           stroke="currentColor"
-          strokeWidth="7"
+          strokeWidth="6"
           strokeLinecap="round"
           strokeDasharray={CIRCUMFERENCE}
           strokeDashoffset={CIRCUMFERENCE * (1 - fraction)}
@@ -96,7 +96,7 @@ export function WindowTimer({
         {value}
       </span>
       <span
-        className="mt-px font-medium opacity-80"
+        className="mt-px font-medium text-[var(--wa-text-2)]"
         style={{ fontSize: Math.max(8, Math.round(size * 0.2)) }}
       >
         {unit}
