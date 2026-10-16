@@ -34,9 +34,10 @@ self.addEventListener("push", (event) => {
     // genérico: un globo de mensaje, no el logo de Zenna — en la bandeja del
     // teléfono lo que importa es de qué se trata el aviso, no de qué app viene.
     icon: data.icon || "/icons/message.png",
-    // Android lo pinta de un solo color en la barra de estado: tiene que ser
-    // una silueta, no una foto.
-    badge: "/icons/badge.png",
+    // El logo chiquito de arriba en Android: el de WhatsApp, o el de
+    // Instagram si el mensaje vino de ahí. Android lo pinta de un solo color,
+    // así que es una silueta y no una foto.
+    badge: data.badge || "/icons/badge.png",
     // `tag` agrupa: varios mensajes de la misma conversación reemplazan la
     // notificación anterior en vez de apilar una por mensaje.
     tag: data.tag || "zenna-mensaje",

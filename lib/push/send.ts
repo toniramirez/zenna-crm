@@ -34,6 +34,11 @@ export type PushPayload = {
    * perfil firmada). Sin esto el service worker pone el genérico.
    */
   icon?: string;
+  /**
+   * Logo chiquito del aviso en Android (silueta del canal). Sin esto va el de
+   * WhatsApp. iOS no lo usa: ahí el logo es siempre el ícono de la app.
+   */
+  badge?: string;
 };
 
 /** Códigos con los que el servidor de push dice "este dispositivo ya no existe". */
@@ -247,6 +252,8 @@ export async function notifyInboundMessage(
       icon:
         (await avatarUrl(supabase, conversation?.avatar_path)) ??
         (isInstagram ? "/icons/instagram.png" : "/icons/whatsapp.png"),
+      // El logo del canal, donde WhatsApp pone el suyo.
+      badge: isInstagram ? "/icons/badge-instagram.png" : "/icons/badge.png",
       // Un tag por conversación: cinco mensajes seguidos de la misma persona
       // dejan un solo aviso en pantalla, no cinco.
       tag: `conv-${args.conversationId}`,

@@ -25,11 +25,20 @@ cerrada. Es Web Push estándar (VAPID), sin servicios de terceros ni costo.
   clienta solo (o su número con el +, si no hay nombre) y el cuerpo es el
   mensaje. Solo llevan etiqueta las excepciones: `· Instagram` y
   `· WhatsApp viejo`.
-- El ícono es la foto de perfil de la clienta (URL firmada de `wa-media`). Si
-  no tiene, un globo de mensaje con el color del canal (verde de WhatsApp,
-  degradé de Instagram), que están en `public/icons/`. En iPhone iOS ignora
-  este ícono y muestra el de la app instalada, y arriba dice el nombre de la
-  app ("Zenna"). No se puede cambiar por aviso.
+- El logo del aviso es el del canal, como en WhatsApp:
+  - **iPhone**: iOS muestra siempre el ícono de la app instalada y no deja
+    poner uno por aviso. Por eso el ícono de la app es el de WhatsApp
+    (`app/apple-icon.png`) y no el de Zenna. Los mensajes de Instagram también
+    llevan ese logo; lo que los distingue es el `· Instagram` del título.
+  - **Android**: el logo chiquito de arriba (`badge`) cambia según el canal:
+    el de WhatsApp (`public/icons/badge.png`) o el de Instagram
+    (`badge-instagram.png`). El ícono grande es la foto de perfil de la
+    clienta (URL firmada de `wa-media`) y, si no tiene, el logo del canal
+    (`whatsapp.png` / `instagram.png`).
+- iOS guarda el ícono de la app cuando se agrega a la pantalla de inicio y no
+  lo vuelve a leer. Si se cambia el ícono, hay que borrar la app del inicio,
+  agregarla de nuevo y volver a activar las notificaciones desde
+  Configuración.
 
 ## El toque abre el chat
 
