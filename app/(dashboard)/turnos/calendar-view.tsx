@@ -22,6 +22,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { WHATSAPP_PATH } from "@/components/icons/whatsapp";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -30,6 +31,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import type { Database } from "@/types/database.types";
+import { openClientConversationAction } from "../crm/actions";
 import { moveAppointmentAction } from "./actions";
 import {
   AppointmentDialog,
@@ -93,6 +95,11 @@ const CATEGORY_META: Record<ServiceCategory, { label: string; color: string }> =
     peinado: { label: "Peinado", color: "#7b6a55" },
     otro: { label: "Otro", color: "#a8a29e" },
   };
+
+/** Íconos del botón de chat que se inyecta en cada tarjeta de la grilla. */
+const WA_LOGO_SVG = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${WHATSAPP_PATH}"/></svg>`;
+const SPINNER_SVG =
+  '<svg class="animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
 
 function appointmentToEvent(
   a: AppointmentWithRelations,
@@ -376,27 +383,48 @@ export function CalendarView({
     });
     arg.el.appendChild(btn);
 
-    // Segundo botón, al lado del "+": escribirle a la clienta por WhatsApp
-    // sin salir de la agenda. El ícono va como SVG a mano porque esto se
-    // inyecta en el DOM de FullCalendar, fuera del árbol de React.
+    // Segundo botón, al lado del "+": el chat de la clienta, igual que en la
+    // agenda del teléfono. Lleva a la bandeja de la app —no al WhatsApp de la
+    // compu— para que la charla quede en Zenna con su historial. El ícono va
+    // como SVG a mano porque esto se inyecta en el DOM de FullCalendar, fuera
+    // del árbol de React.
     const wa = document.createElement("button");
     wa.type = "button";
     wa.className = "zenna-event-wa";
-    wa.title = "Mandarle un WhatsApp a la clienta";
-    wa.setAttribute("aria-label", "Mandarle un WhatsApp a la clienta");
-    wa.innerHTML =
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>';
+    wa.title = "Abrir el chat de la clienta";
+    wa.setAttribute("aria-label", "Abrir el chat de la clienta");
+    wa.innerHTML = WA_LOGO_SVG;
     wa.addEventListener("mousedown", (e) => e.stopPropagation());
-    wa.addEventListener("click", (e) => {
+    wa.addEventListener("click", async (e) => {
       e.stopPropagation();
       e.preventDefault();
-      const found = appointmentsRef.current.find(
+      if (wa.disabled) return;
+      const client = appointmentsRef.current.find(
         (a) => a.id === appointmentId,
-      );
-      if (found) setMessaging(found);
+      )?.clients;
+      if (!client) {
+        toast.error("Este turno no tiene una clienta cargada.");
+        return;
+      }
+      wa.disabled = true;
+      wa.setAttribute("aria-busy", "true");
+      wa.innerHTML = SPINNER_SVG;
+      const result = await openClientConversationAction({
+        clientId: client.id,
+        phone: client.phone,
+        displayName: client.full_name,
+      });
+      if (result.error || !result.conversationId) {
+        toast.error(result.error ?? "No pudimos abrir el chat.");
+        wa.disabled = false;
+        wa.removeAttribute("aria-busy");
+        wa.innerHTML = WA_LOGO_SVG;
+        return;
+      }
+      router.push(`/crm?c=${result.conversationId}`);
     });
     arg.el.appendChild(wa);
-  }, []);
+  }, [router]);
 
   const handleEventChange = useCallback(
     async (arg: EventChangeArg) => {

@@ -1438,9 +1438,10 @@
 }
 
 /*
- * Hermano del "+": le escribe por WhatsApp a la clienta del turno. Mismo
- * tamaño y mismo gesto (aparece con el hover), corrido a la izquierda para no
- * pisarlo.
+ * Hermano del "+": abre el chat de la clienta en la bandeja. Es el logo de
+ * WhatsApp en su verde, como en la agenda del teléfono, sin la pastilla
+ * oscura del "+": así se lee de un vistazo que lleva al chat. Mismo gesto
+ * (aparece con el hover), corrido a la izquierda para no pisarlo.
  */
 .zenna-calendar .fc-event .zenna-event-wa {
   position: absolute;
@@ -1453,9 +1454,8 @@
   height: 18px;
   padding: 0;
   border: none;
-  border-radius: 9999px;
-  background: var(--foreground);
-  color: var(--card);
+  background: transparent;
+  color: #25d366;
   line-height: 1;
   cursor: pointer;
   opacity: 0;
@@ -1464,8 +1464,8 @@
 }
 
 .zenna-calendar .fc-event .zenna-event-wa svg {
-  width: 11px;
-  height: 11px;
+  width: 16px;
+  height: 16px;
 }
 
 .zenna-calendar .fc-event:hover .zenna-event-wa,
@@ -1475,6 +1475,11 @@
 
 .zenna-calendar .fc-event .zenna-event-wa:hover {
   opacity: 1;
+}
+
+.zenna-calendar .fc-event .zenna-event-wa[aria-busy="true"] {
+  opacity: 1;
+  cursor: progress;
 }
 
 .zenna-calendar .fc-license-message {
