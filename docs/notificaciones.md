@@ -21,11 +21,15 @@ cerrada. Es Web Push estándar (VAPID), sin servicios de terceros ni costo.
   de Next a propósito: el worker de WhatsApp corre suelto con `tsx`.
 - Un aviso por conversación (`tag`): cinco mensajes seguidos de la misma
   persona dejan una sola notificación, no cinco.
-- El ícono es un globo de mensaje con el color del canal (verde de WhatsApp,
-  degradé de Instagram), no el logo de Zenna: en la bandeja del teléfono lo que
-  hay que reconocer de un vistazo es de qué se trata el aviso. Están en
-  `public/icons/`. En iPhone iOS ignora este ícono y muestra el de la app
-  instalada — no hay forma de cambiarlo.
+- El aviso tiene la forma de uno de WhatsApp: el título es el nombre de la
+  clienta solo (o su número con el +, si no hay nombre) y el cuerpo es el
+  mensaje. Solo llevan etiqueta las excepciones: `· Instagram` y
+  `· WhatsApp viejo`.
+- El ícono es la foto de perfil de la clienta (URL firmada de `wa-media`). Si
+  no tiene, un globo de mensaje con el color del canal (verde de WhatsApp,
+  degradé de Instagram), que están en `public/icons/`. En iPhone iOS ignora
+  este ícono y muestra el de la app instalada, y arriba dice el nombre de la
+  app ("Zenna"). No se puede cambiar por aviso.
 
 ## El toque abre el chat
 

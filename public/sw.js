@@ -26,13 +26,13 @@ self.addEventListener("push", (event) => {
     data = { body: event.data ? event.data.text() : "" };
   }
 
-  const title = data.title || "Zenna";
+  const title = data.title || "Mensaje nuevo";
   const options = {
-    body: data.body || "Tenés un mensaje nuevo.",
-    // El ícono lo elige quien manda el push (verde de WhatsApp, degradé de
-    // Instagram). El de acá es el genérico: un globo de mensaje, no el logo
-    // de Zenna — en la bandeja del teléfono lo que importa es de qué se trata
-    // el aviso, no de qué app viene.
+    body: data.body || "",
+    // El ícono lo elige quien manda el push (la foto de la clienta, o el
+    // verde de WhatsApp / degradé de Instagram si no tiene). El de acá es el
+    // genérico: un globo de mensaje, no el logo de Zenna — en la bandeja del
+    // teléfono lo que importa es de qué se trata el aviso, no de qué app viene.
     icon: data.icon || "/icons/message.png",
     // Android lo pinta de un solo color en la barra de estado: tiene que ser
     // una silueta, no una foto.

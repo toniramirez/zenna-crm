@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import webpush from "web-push";
-import { INSTAGRAM_CHANNEL, isLegacyChannel } from "@/lib/channels";
+import {
+  INSTAGRAM_CHANNEL,
+  WA_CLOUD_CHANNEL,
+  isLegacyChannel,
+  phoneDigits,
+} from "@/lib/channels";
 import type { Database } from "@/types/database.types";
 
 /**
@@ -24,7 +29,10 @@ export type PushPayload = {
   url?: string;
   /** Notificaciones con el mismo tag se reemplazan en vez de apilarse. */
   tag?: string;
-  /** Ícono grande del aviso. Sin esto el service worker pone el genérico. */
+  /**
+   * Ícono grande del aviso: una ruta del sitio o una URL absoluta (la foto de
+   * perfil firmada). Sin esto el service worker pone el genérico.
+   */
   icon?: string;
 };
 
@@ -138,6 +146,22 @@ export async function sendPushToAll(
   return { sent, removed: stale.length };
 }
 
+/**
+ * URL firmada de la foto de perfil para usar de ícono. El bucket es privado y
+ * quien baja la imagen es el teléfono, sin sesión. Un día alcanza y sobra: el
+ * aviso se muestra apenas llega, y el push vence a la hora.
+ */
+async function avatarUrl(
+  supabase: Db,
+  path: string | null | undefined,
+): Promise<string | null> {
+  if (!path) return null;
+  const { data } = await supabase.storage
+    .from("wa-media")
+    .createSignedUrl(path, 60 * 60 * 24);
+  return data?.signedUrl ?? null;
+}
+
 /** Texto corto para los mensajes que no son texto. */
 function mediaPreview(type: string | null): string {
   switch (type) {
@@ -178,38 +202,51 @@ export async function notifyInboundMessage(
 
     const { data: conversation } = await supabase
       .from("conversations")
-      .select("id, channel, display_name, wa_phone, external_id, clients ( full_name )")
+      .select(
+        "id, channel, display_name, wa_phone, external_id, avatar_path, clients ( full_name )",
+      )
       .eq("id", args.conversationId)
       .maybeSingle();
 
+    const isInstagram = conversation?.channel === INSTAGRAM_CHANNEL;
+    // Sin nombre, WhatsApp muestra el número con el +. En la Cloud API el
+    // número está en el external_id; en Instagram el external_id no es un
+    // teléfono.
+    const phone =
+      phoneDigits(conversation?.wa_phone) ??
+      (conversation?.channel === WA_CLOUD_CHANNEL
+        ? phoneDigits(conversation.external_id)
+        : null);
     const client = conversation?.clients as { full_name: string } | null;
     const name =
       client?.full_name ||
       conversation?.display_name ||
-      conversation?.wa_phone ||
-      (conversation?.channel === INSTAGRAM_CHANNEL
-        ? "Contacto de Instagram"
-        : "Contacto sin nombre");
+      (phone ? `+${phone}` : null) ||
+      (isInstagram ? "Contacto de Instagram" : "Contacto sin nombre");
 
-    const isInstagram = conversation?.channel === INSTAGRAM_CHANNEL;
-    // El número viejo se etiqueta distinto: quien lee el aviso en el teléfono
-    // tiene que saber, antes de abrirlo, que ese chat es del archivo y que
-    // contestar ahí sale por un número que ya no damos.
-    const canal = isInstagram
-      ? "Instagram"
+    // El título es el nombre solo, como en WhatsApp: el aviso tiene que
+    // parecer un mensaje de la clienta, no un aviso de Zenna sobre un mensaje.
+    // Solo se etiquetan las excepciones. Instagram, porque en iPhone el ícono
+    // no se ve y sería indistinguible. El número viejo, porque quien lo lee
+    // tiene que saber antes de abrirlo que contestar ahí sale por un número
+    // que ya no damos.
+    const title = isInstagram
+      ? `${name} · Instagram`
       : isLegacyChannel(conversation?.channel)
-        ? "WhatsApp viejo"
-        : "WhatsApp";
+        ? `${name} · WhatsApp viejo`
+        : name;
     const text = (args.body ?? "").trim();
     const preview = text ? text.slice(0, 140) : mediaPreview(args.type ?? null);
 
     await sendPushToAll(supabase, {
-      title: `${name} · ${canal}`,
+      title,
       body: preview,
       url: `/crm?c=${args.conversationId}`,
-      // Un globo de mensaje con el color del canal: en la bandeja del teléfono
-      // se ve de dónde viene sin leer el título.
-      icon: isInstagram ? "/icons/instagram.png" : "/icons/whatsapp.png",
+      // La foto de perfil, como WhatsApp en Android. Sin foto, un globo con el
+      // color del canal.
+      icon:
+        (await avatarUrl(supabase, conversation?.avatar_path)) ??
+        (isInstagram ? "/icons/instagram.png" : "/icons/whatsapp.png"),
       // Un tag por conversación: cinco mensajes seguidos de la misma persona
       // dejan un solo aviso en pantalla, no cinco.
       tag: `conv-${args.conversationId}`,

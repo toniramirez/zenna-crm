@@ -29,12 +29,14 @@ export async function POST() {
 
   // El envío lee `push_subscriptions` de todos los dispositivos del usuario;
   // con service_role para no depender de la política de select.
+  // Tiene la forma de un mensaje real, así la prueba muestra cómo va a llegar.
   const { sent } = await sendPushToAll(
     createServiceClient(),
     {
-      title: "Zenna · prueba",
+      title: "Mensaje de prueba",
       body: "Si ves esto, las notificaciones están andando 🎉",
       url: "/crm",
+      icon: "/icons/whatsapp.png",
       tag: "zenna-test",
     },
     { userId: user.id },
