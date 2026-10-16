@@ -234,8 +234,10 @@ export function DashboardChrome({
             <Image
               src={logoBlanco}
               alt="Zenna Hair Salon"
+              width={69}
+              height={28}
               loading="eager"
-              className="h-9 w-auto select-none"
+              className="h-7 w-auto select-none"
             />
           </header>
 
