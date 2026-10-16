@@ -760,6 +760,9 @@ export function AppointmentDialog({
                   <Input
                     id="picked-date"
                     type="date"
+                    // Sin esto el iPhone le da al campo un ancho propio y se
+                    // sale de su columna.
+                    className="appearance-none [&::-webkit-date-and-time-value]:text-left"
                     value={pickedDate}
                     onChange={(e) => {
                       setPickedDate(e.target.value);

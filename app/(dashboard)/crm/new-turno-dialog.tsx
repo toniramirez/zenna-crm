@@ -23,13 +23,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency, formatDuration } from "@/lib/format";
 import { type PaymentMethod } from "@/lib/validations/payments";
@@ -297,7 +290,10 @@ export function NewTurnoDialog({
           : ""),
     );
     setAddedClients([]);
-    setProfessionalId("");
+    // Con una sola profesional activa no hay nada que elegir: queda puesta y
+    // en el teléfono los horarios aparecen de entrada.
+    const activePros = professionals.filter((p) => p.active);
+    setProfessionalId(activePros.length === 1 ? activePros[0]!.id : "");
     setStartsAt("");
     setSelectedServiceIds([]);
     setNotes("");
@@ -827,41 +823,62 @@ function MobileSlotPicker({
 
   return (
     <div className="rounded-md border bg-card p-3 space-y-3 min-w-0">
-      <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-1.5">
-          <Label className="text-xs">Profesional</Label>
-          <Select value={professionalId} onValueChange={setProfessionalId}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Elegí…" />
-            </SelectTrigger>
-            <SelectContent>
-              {professionals
-                .filter((p) => p.active)
-                .map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    <span className="inline-flex items-center gap-2">
-                      <span
-                        className="size-3 rounded-full border"
-                        style={{ backgroundColor: p.color }}
-                      />
-                      {p.full_name}
-                    </span>
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
+      {/*
+        Profesional con botones y no con un Select: el Select abierto pone la
+        primera opción justo encima del disparador, y Radix descarta el toque
+        que cae a menos de 10px del que lo abrió. En algunos iPhone eso dejaba
+        la lista abierta con la profesional a la vista pero sin elegir, y los
+        horarios nunca aparecían. Un botón es un toque y no tiene esa trampa.
+      */}
+      <div className="space-y-1.5">
+        <Label className="text-xs">Profesional</Label>
+        <div
+          role="radiogroup"
+          aria-label="Profesional"
+          className="flex flex-wrap gap-1.5"
+        >
+          {professionals
+            .filter((p) => p.active)
+            .map((p) => {
+              const picked = p.id === professionalId;
+              return (
+                <button
+                  type="button"
+                  key={p.id}
+                  role="radio"
+                  aria-checked={picked}
+                  onClick={() => setProfessionalId(p.id)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                    picked
+                      ? "bg-foreground text-background border-foreground font-semibold"
+                      : "bg-card hover:bg-muted/40"
+                  }`}
+                >
+                  <span
+                    aria-hidden
+                    className="size-2.5 shrink-0 rounded-full border"
+                    style={{ backgroundColor: p.color }}
+                  />
+                  {p.full_name}
+                </button>
+              );
+            })}
         </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs" htmlFor="new-turno-day">
-            Día
-          </Label>
-          <Input
-            id="new-turno-day"
-            type="date"
-            value={pickedDate}
-            onChange={(e) => setPickedDate(e.target.value)}
-          />
-        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs" htmlFor="new-turno-day">
+          Día
+        </Label>
+        {/* Sin `appearance-none` el iPhone le da al campo de fecha un ancho
+            propio y se sale de la tarjeta. */}
+        <Input
+          id="new-turno-day"
+          type="date"
+          value={pickedDate}
+          onChange={(e) => setPickedDate(e.target.value)}
+          className="appearance-none [&::-webkit-date-and-time-value]:text-left"
+        />
       </div>
 
       <div className="space-y-1.5">
