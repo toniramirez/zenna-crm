@@ -52,49 +52,50 @@ export function EstadisticasPanel({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-center md:justify-start">
+      {/* En el teléfono el mes está en el encabezado de la pantalla. */}
+      <div className="flex items-center justify-center md:justify-start phone:hidden">
         <MonthNav month={month} extraParams="tab=estadisticas" />
       </div>
 
       {/* KPI row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="rounded-xl border bg-card p-5 shadow-sm">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 phone:grid-cols-2 phone:gap-2">
+        <div className="rounded-xl border bg-card p-5 shadow-sm phone:p-4">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground phone:text-[0.6875rem] phone:tracking-normal">
             <ArrowUpRight className="size-3.5 text-emerald-600" />
             Ingresos del mes
           </div>
-          <div className="mt-2 text-3xl font-semibold tabular-nums">
+          <div className="mt-2 text-3xl font-semibold tabular-nums phone:text-xl">
             {formatCurrency(stats.ingresosMonth)}
           </div>
-          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span>Vs. mes anterior {formatCurrency(stats.ingresosPrev)}</span>
             <PctBadge pct={ingresosPct} />
           </div>
         </div>
 
-        <div className="rounded-xl border bg-card p-5 shadow-sm">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
+        <div className="rounded-xl border bg-card p-5 shadow-sm phone:p-4">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground phone:text-[0.6875rem] phone:tracking-normal">
             <ArrowDownRight className="size-3.5 text-rose-600" />
             Egresos del mes
           </div>
-          <div className="mt-2 text-3xl font-semibold tabular-nums text-rose-700">
+          <div className="mt-2 text-3xl font-semibold tabular-nums phone:text-xl text-rose-700">
             −{formatCurrency(stats.egresosMonth)}
           </div>
-          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span>Vs. mes anterior {formatCurrency(stats.egresosPrev)}</span>
             <PctBadge pct={egresosPct} inverted />
           </div>
         </div>
 
-        <div className="rounded-xl border bg-card p-5 shadow-sm">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
+        <div className="rounded-xl border bg-card p-5 shadow-sm phone:p-4">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground phone:text-[0.6875rem] phone:tracking-normal">
             <Scissors className="size-3.5 text-rose-600" />
             Comisiones brutas
           </div>
-          <div className="mt-2 text-3xl font-semibold tabular-nums text-rose-700">
+          <div className="mt-2 text-3xl font-semibold tabular-nums phone:text-xl text-rose-700">
             −{formatCurrency(stats.comisionesBrutasMonth)}
           </div>
-          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span>
               Vs. mes anterior {formatCurrency(stats.comisionesBrutasPrev)}
             </span>
@@ -102,20 +103,20 @@ export function EstadisticasPanel({
           </div>
         </div>
 
-        <div className="rounded-xl border bg-card p-5 shadow-sm">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
+        <div className="rounded-xl border bg-card p-5 shadow-sm phone:p-4">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground phone:text-[0.6875rem] phone:tracking-normal">
             <TrendingUp className="size-3.5 text-gold" />
             Resultado neto
           </div>
           <div
             className={cn(
-              "mt-2 text-3xl font-semibold tabular-nums",
+              "mt-2 text-3xl font-semibold tabular-nums phone:text-xl",
               stats.netoMonth >= 0 ? "text-emerald-700" : "text-rose-700",
             )}
           >
             {formatCurrency(stats.netoMonth)}
           </div>
-          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span>Vs. mes anterior {formatCurrency(stats.netoPrev)}</span>
             <PctBadge pct={netoPct} />
           </div>

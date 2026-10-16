@@ -2,6 +2,7 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import {
   Banknote,
+  ChevronDown,
   CreditCard,
   Landmark,
   Smartphone,
@@ -64,6 +65,25 @@ const METHOD_STYLE: Record<
   },
 };
 
+/** Orden y nombre corto de cada método en las filas del teléfono. */
+const DAY_METHODS: PaymentMethod[] = [
+  "cash",
+  "transfer",
+  "mp",
+  "debit_card",
+  "credit_card",
+  "other",
+];
+
+const METHOD_SHORT: Record<PaymentMethod, string> = {
+  cash: "Efectivo",
+  transfer: "Transf.",
+  mp: "MP",
+  debit_card: "Débito",
+  credit_card: "Crédito",
+  other: "Otro",
+};
+
 function dayLabel(dateStr: string) {
   return format(parseISO(dateStr + "T12:00:00"), "EEE d", { locale: es });
 }
@@ -80,7 +100,7 @@ function BasisToggle({
     { value: "turno", label: "Fecha del turno" },
   ];
   return (
-    <div className="inline-flex items-center rounded-lg border bg-muted/30 p-[3px] text-sm">
+    <div className="inline-flex items-center rounded-lg border bg-muted/30 p-[3px] text-sm phone:grid phone:w-full phone:grid-cols-2 phone:text-center">
       {options.map((o) => (
         <Link
           key={o.value}
@@ -119,7 +139,7 @@ function MethodCard({
   return (
     <div
       className={cn(
-        "rounded-xl border bg-card p-5 shadow-sm",
+        "rounded-xl border bg-card p-5 shadow-sm phone:p-4",
         featured ? "" : "bg-muted/20",
       )}
     >
@@ -130,7 +150,7 @@ function MethodCard({
       <div
         className={cn(
           "mt-2 font-semibold tabular-nums",
-          featured ? "text-3xl" : "text-xl",
+          featured ? "text-3xl phone:text-2xl" : "text-xl",
         )}
       >
         {formatCurrency(amount)}
@@ -162,8 +182,8 @@ function BreakdownSection({
   const Icon = style.icon;
   return (
     <details className="group rounded-xl border bg-card shadow-sm">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-5">
-        <div className="flex items-center gap-2 min-w-0">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-5 phone:p-4">
+        <div className="flex items-center gap-2 min-w-0 phone:flex-wrap phone:gap-y-0.5">
           <Icon className={cn("size-4 shrink-0", style.text)} />
           <span className="font-semibold">{breakdown.label}</span>
           <span className="text-xs text-muted-foreground tabular-nums">
@@ -175,16 +195,17 @@ function BreakdownSection({
           <span className="text-lg font-semibold tabular-nums">
             {formatCurrency(breakdown.amount)}
           </span>
-          <span className="print-hide text-xs text-muted-foreground group-open:hidden">
+          <span className="print-hide text-xs text-muted-foreground group-open:hidden phone:hidden">
             Ver detalle
           </span>
-          <span className="print-hide hidden text-xs text-muted-foreground group-open:inline">
+          <span className="print-hide hidden text-xs text-muted-foreground group-open:inline phone:group-open:hidden">
             Ocultar
           </span>
+          <ChevronDown className="print-hide hidden size-4 text-muted-foreground transition-transform group-open:rotate-180 phone:block" />
         </div>
       </summary>
 
-      <div className="border-t px-5 py-4 space-y-4">
+      <div className="border-t px-5 py-4 space-y-4 phone:px-4">
         {breakdown.byProfessional.length > 0 ? (
           <div>
             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
@@ -219,7 +240,42 @@ function BreakdownSection({
           <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
             Cobro por cobro
           </h4>
-          <div className="overflow-x-auto">
+          {/* En el teléfono la tabla de cinco columnas no entra: cada cobro
+              es una fila de dos renglones. */}
+          <ul className="hidden divide-y phone:block">
+            {breakdown.payments.map((p) => {
+              const shownDay =
+                basis === "turno" ? (p.appointmentDay ?? p.paidDay) : p.paidDay;
+              return (
+                <li key={p.id} className="py-2.5">
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="truncate font-medium">{p.clientName}</span>
+                    <span className="shrink-0 font-medium tabular-nums">
+                      {formatCurrency(p.amount)}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 truncate text-xs text-muted-foreground tabular-nums">
+                    {[
+                      format(parseISO(shownDay + "T12:00:00"), "dd/MM", {
+                        locale: es,
+                      }) + (basis === "pago" ? ` ${p.paidTime}` : ""),
+                      p.professionalName,
+                      p.services.length > 0 ? p.services.join(", ") : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </div>
+                </li>
+              );
+            })}
+            <li className="flex justify-between gap-3 pt-2.5 text-sm font-semibold">
+              <span>Total {breakdown.label}</span>
+              <span className="tabular-nums">
+                {formatCurrency(breakdown.amount)}
+              </span>
+            </li>
+          </ul>
+          <div className="overflow-x-auto phone:hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-xs uppercase tracking-wider text-muted-foreground">
@@ -343,10 +399,18 @@ export function IngresosPanel({
       </div>
 
       <div className="print-hide flex flex-wrap items-center justify-between gap-3">
-        <MonthNav month={month} extraParams={`tab=ingresos&base=${report.basis}`} />
-        <div className="flex items-center gap-2">
+        {/* En el teléfono el mes está en el encabezado de la pantalla. */}
+        <div className="phone:hidden">
+          <MonthNav
+            month={month}
+            extraParams={`tab=ingresos&base=${report.basis}`}
+          />
+        </div>
+        <div className="flex items-center gap-2 phone:w-full">
           <BasisToggle month={month} basis={report.basis} />
-          <PrintReportButton />
+          <span className="phone:hidden">
+            <PrintReportButton />
+          </span>
         </div>
       </div>
 
@@ -365,7 +429,7 @@ export function IngresosPanel({
               Total ingresado ·{" "}
               <span className="first-letter:uppercase">{monthLabel}</span>
             </div>
-            <div className="mt-2 text-4xl font-semibold tabular-nums">
+            <div className="mt-2 text-4xl font-semibold tabular-nums phone:text-3xl">
               {formatCurrency(report.total)}
             </div>
             <div className="mt-1 text-xs text-muted-foreground tabular-nums">
@@ -446,7 +510,51 @@ export function IngresosPanel({
             <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">
               Día a día
             </h3>
-            <div className="overflow-x-auto">
+            {/* En el teléfono: un día por fila, con la barra de cómo entró. */}
+            <ul className="hidden divide-y phone:block">
+              {report.byDay.map((d) => (
+                <li key={d.date} className="py-2.5">
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="first-letter:uppercase">
+                      {dayLabel(d.date)}
+                    </span>
+                    <span className="font-medium tabular-nums">
+                      {formatCurrency(d.total)}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                    {DAY_METHODS.map((method) =>
+                      d.byMethod[method] > 0 ? (
+                        <div
+                          key={method}
+                          className={METHOD_STYLE[method].bar}
+                          style={{
+                            width: `${(d.byMethod[method] / d.total) * 100}%`,
+                          }}
+                        />
+                      ) : null,
+                    )}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground tabular-nums">
+                    {DAY_METHODS.map((method) =>
+                      d.byMethod[method] > 0 ? (
+                        <span key={method}>
+                          {METHOD_SHORT[method]}{" "}
+                          {formatCurrency(d.byMethod[method])}
+                        </span>
+                      ) : null,
+                    )}
+                  </div>
+                </li>
+              ))}
+              <li className="flex justify-between gap-3 pt-2.5 text-sm font-semibold">
+                <span>Total</span>
+                <span className="tabular-nums">
+                  {formatCurrency(report.total)}
+                </span>
+              </li>
+            </ul>
+            <div className="overflow-x-auto phone:hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-xs uppercase tracking-wider text-muted-foreground">

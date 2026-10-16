@@ -216,7 +216,7 @@ export function WhatsappPanel({
   return (
     <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
+      <div className="flex items-center justify-between gap-3 border-b px-5 py-4 phone:flex-wrap phone:px-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="size-10 rounded-full bg-emerald-50 grid place-items-center">
             <Smartphone className="size-5 text-emerald-700" />

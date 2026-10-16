@@ -2,6 +2,7 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { FolderArchive } from "lucide-react";
 import Link from "next/link";
+import { PhoneOrDesktop } from "@/components/dashboard/phone-screen";
 import { Button } from "@/components/ui/button";
 import { requireRole } from "@/lib/auth";
 import {
@@ -18,6 +19,7 @@ import { computeDayTotals, METHOD_GROUPS, methodGroup } from "./day-totals";
 import { NewExpenseButton } from "./expense-dialog";
 import { ExpensesList } from "./expenses-list";
 import { PaymentsList } from "./payments-list";
+import { PhoneCaja } from "./phone-caja";
 import { SalesList } from "./sales-list";
 import { CajaSummaryCards } from "./summary-cards";
 import {
@@ -238,7 +240,7 @@ export default async function CajaPage({ searchParams }: Props) {
     locale: es,
   });
 
-  return (
+  const desktop = (
     <div className="space-y-8 max-w-6xl">
       <div className="space-y-6">
         <div className="flex items-end justify-between flex-wrap gap-3">
@@ -406,5 +408,35 @@ export default async function CajaPage({ searchParams }: Props) {
         </section>
       ) : null}
     </div>
+  );
+
+  // En el teléfono las tablas de arriba no entran: la caja es otra pantalla,
+  // con los mismos datos (ver ./phone-caja).
+  return (
+    <PhoneOrDesktop
+      phone={
+        <PhoneCaja
+          selectedDate={selectedDate}
+          today={today}
+          isOwner={isOwner}
+          totals={totals}
+          cashExpensesForDay={cashExpensesForDay}
+          salesTotal={salesTotal}
+          pending={pending}
+          sales={sales}
+          payments={paymentsResult.error ? [] : payments}
+          expenses={expenses}
+          totalExpensesMonth={totalExpensesMonth}
+          monthLabel={monthLabel}
+          closing={closing}
+          errors={{
+            day: dayResult.error?.message ?? null,
+            payments: paymentsResult.error?.message ?? null,
+            closing: closingResult.error?.message ?? null,
+          }}
+        />
+      }
+      desktop={desktop}
+    />
   );
 }

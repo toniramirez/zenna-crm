@@ -12,15 +12,18 @@ import {
 } from "date-fns";
 import { es } from "date-fns/locale";
 import { CalendarCheck, ChevronDown, MessageCircle, Plus } from "lucide-react";
-import {
-  type ReactNode,
-  type RefObject,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { MobileChromeAccount } from "@/components/dashboard/mobile-chrome";
+import {
+  FilterChip,
+  Pill,
+  Segmented,
+} from "@/components/dashboard/phone-screen";
+import {
+  enterAnimation,
+  SWIPE_FOLLOW,
+  useHorizontalSwipe,
+} from "@/components/dashboard/use-horizontal-swipe";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
@@ -72,6 +75,11 @@ type DayGroup = {
 
 /** Un hueco más corto que esto no entra ni un brushing: no se ofrece. */
 const MIN_GAP_MINUTES = 30;
+
+const VIEW_OPTIONS = [
+  { value: "day", label: "Día" },
+  { value: "week", label: "Semana" },
+] as const;
 
 /** Color de una profesional sin color cargado. */
 const FALLBACK_COLOR = "#94a3b8";
@@ -440,7 +448,11 @@ export function MobileAgenda({
             </button>
           )}
           <div className="ml-auto flex items-center gap-2">
-            <ViewSwitch value={view} onChange={changeView} />
+            <Segmented
+              value={view}
+              options={VIEW_OPTIONS}
+              onChange={changeView}
+            />
             <MobileChromeAccount />
           </div>
         </div>
@@ -619,128 +631,6 @@ export function MobileAgenda({
 }
 
 /**
- * Lo que sigue al dedo durante el arrastre: lee `--swipe-x` del contenedor
- * (ver `useHorizontalSwipe`). Con el dedo apoyado va pegado, sin transición;
- * al soltar sin cambiar de día vuelve a su lugar con una.
- */
-const SWIPE_FOLLOW =
-  "translate-x-[var(--swipe-x,0px)] transition-[translate] duration-200 ease-out group-data-[swiping=true]/swipe:transition-none";
-
-function enterAnimation(from: -1 | 0 | 1) {
-  if (from === 0) return undefined;
-  return cn(
-    "animate-in fade-in duration-200 ease-out",
-    from === 1 ? "slide-in-from-right-8" : "slide-in-from-left-8",
-  );
-}
-
-/**
- * Arrastre horizontal para pasar de día o de semana, como en el calendario
- * del teléfono. Mientras el dedo está apoyado, el contenido lo sigue (la
- * variable `--swipe-x` del contenedor); al soltar, si recorrió un cuarto del
- * ancho o salió rápido, cambia — si no, vuelve a su lugar.
- *
- * Va con listeners nativos y no con los de React: para quedarse con el gesto
- * hay que poder `preventDefault()` en `touchmove`, y React los registra
- * pasivos. Hasta decidir hacia dónde va el dedo no se toca nada, así el
- * desplazamiento vertical de la lista sigue siendo del navegador.
- */
-function useHorizontalSwipe(
-  ref: RefObject<HTMLElement | null>,
-  onSwipe: (direction: -1 | 1) => void,
-) {
-  const onSwipeRef = useRef(onSwipe);
-  useEffect(() => {
-    onSwipeRef.current = onSwipe;
-  });
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
-    let gesture: {
-      x: number;
-      y: number;
-      t: number;
-      axis: "x" | "y" | null;
-      dx: number;
-    } | null = null;
-
-    function onStart(e: TouchEvent) {
-      const touch = e.touches[0];
-      if (e.touches.length !== 1 || !touch) {
-        gesture = null;
-        return;
-      }
-      // Desde el borde es el "atrás" del sistema: ese gesto no es nuestro.
-      if (touch.clientX < 20 || touch.clientX > window.innerWidth - 20) {
-        gesture = null;
-        return;
-      }
-      gesture = {
-        x: touch.clientX,
-        y: touch.clientY,
-        t: e.timeStamp,
-        axis: null,
-        dx: 0,
-      };
-    }
-
-    function onMove(e: TouchEvent) {
-      const touch = e.touches[0];
-      if (!gesture || !touch || !el) return;
-      const dx = touch.clientX - gesture.x;
-      const dy = touch.clientY - gesture.y;
-      if (gesture.axis === null) {
-        if (Math.hypot(dx, dy) < 10) return;
-        gesture.axis = Math.abs(dx) > Math.abs(dy) * 1.3 ? "x" : "y";
-        if (gesture.axis === "x") el.dataset.swiping = "true";
-      }
-      if (gesture.axis !== "x") return;
-      if (e.cancelable) e.preventDefault();
-      gesture.dx = dx;
-      el.style.setProperty("--swipe-x", `${dx}px`);
-    }
-
-    function onEnd(e: TouchEvent) {
-      const g = gesture;
-      gesture = null;
-      if (!g || g.axis !== "x" || !el) return;
-
-      const distance = Math.abs(g.dx);
-      const velocity = distance / Math.max(1, e.timeStamp - g.t);
-      const commit =
-        distance > el.clientWidth * 0.22 || (velocity > 0.45 && distance > 30);
-
-      if (!commit) {
-        delete el.dataset.swiping;
-        el.style.setProperty("--swipe-x", "0px");
-        return;
-      }
-      // El contenido viejo no vuelve: se cambia en el lugar y el nuevo entra
-      // desde el costado. La transición se apaga hasta el cuadro siguiente
-      // para que el salto a 0 no se vea.
-      el.style.setProperty("--swipe-x", "0px");
-      requestAnimationFrame(() => {
-        delete el.dataset.swiping;
-      });
-      onSwipeRef.current(g.dx < 0 ? 1 : -1);
-    }
-
-    el.addEventListener("touchstart", onStart, { passive: true });
-    el.addEventListener("touchmove", onMove, { passive: false });
-    el.addEventListener("touchend", onEnd);
-    el.addEventListener("touchcancel", onEnd);
-    return () => {
-      el.removeEventListener("touchstart", onStart);
-      el.removeEventListener("touchmove", onMove);
-      el.removeEventListener("touchend", onEnd);
-      el.removeEventListener("touchcancel", onEnd);
-    };
-  }, [ref]);
-}
-
-/**
  * Las filas de un día: los turnos, la marca de "ahora" entre el último que
  * pasó y el próximo (sólo hoy), y —si se pide— los huecos libres entre
  * turnos. Un hueco de hoy arranca recién en el próximo cuarto de hora: lo
@@ -824,35 +714,6 @@ function DayTotals({ count, revenue }: { count: number; revenue: number }) {
   );
 }
 
-function ViewSwitch({
-  value,
-  onChange,
-}: {
-  value: "day" | "week";
-  onChange: (view: "day" | "week") => void;
-}) {
-  return (
-    <div className="inline-flex rounded-full bg-[var(--wa-search-bg)] p-0.5">
-      {(["day", "week"] as const).map((option) => (
-        <button
-          key={option}
-          type="button"
-          aria-pressed={value === option}
-          onClick={() => onChange(option)}
-          className={cn(
-            "h-7 rounded-full px-3 text-[0.8125rem] font-medium transition-colors",
-            value === option
-              ? "bg-[color-mix(in_oklab,var(--wa-text)_16%,var(--wa-search-bg))] text-[var(--wa-text)]"
-              : "text-[var(--wa-text-2)]",
-          )}
-        >
-          {option === "day" ? "Día" : "Semana"}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 /**
  * Un día de la tira. Elegido = círculo lleno (verde si es hoy, claro si no),
  * como en el calendario del iPhone; hoy sin elegir = el número en verde.
@@ -920,32 +781,6 @@ function DayCell({
   );
 }
 
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[0.8125rem] transition-colors",
-        active
-          ? "bg-[var(--wa-chip-on)] font-medium text-[var(--wa-chip-on-text)]"
-          : "bg-[var(--wa-search-bg)] text-[var(--wa-text-2)]",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
 /** Inicial de la profesional sobre su color: la firma de cada una en la lista. */
 function ProDot({ professional }: { professional: ProfessionalRow }) {
   return (
@@ -955,19 +790,6 @@ function ProDot({ professional }: { professional: ProfessionalRow }) {
       style={{ backgroundColor: professional.color ?? FALLBACK_COLOR }}
     >
       {initialOf(professional.full_name)}
-    </span>
-  );
-}
-
-function Pill({ className, children }: { className: string; children: ReactNode }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex h-5 items-center rounded-full px-2 text-[0.6875rem] font-medium tabular-nums",
-        className,
-      )}
-    >
-      {children}
     </span>
   );
 }

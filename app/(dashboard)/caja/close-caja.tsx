@@ -191,7 +191,8 @@ export function CloseCajaCard({
   );
 }
 
-function CloseDialog({
+/** El conteo del cajón. También lo usa la caja del teléfono (phone-caja). */
+export function CloseDialog({
   open,
   onOpenChange,
   cajaDate,

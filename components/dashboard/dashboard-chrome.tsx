@@ -247,8 +247,11 @@ export function DashboardChrome({
             debajo. Las que van a sangre (agenda, bandeja de WhatsApp) marcan
             su raíz con `data-bleed`, se quedan con el ancho completo y
             reservan ese hueco por su cuenta, adentro de su propio scroll.
+            `data-phone-bleed` es lo mismo pero sólo en el teléfono: lo usan
+            las pantallas que en el escritorio siguen siendo un documento
+            (caja, clientas, finanzas, configuración — ver `PhoneScreen`).
           */}
-          <main className="flex-1 min-h-0 overflow-y-auto p-3 pb-[calc(0.75rem+var(--tabbar-space))] sm:p-4 sm:pb-[calc(1rem+var(--tabbar-space))] md:p-6 has-[[data-bleed]]:p-0">
+          <main className="flex-1 min-h-0 overflow-y-auto p-3 pb-[calc(0.75rem+var(--tabbar-space))] sm:p-4 sm:pb-[calc(1rem+var(--tabbar-space))] md:p-6 has-[[data-bleed]]:p-0 phone:has-[[data-phone-bleed]]:p-0">
             {children}
           </main>
         </div>

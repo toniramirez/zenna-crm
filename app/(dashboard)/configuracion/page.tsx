@@ -17,6 +17,7 @@ import {
 import { InstagramPanel } from "./instagram-panel";
 import type { LegacySettings } from "./legacy-redirect-panel";
 import { NotificationsPanel } from "./notifications-panel";
+import { type SettingsStatus, SettingsScreen } from "./settings-screen";
 import { WhatsappCloudPanel, type TemplateSlim } from "./whatsapp-cloud-panel";
 import { WhatsappPanel } from "./whatsapp-panel";
 import type { Database } from "@/types/database.types";
@@ -89,41 +90,130 @@ export default async function ConfiguracionPage() {
     .order("status")
     .order("name");
 
+  const waCloudPublic = toPublicWaCloudAccount(waCloudAccount);
+  const instagramPublic = toPublicAccount(account);
+
+  // Título y estado de cada integración, para la lista del teléfono (en el
+  // escritorio cada panel ya lo dice en su propio encabezado).
   return (
-    <div className="space-y-6 max-w-3xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Configuración</h1>
-
-      <section className="space-y-3">
-        <h2 className="text-base font-semibold tracking-tight">Integraciones</h2>
-        <WhatsappCloudPanel
-          account={toPublicWaCloudAccount(waCloudAccount)}
-          templates={(waTemplates as TemplateSlim[] | null) ?? []}
-          webhookUrl={waCloudWebhookUrl}
-          verifyTokenConfigured={Boolean(waCloudVerifyToken())}
-          appSecretConfigured={waCloudAppSecrets().length > 0}
-          serviceKeyConfigured={serviceKeyConfigured}
-        />
-        <InstagramPanel
-          account={toPublicAccount(account)}
-          webhookUrl={webhookUrl}
-          verifyTokenConfigured={Boolean(verifyToken())}
-          appSecretConfigured={Boolean(appSecret())}
-          serviceKeyConfigured={serviceKeyConfigured}
-        />
-        <WhatsappPanel
-          initialStatus={(status as Status | null) ?? null}
-          legacySettings={(legacySettings as LegacySettings | null) ?? null}
-        />
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-base font-semibold tracking-tight">
-          Avisos en el teléfono
-        </h2>
-        <NotificationsPanel
-          vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null}
-        />
-      </section>
-    </div>
+    <SettingsScreen
+      groups={[
+        {
+          title: "Integraciones",
+          items: [
+            {
+              id: "whatsapp-api",
+              title: "WhatsApp API",
+              icon: "whatsapp-cloud",
+              status: !serviceKeyConfigured
+                ? { tone: "warn", label: "Falta configurar el servidor" }
+                : connectionStatus(
+                    waCloudPublic?.state,
+                    Boolean(waCloudPublic?.has_token),
+                  ),
+              detail:
+                waCloudPublic?.state === "connected"
+                  ? waCloudPublic.display_phone_number
+                  : null,
+              panel: (
+                <WhatsappCloudPanel
+                  account={waCloudPublic}
+                  templates={(waTemplates as TemplateSlim[] | null) ?? []}
+                  webhookUrl={waCloudWebhookUrl}
+                  verifyTokenConfigured={Boolean(waCloudVerifyToken())}
+                  appSecretConfigured={waCloudAppSecrets().length > 0}
+                  serviceKeyConfigured={serviceKeyConfigured}
+                />
+              ),
+            },
+            {
+              id: "instagram",
+              title: "Instagram",
+              icon: "instagram",
+              status: !serviceKeyConfigured
+                ? { tone: "warn", label: "Falta configurar el servidor" }
+                : connectionStatus(
+                    instagramPublic?.state,
+                    Boolean(instagramPublic?.has_token),
+                  ),
+              detail:
+                instagramPublic?.state === "connected" &&
+                instagramPublic.username
+                  ? `@${instagramPublic.username}`
+                  : null,
+              panel: (
+                <InstagramPanel
+                  account={instagramPublic}
+                  webhookUrl={webhookUrl}
+                  verifyTokenConfigured={Boolean(verifyToken())}
+                  appSecretConfigured={Boolean(appSecret())}
+                  serviceKeyConfigured={serviceKeyConfigured}
+                />
+              ),
+            },
+            {
+              id: "numero-viejo",
+              title: "WhatsApp · número viejo",
+              icon: "whatsapp",
+              status: legacyStatus((status as Status | null)?.state),
+              panel: (
+                <WhatsappPanel
+                  initialStatus={(status as Status | null) ?? null}
+                  legacySettings={
+                    (legacySettings as LegacySettings | null) ?? null
+                  }
+                />
+              ),
+            },
+          ],
+        },
+        {
+          title: "Avisos en el teléfono",
+          items: [
+            {
+              id: "notificaciones",
+              title: "Notificaciones",
+              icon: "notifications",
+              detail: "Mensajes nuevos de WhatsApp e Instagram",
+              panel: (
+                <NotificationsPanel
+                  vapidPublicKey={
+                    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null
+                  }
+                />
+              ),
+            },
+          ],
+        },
+      ]}
+    />
   );
+}
+
+/** Estado de una cuenta de Meta (Cloud API, Instagram) para la lista. */
+function connectionStatus(
+  state: string | undefined,
+  hasToken: boolean,
+): SettingsStatus {
+  if (state === "connected" && hasToken) return { tone: "ok", label: "Conectado" };
+  if (state === "error") return { tone: "error", label: "Con problemas" };
+  return { tone: "off", label: "Desconectado" };
+}
+
+/**
+ * Estado del número viejo según la última foto del worker. El panel lo sigue
+ * en vivo; acá alcanza con la que trajo la página.
+ */
+function legacyStatus(state: string | undefined): SettingsStatus {
+  switch (state) {
+    case "connected":
+      return { tone: "ok", label: "Conectado" };
+    case "qr":
+      return { tone: "warn", label: "Esperando escaneo del QR" };
+    case "connecting":
+    case "reconnect_requested":
+      return { tone: "warn", label: "Conectando…" };
+    default:
+      return { tone: "off", label: "Desconectado" };
+  }
 }

@@ -147,7 +147,7 @@ export function InstagramPanel({
   return (
     <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
+      <div className="flex items-center justify-between gap-3 border-b px-5 py-4 phone:flex-wrap phone:px-4">
         <div className="flex min-w-0 items-center gap-3">
           <div className="grid size-10 place-items-center rounded-full bg-fuchsia-50">
             <InstagramIcon className="size-5 text-fuchsia-700" />

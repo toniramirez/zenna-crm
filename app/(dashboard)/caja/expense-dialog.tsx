@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
-import { useEffect, useState, useTransition } from "react";
+import { type ReactNode, useEffect, useState, useTransition } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -50,9 +50,12 @@ function todayIsoDate(): string {
 export function NewExpenseButton({
   defaultDate,
   variant = "default",
+  trigger,
 }: {
   defaultDate?: string;
   variant?: "default" | "outline";
+  /** Otro disparador en vez del botón (el botón flotante del teléfono). */
+  trigger?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -128,7 +131,7 @@ export function NewExpenseButton({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant={variant}>Registrar egreso</Button>
+        {trigger ?? <Button variant={variant}>Registrar egreso</Button>}
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>

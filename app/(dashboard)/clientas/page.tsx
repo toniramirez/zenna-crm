@@ -1,3 +1,4 @@
+import { PhoneOrDesktop } from "@/components/dashboard/phone-screen";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -6,25 +7,38 @@ import { ServicesTable } from "../servicios/services-table";
 import { NewClientButton } from "./client-dialog";
 import { ClientsSearchBar } from "./search-bar";
 import { ClientsTable } from "./clients-table";
+import { PhoneClientas } from "./phone-clientas";
+import { safeClientSort } from "./sort";
 
 export const dynamic = "force-dynamic";
 
 type Props = {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; orden?: string }>;
 };
+
+/** Cuántas clientas trae la lista; más allá de eso, se busca. */
+const CLIENTS_LIMIT = 200;
 
 export default async function ClientasPage({ searchParams }: Props) {
   await requireRole(["owner", "receptionist"]);
-  const { q = "" } = await searchParams;
+  const { q = "", orden } = await searchParams;
   const query = q.trim();
+  const sort = safeClientSort(orden);
 
   const supabase = await createClient();
 
-  let clientsRequest = supabase
-    .from("clients")
-    .select("*")
-    .order("full_name")
-    .limit(200);
+  let clientsRequest = supabase.from("clients").select("*");
+  if (sort === "recientes") {
+    clientsRequest = clientsRequest.order("last_visit_at", {
+      ascending: false,
+      nullsFirst: false,
+    });
+  } else if (sort === "visitas") {
+    clientsRequest = clientsRequest.order("total_visits", { ascending: false });
+  } else if (sort === "gasto") {
+    clientsRequest = clientsRequest.order("total_spent", { ascending: false });
+  }
+  clientsRequest = clientsRequest.order("full_name").limit(CLIENTS_LIMIT);
 
   if (query) {
     // Match name OR phone using ILIKE for case-insensitive partial matches.
@@ -45,7 +59,7 @@ export default async function ClientasPage({ searchParams }: Props) {
       .order("name"),
   ]);
 
-  return (
+  const desktop = (
     <div className="space-y-6 max-w-6xl">
       <h1 className="text-2xl font-semibold tracking-tight">
         Clientas y servicios
@@ -73,5 +87,22 @@ export default async function ClientasPage({ searchParams }: Props) {
         </TabsContent>
       </Tabs>
     </div>
+  );
+
+  // En el teléfono las tablas no entran: es la pantalla de contactos de
+  // WhatsApp, con los mismos datos (ver ./phone-clientas).
+  return (
+    <PhoneOrDesktop
+      phone={
+        <PhoneClientas
+          clients={clients ?? []}
+          services={services ?? []}
+          query={query}
+          sort={sort}
+          limit={CLIENTS_LIMIT}
+        />
+      }
+      desktop={desktop}
+    />
   );
 }

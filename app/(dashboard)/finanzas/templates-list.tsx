@@ -3,6 +3,7 @@
 import { MoreHorizontal, Pencil, Power, Receipt } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
+import { PhoneGroup } from "@/components/dashboard/phone-screen";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatCurrency } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { EXPENSE_CATEGORY_LABEL } from "@/lib/validations/expenses";
 import { PAYMENT_METHOD_LABEL } from "@/lib/validations/payments";
 import { toggleTemplateActiveAction } from "./actions";
@@ -73,7 +75,73 @@ export function TemplatesList({
 
   return (
     <>
-      <div className="rounded-md border bg-card">
+      {/* En el teléfono la tabla de seis columnas no entra: cada plantilla
+          es una fila, con "Pagar" y el menú a mano. */}
+      <PhoneGroup className="mx-0 hidden phone:block">
+        {templates.map((t) => (
+          <li
+            key={t.id}
+            className={cn(
+              "flex items-center gap-2 py-3 pr-2 pl-4",
+              !t.active && "opacity-55",
+            )}
+          >
+            <span className="min-w-0 flex-1">
+              <span className="flex items-baseline justify-between gap-2">
+                <span className="truncate text-[0.9375rem] font-medium">
+                  {t.name}
+                </span>
+                <span className="shrink-0 text-[0.8125rem] text-[var(--wa-text-2)] tabular-nums">
+                  {t.default_amount ? formatCurrency(t.default_amount) : null}
+                </span>
+              </span>
+              <span className="mt-0.5 block truncate text-[0.8125rem] text-[var(--wa-text-2)]">
+                {[
+                  EXPENSE_CATEGORY_LABEL[t.category],
+                  t.default_payment_method
+                    ? PAYMENT_METHOD_LABEL[t.default_payment_method]
+                    : null,
+                  t.active ? null : "Archivada",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            </span>
+            {t.active ? (
+              <button
+                type="button"
+                onClick={() => openPay(t)}
+                className="h-8 shrink-0 rounded-full bg-[var(--wa-chip-on)] px-3.5 text-[0.8125rem] font-semibold text-[var(--wa-chip-on-text)] active:opacity-80"
+              >
+                Pagar
+              </button>
+            ) : null}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={`Acciones de ${t.name}`}
+                  className="flex size-9 shrink-0 items-center justify-center rounded-full text-[var(--wa-text-2)] active:bg-[var(--wa-hover)]"
+                >
+                  <MoreHorizontal className="size-5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => openEdit(t)}>
+                  <Pencil className="size-4" />
+                  Editar
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleToggle(t)}>
+                  <Power className="size-4" />
+                  {t.active ? "Desactivar" : "Activar"}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </li>
+        ))}
+      </PhoneGroup>
+
+      <div className="rounded-md border bg-card phone:hidden">
         <Table>
           <TableHeader>
             <TableRow>

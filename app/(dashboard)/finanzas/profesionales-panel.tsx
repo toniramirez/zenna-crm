@@ -29,7 +29,8 @@ export function ProfesionalesPanel({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-center md:justify-start">
+      {/* En el teléfono el mes está en el encabezado de la pantalla. */}
+      <div className="flex items-center justify-center md:justify-start phone:hidden">
         <MonthNav month={month} extraParams="tab=profesionales" />
       </div>
 
