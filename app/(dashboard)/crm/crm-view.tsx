@@ -93,6 +93,7 @@ import { QuickReplyPicker } from "./quick-reply-picker";
 import { ReactionPicker, ReactionsPill } from "./reaction-picker";
 import { TemplatePicker } from "./template-picker";
 import type { ConversationWithClient, MessageRow } from "./types";
+import { WindowTimer } from "./window-timer";
 
 type StatusFilter = "all" | "unread" | "awaiting" | "answered";
 
@@ -1163,10 +1164,11 @@ export function CrmView({
                 const pinned = !!c.pinned_at;
                 /*
                   Cuánto le queda a la ventana de 24 h de este chat, para el
-                  cronómetro del avatar. Solo el canal de la Cloud API la
-                  tiene: en el número viejo y en Instagram no hay tal corte,
-                  así que ahí no se pinta nada. Con el reloj todavía en null
-                  (render del servidor) tampoco, y así el HTML coincide.
+                  cronómetro de la fila y el anillo del avatar. Solo el canal
+                  de la Cloud API la tiene: en el número viejo y en Instagram
+                  no hay tal corte, así que ahí no se pinta nada. Con el reloj
+                  todavía en null (render del servidor) tampoco, y así el
+                  HTML coincide.
                 */
                 const rowWindowLeft =
                   now !== null && c.channel === WA_CLOUD_CHANNEL
@@ -1257,9 +1259,13 @@ export function CrmView({
                             ) : null}
                           </span>
                         </div>
-                        {(c.awaiting_reply ||
+                        {(rowWindowLeft !== undefined ||
+                          c.awaiting_reply ||
                           (c.clients?.tags?.length ?? 0) > 0) && (
                           <div className="mt-1.5 flex min-w-0 items-center gap-1.5 overflow-hidden">
+                            {rowWindowLeft !== undefined ? (
+                              <WindowTimer leftMs={rowWindowLeft} />
+                            ) : null}
                             {wait ? (
                               <span
                                 className={cn(

@@ -4,7 +4,11 @@ import { InstagramIcon } from "@/components/icons/instagram";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useSignedUrl } from "./use-signed-url";
-import { WindowTimer, windowTimerLabel } from "./window-timer";
+import {
+  WINDOW_RING_GAP,
+  WINDOW_RING_STROKE,
+  WindowRing,
+} from "./window-timer";
 
 function initials(name: string | null | undefined, fallback = "??") {
   const src = (name ?? "").trim();
@@ -32,8 +36,7 @@ export function ChatAvatar({
   channel?: string | null;
   /**
    * Lo que le queda a la ventana de 24 h de la Cloud API, en ms (null o ≤0 =
-   * cerrada). Abierta, el círculo pasa a ser el cronómetro; sin pasarlo, el
-   * avatar no sabe de ventanas y se ve como siempre.
+   * cerrada). Abierta, el avatar lleva el anillo de la ventana alrededor.
    */
   windowLeftMs?: number | null;
   className?: string;
@@ -41,28 +44,24 @@ export function ChatAvatar({
 }) {
   const url = useSignedUrl(avatarPath ?? null);
   const isInstagram = channel === "instagram";
-  const windowLabel =
-    windowLeftMs !== undefined ? windowTimerLabel(windowLeftMs) : undefined;
+  const windowOpen = windowLeftMs != null && windowLeftMs > 0;
+  // Con anillo, el avatar se achica para dejarle lugar y un aire alrededor,
+  // como un Estado de WhatsApp: el conjunto sigue midiendo `size`.
+  const inset = windowOpen ? WINDOW_RING_STROKE + WINDOW_RING_GAP : 0;
 
   // El badge escala con el avatar para que se lea igual en la lista (48px)
   // que en el encabezado del chat (36px).
   const badgeSize = Math.max(14, Math.round(size * 0.36));
 
   return (
-    <div
-      className={cn("relative shrink-0", className)}
-      style={{ width: size, height: size }}
-      title={windowLabel}
-    >
+    <div className={cn("relative shrink-0", className)} style={{ width: size, height: size }}>
       {windowLeftMs != null && windowLeftMs > 0 ? (
-        <WindowTimer leftMs={windowLeftMs} size={size} />
-      ) : (
-        <Avatar className="size-full">
-          {url ? <AvatarImage src={url} alt={name ?? "Avatar"} /> : null}
-          <AvatarFallback className="text-xs">{initials(name)}</AvatarFallback>
-        </Avatar>
-      )}
-      {windowLabel ? <span className="sr-only">{windowLabel}</span> : null}
+        <WindowRing leftMs={windowLeftMs} size={size} />
+      ) : null}
+      <Avatar className="absolute size-auto" style={{ inset }}>
+        {url ? <AvatarImage src={url} alt={name ?? "Avatar"} /> : null}
+        <AvatarFallback className="text-xs">{initials(name)}</AvatarFallback>
+      </Avatar>
 
       {isInstagram ? (
         <span
