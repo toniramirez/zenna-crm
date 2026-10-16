@@ -4,11 +4,7 @@ import { InstagramIcon } from "@/components/icons/instagram";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useSignedUrl } from "./use-signed-url";
-import {
-  WINDOW_RING_GAP,
-  WINDOW_RING_STROKE,
-  WindowRing,
-} from "./window-timer";
+import { WindowRing, windowRingGeometry } from "./window-timer";
 
 function initials(name: string | null | undefined, fallback = "??") {
   const src = (name ?? "").trim();
@@ -46,8 +42,9 @@ export function ChatAvatar({
   const isInstagram = channel === "instagram";
   const windowOpen = windowLeftMs != null && windowLeftMs > 0;
   // Con anillo, el avatar se achica para dejarle lugar y un aire alrededor,
-  // como un Estado de WhatsApp: el conjunto sigue midiendo `size`.
-  const inset = windowOpen ? WINDOW_RING_STROKE + WINDOW_RING_GAP : 0;
+  // como un Estado de WhatsApp. La caja sigue midiendo `size`: el anillo se
+  // asoma un pelo por fuera, así la fila no se mueve al abrirse la ventana.
+  const inset = windowOpen ? windowRingGeometry(size).inset : 0;
 
   // El badge escala con el avatar para que se lea igual en la lista (48px)
   // que en el encabezado del chat (36px).

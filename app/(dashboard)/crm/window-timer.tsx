@@ -97,14 +97,29 @@ export function WindowTimer({
 }
 
 const RING = {
-  ok: "text-[var(--wa-accent)]",
+  // El verde brillante del anillo de los Estados (el mismo del contador de no
+  // leídos), no el verde petróleo de los acentos de la app.
+  ok: "text-[var(--wa-badge)]",
   warm: "text-[var(--wa-wait-warm)]",
   urgent: "text-[var(--wa-wait-cold)]",
 } as const;
 
-/** Grosor del anillo y aire hasta el avatar, en px. */
-export const WINDOW_RING_STROKE = 2.5;
-export const WINDOW_RING_GAP = 2;
+/**
+ * Las proporciones del anillo de un Estado de WhatsApp, medidas sobre la app:
+ * el anillo se asoma apenas por fuera del avatar, y la foto se achica para
+ * dejarle un aire del mismo ancho que el trazo. Todo escala con `size`.
+ */
+export function windowRingGeometry(size: number) {
+  const overflow = size * 0.035;
+  const stroke = Math.max(2, size * 0.04);
+  const gap = size * 0.045;
+  return {
+    overflow,
+    stroke,
+    /** Cuánto se mete el avatar desde el borde de su caja. */
+    inset: stroke + gap - overflow,
+  };
+}
 
 /**
  * La misma ventana, dibujada alrededor del avatar como el anillo de un Estado
@@ -117,36 +132,40 @@ export function WindowRing({
   size,
 }: {
   leftMs: number;
+  /** El tamaño del avatar; el anillo se dibuja un pelo por fuera. */
   size: number;
 }) {
   const level = windowLevel(leftMs);
   if (level === "closed") return null;
 
-  const r = (size - WINDOW_RING_STROKE) / 2;
+  const { overflow, stroke } = windowRingGeometry(size);
+  const box = size + overflow * 2;
+  const r = (box - stroke) / 2;
   const circumference = 2 * Math.PI * r;
   const fraction = Math.min(1, Math.max(0, leftMs / CLOUD_WINDOW_MS));
 
   return (
     <svg
       aria-hidden
-      width={size}
-      height={size}
-      className={cn("absolute inset-0 -rotate-90", RING[level])}
+      width={box}
+      height={box}
+      className={cn("absolute -rotate-90", RING[level])}
+      style={{ top: -overflow, left: -overflow }}
       fill="none"
     >
       <circle
-        cx={size / 2}
-        cy={size / 2}
+        cx={box / 2}
+        cy={box / 2}
         r={r}
         stroke="var(--wa-border)"
-        strokeWidth={WINDOW_RING_STROKE}
+        strokeWidth={stroke}
       />
       <circle
-        cx={size / 2}
-        cy={size / 2}
+        cx={box / 2}
+        cy={box / 2}
         r={r}
         stroke="currentColor"
-        strokeWidth={WINDOW_RING_STROKE}
+        strokeWidth={stroke}
         strokeLinecap="round"
         strokeDasharray={circumference}
         strokeDashoffset={circumference * (1 - fraction)}

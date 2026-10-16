@@ -1152,14 +1152,7 @@ export function CrmView({
               {filteredConversations.map((c) => {
                 const isSel = c.id === selectedId;
                 const title = conversationTitle(c);
-                const phone = conversationPhone(c);
                 const unread = c.unread_count > 0;
-                // Surface the phone in the list when we have one AND the
-                // title isn't already the phone itself. We show it especially
-                // when the contact is not linked to a clienta — that's the
-                // case where the user needs the number to identify them.
-                const showPhoneInList =
-                  phone && (c.clients?.full_name || c.display_name);
                 const wait = c.awaiting_reply ? waitState(c, now) : null;
                 const pinned = !!c.pinned_at;
                 /*
@@ -1174,13 +1167,17 @@ export function CrmView({
                   now !== null && c.channel === WA_CLOUD_CHANNEL
                     ? windowLeftMs(c.last_inbound_at, now)
                     : undefined;
+                const hasChips =
+                  rowWindowLeft !== undefined ||
+                  c.awaiting_reply ||
+                  (c.clients?.tags?.length ?? 0) > 0;
                 return (
                   <li key={c.id} className="group/row relative">
                     <button
                       type="button"
                       onClick={() => setSelectedId(c.id)}
                       className={cn(
-                        "relative flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
+                        "relative flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors md:px-3",
                         isSel
                           ? "wa-row-active"
                           : "hover:bg-[var(--wa-hover)]",
@@ -1202,7 +1199,7 @@ export function CrmView({
                         avatarPath={c.avatar_path}
                         channel={c.channel}
                         windowLeftMs={rowWindowLeft}
-                        size={48}
+                        size={52}
                       />
                       {/*
                         La separación entre filas va acá y no en el <li>: así
@@ -1216,35 +1213,41 @@ export function CrmView({
                       */}
                       <div className="min-w-0 flex-1 border-b border-[var(--wa-divider)] pb-2.5 pr-7 md:pr-0 [li:last-child_&]:border-b-0">
                         <div className="flex items-baseline justify-between gap-2">
-                          <span
-                            className={cn(
-                              "truncate text-[0.9375rem] text-[var(--wa-text)]",
-                              unread ? "font-semibold" : "font-normal",
-                            )}
-                          >
+                          {/*
+                            Como en WhatsApp: en el teléfono el nombre va
+                            siempre en semibold (la app de iOS) y en
+                            escritorio en regular (WhatsApp Web). Lo no leído
+                            lo marcan la hora en verde y el contador.
+                          */}
+                          <span className="truncate text-base font-semibold text-[var(--wa-text)] md:text-[1.0625rem] md:font-normal">
                             {title}
                           </span>
                           <span
                             className={cn(
-                              "shrink-0 text-[0.6875rem] tabular-nums",
+                              "shrink-0 text-[0.8125rem] tabular-nums md:text-xs",
                               unread
-                                ? "font-medium text-[var(--wa-accent-strong)]"
+                                ? "text-[var(--wa-accent-strong)]"
                                 : "text-[var(--wa-text-2)]",
                             )}
                           >
                             {relativeTime(c.last_message_at)}
                           </span>
                         </div>
-                        {showPhoneInList && !c.clients ? (
-                          <div className="truncate text-[0.6875rem] text-[var(--wa-text-3)] tabular-nums">
-                            {phone}
-                          </div>
-                        ) : null}
-                        <div className="mt-0.5 flex items-center justify-between gap-2">
-                          <span className="truncate text-[0.8125rem] text-[var(--wa-text-2)]">
+                        {/*
+                          Sin chips abajo, la vista previa usa ese lugar para
+                          una segunda línea, como en WhatsApp; con chips queda
+                          en una y la fila mide lo mismo.
+                        */}
+                        <div className="mt-0.5 flex items-start justify-between gap-2">
+                          <span
+                            className={cn(
+                              "min-w-0 text-[0.9375rem] leading-snug text-[var(--wa-text-2)] md:text-sm",
+                              hasChips ? "truncate" : "line-clamp-2",
+                            )}
+                          >
                             {c.last_message_preview ?? "Sin mensajes"}
                           </span>
-                          <span className="flex shrink-0 items-center gap-1.5">
+                          <span className="mt-0.5 flex shrink-0 items-center gap-1.5">
                             {pinned ? (
                               <Pin
                                 role="img"
@@ -1253,15 +1256,13 @@ export function CrmView({
                               />
                             ) : null}
                             {unread ? (
-                              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--wa-badge)] px-1.5 text-[0.6875rem] font-medium tabular-nums text-[var(--wa-badge-text)]">
+                              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--wa-badge)] px-1.5 text-xs font-medium tabular-nums text-[var(--wa-badge-text)]">
                                 {c.unread_count > 99 ? "99+" : c.unread_count}
                               </span>
                             ) : null}
                           </span>
                         </div>
-                        {(rowWindowLeft !== undefined ||
-                          c.awaiting_reply ||
-                          (c.clients?.tags?.length ?? 0) > 0) && (
+                        {hasChips && (
                           <div className="mt-1.5 flex min-w-0 items-center gap-1.5 overflow-hidden">
                             {rowWindowLeft !== undefined ? (
                               <WindowTimer leftMs={rowWindowLeft} />
