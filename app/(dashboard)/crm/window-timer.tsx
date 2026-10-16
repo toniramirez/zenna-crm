@@ -8,89 +8,98 @@ import {
 } from "@/lib/whatsapp-cloud/window";
 
 /**
- * El cronómetro de la ventana de 24 h, tal como se ve en la lista de chats.
+ * El cronómetro de la ventana de 24 h, tal como se ve en la lista de chats:
+ * ocupa el círculo del avatar, que en la Cloud API quedó vacío porque Meta no
+ * comparte la foto de perfil.
  *
- * Es un anillo que se vacía —queda claro de reojo cuánto falta sin leer el
- * número— más el número al lado, porque "más o menos medio anillo" no alcanza
- * para decidir si se contesta ahora o después del próximo turno. El color va
- * del verde al rojo por tramos (`windowLevel`), y cerrada se apaga a gris:
- * ahí lo accionable no es apurarse sino mandar una plantilla.
+ * El borde es un anillo que se vacía —queda claro de reojo cuánto falta sin
+ * leer el número— y adentro va el número, porque "más o menos medio anillo" no
+ * alcanza para decidir si se contesta ahora o después del próximo turno. El
+ * color va del verde al rojo por tramos (`windowLevel`). Cerrada no se dibuja:
+ * el avatar vuelve a ser el de siempre y lo accionable pasa a ser mandar una
+ * plantilla, que se ofrece adentro del chat.
  */
-const RADIUS = 5.5;
+const RADIUS = 46;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 const STYLES = {
   ok: "bg-[var(--wa-chip-on)] text-[var(--wa-chip-on-text)]",
   warm: "bg-[var(--wa-wait-warm-bg)] text-[var(--wa-wait-warm)]",
   urgent: "bg-[var(--wa-wait-cold-bg)] text-[var(--wa-wait-cold)]",
-  closed: "border-[var(--wa-border)] text-[var(--wa-text-3)]",
 } as const;
+
+export function windowTimerLabel(leftMs: number | null): string {
+  return windowLevel(leftMs) === "closed"
+    ? "Ventana de 24 h cerrada: solo se puede escribir con una plantilla"
+    : `Ventana de 24 h: quedan ${formatWindowShort(leftMs ?? 0)} para responder sin plantilla`;
+}
 
 export function WindowTimer({
   leftMs,
+  size,
   className,
 }: {
-  /** Lo que queda de ventana en ms. null / ≤0 = cerrada. */
-  leftMs: number | null;
+  /** Lo que queda de ventana en ms. Tiene que estar abierta (> 0). */
+  leftMs: number;
+  size: number;
   className?: string;
 }) {
   const level = windowLevel(leftMs);
-  const closed = level === "closed";
-  // Cerrada, `leftMs` puede ser null (nunca escribió) o negativo (cerró hace
-  // rato): en los dos casos el chip dice lo mismo y el 0 nunca se muestra.
-  const left = closed ? 0 : (leftMs ?? 0);
+  if (level === "closed") return null;
+
   // La fracción del anillo que sigue pintada. Se recorta arriba porque un
   // mensaje entrante recién llegado deja `leftMs` un pelo por encima de las
   // 24 h (el reloj de la bandeja late una vez por minuto).
-  const fraction = closed
-    ? 0
-    : Math.min(1, Math.max(0, left / CLOUD_WINDOW_MS));
-
-  const label = closed
-    ? "Ventana de 24 h cerrada: solo se puede escribir con una plantilla"
-    : `Ventana de 24 h: quedan ${formatWindowShort(left)} para responder sin plantilla`;
+  const fraction = Math.min(1, Math.max(0, leftMs / CLOUD_WINDOW_MS));
+  // "8 h" / "45 min" / "<1 min": el número arriba y la unidad abajo, chica,
+  // como la esfera de un cronómetro. Así entra en el círculo sin achicar el
+  // número hasta que no se lea.
+  const [value, unit] = formatWindowShort(leftMs).split(" ");
 
   return (
     <span
-      title={label}
+      aria-hidden
       className={cn(
-        // El borde va en la base, transparente, para que el chip cerrado
-        // (el único con borde visible) no mida un pelo más que los otros.
-        "inline-flex shrink-0 items-center gap-1 rounded-full border border-transparent px-1.5 py-0.5 text-[0.6875rem] font-medium tabular-nums",
+        "relative flex size-full flex-col items-center justify-center rounded-full leading-none tabular-nums",
         STYLES[level],
         className,
       )}
     >
       <svg
-        aria-hidden
-        viewBox="0 0 14 14"
-        className="size-3 shrink-0 -rotate-90"
+        viewBox="0 0 100 100"
+        className="absolute inset-0 size-full -rotate-90"
         fill="none"
       >
         <circle
-          cx="7"
-          cy="7"
+          cx="50"
+          cy="50"
           r={RADIUS}
           stroke="currentColor"
-          strokeWidth="2"
-          className="opacity-25"
+          strokeWidth="7"
+          className="opacity-20"
         />
-        {fraction > 0 ? (
-          <circle
-            cx="7"
-            cy="7"
-            r={RADIUS}
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeDasharray={CIRCUMFERENCE}
-            strokeDashoffset={CIRCUMFERENCE * (1 - fraction)}
-          />
-        ) : null}
+        <circle
+          cx="50"
+          cy="50"
+          r={RADIUS}
+          stroke="currentColor"
+          strokeWidth="7"
+          strokeLinecap="round"
+          strokeDasharray={CIRCUMFERENCE}
+          strokeDashoffset={CIRCUMFERENCE * (1 - fraction)}
+        />
       </svg>
-      <span className="sr-only">{label}</span>
-      <span aria-hidden>
-        {closed ? "Cerrada" : formatWindowShort(left)}
+      <span
+        className="font-semibold"
+        style={{ fontSize: Math.round(size * 0.34) }}
+      >
+        {value}
+      </span>
+      <span
+        className="mt-px font-medium opacity-80"
+        style={{ fontSize: Math.max(8, Math.round(size * 0.2)) }}
+      >
+        {unit}
       </span>
     </span>
   );
