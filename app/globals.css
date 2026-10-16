@@ -309,6 +309,7 @@
 :root {
   /* Sin barra de pestañas: es el estado del escritorio. */
   --tabbar-h: 0px;
+  --tabbar-bottom: 0px;
   --tabbar-space: 0px;
 
   /*
@@ -393,12 +394,17 @@
     --wa-ink: #7ae3c3;
 
     /*
-     * Alto de la barra de pestañas + el respiro del gesto de inicio. Las
+     * Alto de la barra de pestañas + lo que flota sobre el borde. Las
      * pantallas que llegan hasta el borde inferior reservan este espacio;
      * arriba de `md` la barra no existe y el valor es 0 (ver más abajo).
+     *
+     * Como en iOS 26, la barra se mete un poco en la franja del gesto de
+     * inicio en vez de apoyarse encima de toda ella: con los 34px del iPhone
+     * queda a 26px del borde, y el palito del gesto pasa por debajo.
      */
-    --tabbar-h: 3.75rem;
-    --tabbar-space: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+    --tabbar-h: 3.875rem;
+    --tabbar-bottom: max(0.5rem, calc(env(safe-area-inset-bottom) - 0.5rem));
+    --tabbar-space: calc(var(--tabbar-h) + var(--tabbar-bottom));
   }
 
   /*
@@ -923,13 +929,32 @@
 
 /* ── Barra de pestañas del teléfono ───────────────────────────────────────
  * La navegación de la app en el celular es esta barra, no el rail ni el menú
- * hamburguesa: pastilla flotante apoyada abajo, con el ítem activo marcado
- * por una cápsula detrás del ícono. Mismo gesto que WhatsApp.
+ * hamburguesa: la barra de iOS 26 que usa WhatsApp en el iPhone. Pastilla de
+ * vidrio flotante y, sobre la pestaña activa, una lente que se arrastra de
+ * una a otra (el gesto vive en components/dashboard/mobile-tabbar.tsx).
  *
  * Flota (position: fixed) en vez de ocupar una fila del layout para que la
  * lista siga corriendo por debajo. A cambio, todo lo que llega al borde
  * inferior reserva `--tabbar-space`.
  */
+
+.tabbar {
+  position: relative;
+  margin-inline: auto;
+  max-width: 28rem;
+  height: var(--tabbar-h);
+  padding: 0.25rem;
+  border-radius: 9999px;
+  /*
+   * El arrastre horizontal es de la lente, no del navegador; y un toque
+   * largo sobre un link no tiene que abrir la vista previa de iOS ni
+   * seleccionar texto.
+   */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
 
 /*
  * La superficie es un material, no un panel: vidrio del sistema de iOS. El
@@ -943,6 +968,9 @@
  * abajo se mezclaría con las etiquetas: ahí el fondo se vuelve casi sólido.
  */
 .tabbar-surface {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
   background: color-mix(in oklab, var(--background) 58%, transparent);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   backdrop-filter: blur(24px) saturate(180%);
@@ -958,6 +986,12 @@
   }
 }
 
+.tabbar-track {
+  position: relative;
+  display: flex;
+  height: 100%;
+}
+
 .tabbar-item {
   display: flex;
   flex: 1 1 0;
@@ -965,44 +999,88 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.125rem;
-  padding-top: 0.25rem;
-  padding-bottom: 0.25rem;
+  gap: 0.1875rem;
+  border-radius: 9999px;
   color: var(--muted-foreground);
   -webkit-tap-highlight-color: transparent;
 }
 
+.tabbar-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
 /*
- * La cápsula del ítem activo: crece desde atrás del ícono, no del bloque.
- * El `max-width` es lo que la deja achicarse con cinco ítems en una pantalla
- * de 320px, donde 56px fijos se desbordarían.
+ * La lente. En reposo es la cápsula gris clara que marca la pestaña activa
+ * en iOS: blanco translúcido, no `--accent`, porque sobre un material
+ * transparente un gris opaco se ve como un parche pegado encima.
  *
- * Se pinta con blanco translúcido y no con `--accent`: sobre un material
- * transparente un gris opaco se ve como un parche pegado encima, mientras que
- * el blanco al 12% levanta lo que ya hay atrás, que es como se marca la
- * selección en iOS.
+ * Su propio `backdrop-filter` desenfoca la fila de abajo: lo nítido es la
+ * copia en color activo que lleva adentro, y sin el desenfoque se verían los
+ * dos íconos encimados —sobre todo con la lente levantada, que agranda la
+ * copia y no el de abajo.
  */
-.tabbar-pill {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 3.5rem;
-  max-width: 100%;
-  height: 1.625rem;
+.tabbar-lens {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  overflow: hidden;
   border-radius: 9999px;
-  transition: background-color 150ms ease;
-}
-
-.tabbar-item[data-active="true"] {
-  color: var(--foreground);
-}
-
-.tabbar-item[data-active="true"] .tabbar-pill {
+  pointer-events: none;
+  will-change: transform;
   background: rgb(255 255 255 / 0.12);
+  -webkit-backdrop-filter: blur(8px) saturate(160%);
+  backdrop-filter: blur(8px) saturate(160%);
+  transition:
+    background-color 180ms ease,
+    box-shadow 180ms ease,
+    opacity 150ms ease;
 }
 
-.tabbar-item:active .tabbar-pill {
-  background: rgb(255 255 255 / 0.07);
+/*
+ * Levantada (con el dedo encima) la lente se vuelve vidrio claro: casi sin
+ * relleno, con el canto que agarra la luz arriba a la izquierda y una sombra
+ * que la despega de la barra. El canto va en un pseudo-elemento para que
+ * aparezca con un fundido y quede encima de la copia de la fila.
+ */
+.tabbar-lens[data-lifted="true"] {
+  background: rgb(255 255 255 / 0.04);
+  box-shadow: 0 6px 18px -6px rgb(0 0 0 / 0.6);
+}
+
+.tabbar-lens::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 180ms ease;
+  box-shadow:
+    inset 0 0 0 0.5px rgb(255 255 255 / 0.4),
+    inset 1.5px 1.5px 1px -0.5px rgb(255 255 255 / 0.45),
+    inset -1px -1.5px 1px -0.5px rgb(255 255 255 / 0.18),
+    inset 0 0 14px rgb(255 255 255 / 0.1);
+}
+
+.tabbar-lens[data-lifted="true"]::after {
+  opacity: 1;
+}
+
+/* Sin pestaña activa (una página que no está en la barra) no hay lente,
+   salvo mientras el dedo la levanta. */
+.tabbar-lens[data-hidden="true"]:not([data-lifted="true"]) {
+  opacity: 0;
+}
+
+.tabbar-lens-content {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  display: flex;
+}
+
+.tabbar-lens-content > .tabbar-item {
+  color: var(--foreground);
 }
 
 /*
