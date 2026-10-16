@@ -21,14 +21,15 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Already logged in → bounce to dashboard
-  if (user) redirect("/turnos");
+  // Already logged in → bounce to dashboard. A la raíz, que decide la pantalla
+  // de inicio según el dispositivo (en el teléfono, la bandeja de WhatsApp).
+  if (user) redirect("/");
 
   const { redirect: redirectTo } = await searchParams;
   const safeRedirect =
     redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//")
       ? redirectTo
-      : "/turnos";
+      : "/";
 
   return (
     <Card>

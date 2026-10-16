@@ -44,11 +44,13 @@ export async function loginAction(
     return { error: message };
   }
 
-  // Validate the redirect target is a same-origin path before honoring it
+  // Validate the redirect target is a same-origin path before honoring it.
+  // Sin destino va a la raíz y no a /turnos: la raíz elige la pantalla según
+  // el dispositivo (la bandeja en el teléfono) — ver app/(dashboard)/page.tsx.
   const safeTarget =
     redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//")
       ? redirectTo
-      : "/turnos";
+      : "/";
 
   redirect(safeTarget);
 }

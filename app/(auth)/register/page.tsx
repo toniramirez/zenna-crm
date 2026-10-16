@@ -22,7 +22,7 @@ export default async function RegisterPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (user) redirect("/turnos");
+  if (user) redirect("/");
 
   // Has anyone already registered as owner? If so, this page is locked.
   const { count } = await supabase

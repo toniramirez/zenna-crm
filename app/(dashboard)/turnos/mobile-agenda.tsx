@@ -1,16 +1,26 @@
 "use client";
 
-import { addDays, format, isSameDay, startOfDay, startOfWeek } from "date-fns";
-import { es } from "date-fns/locale";
 import {
-  CalendarDays,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  MessageCircle,
-  Plus,
-} from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+  addDays,
+  differenceInCalendarDays,
+  format,
+  isSameDay,
+  isSameWeek,
+  isSameYear,
+  startOfDay,
+  startOfWeek,
+} from "date-fns";
+import { es } from "date-fns/locale";
+import { CalendarCheck, ChevronDown, MessageCircle, Plus } from "lucide-react";
+import {
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { MobileChromeAccount } from "@/components/dashboard/mobile-chrome";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
@@ -18,12 +28,16 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { STATUS_LABEL, STATUS_TONE } from "@/lib/validations/appointments";
+import {
+  type AppointmentStatus,
+  STATUS_LABEL,
+} from "@/lib/validations/appointments";
 import {
   appointmentTotal,
   capitalize,
   countsTowardTotals,
   firstName,
+  initialOf,
   money,
   servicesLabel,
 } from "./appointment-utils";
@@ -45,32 +59,63 @@ type Props = {
 
 type Row =
   | { kind: "appointment"; appointment: AppointmentWithRelations }
-  | { kind: "now" };
+  | { kind: "now" }
+  | { kind: "gap"; startsAt: Date; minutes: number };
+
+type DayGroup = {
+  key: string;
+  date: Date;
+  list: AppointmentWithRelations[];
+  count: number;
+  revenue: number;
+};
+
+/** Un hueco más corto que esto no entra ni un brushing: no se ofrece. */
+const MIN_GAP_MINUTES = 30;
+
+/** Color de una profesional sin color cargado. */
+const FALLBACK_COLOR = "#94a3b8";
+
+/**
+ * Estado del turno en el oscuro del teléfono. `STATUS_TONE` es para el claro
+ * del escritorio: sus fondos 100 sobre el gris de WhatsApp eran calcomanías
+ * blancas. Acá van translúcidos, con el texto en el tono claro.
+ */
+const STATUS_PILL: Record<AppointmentStatus, string> = {
+  scheduled: "bg-white/10 text-[var(--wa-text-2)]",
+  confirmed: "bg-sky-400/15 text-sky-300",
+  in_progress: "bg-amber-400/15 text-amber-300",
+  completed: "bg-emerald-400/15 text-emerald-300",
+  no_show: "bg-rose-400/15 text-rose-300",
+  cancelled: "bg-white/10 text-[var(--wa-text-2)]",
+};
 
 /**
  * Agenda para teléfono.
  *
  * En el escritorio la agenda es una grilla de columnas por profesional; abajo
- * de 768px esa grilla no se puede leer ni tocar. Acá usamos el mismo lenguaje
- * que la bandeja de WhatsApp — franja de contexto arriba, chips de filtro y
- * lista de filas altas — porque es la pantalla que el salón ya sabe recorrer
- * con el pulgar:
+ * de 768px esa grilla no se puede leer ni tocar. Acá es la pantalla de
+ * calendario de una app de teléfono, con el mismo encabezado que la bandeja
+ * (título grande, cuenta arriba a la derecha) para que pasar de Chats a
+ * Turnos no se sienta como cambiar de app:
  *
  *   ┌───────────────────────────────┐
- *   │ ◷  Viernes, 8 de agosto  ⌄    │  ← franja: fecha + totales, abre el
- *   │    6 turnos · $ 48.000        │    calendario al tocarla
- *   ├───────────────────────────────┤
- *   │ ‹ Hoy ›            Día│Semana │
- *   ├───────────────────────────────┤
- *   │ Todas 6 │ ● Ana 3 │ ● Marta 3 │  ← las columnas de profesional del
- *   ├───────────────────────────────┤    escritorio, convertidas en filtro
- *   │ 09:00 ▏ Sofía G      $ 12.000 │
- *   │ 10:30 ▏ Corte + Color         │
- *   │       ▏ ● Ana  Confirmado     │
+ *   │ Hoy                Día│Sem (A)│
+ *   │ Octubre ⌄                     │  ← título = mes; abre el calendario
+ *   │ LU  MA  MI  JU  VI  SÁ  DO    │  ← tira de la semana: se desliza de
+ *   │ 13  14 (15) 16  17  18  19    │    semana en semana; los puntos son
+ *   │ ••   •   ••      •            │    las profesionales con turnos
+ *   │ (Todas 6) (Ⓐ Ana 3) (Ⓜ Marta) │  ← las columnas del escritorio,
+ *   ├───────────────────────────────┤    convertidas en filtro
+ *   │ Hoy, miércoles 15   6 · $48k  │
+ *   │ 09:00 ┃▌Sofía G.    $12.000 💬│  ← tarjeta teñida con el color de la
+ *   │ 10:30 ┃ Corte + Color         │    profesional
+ *   │ 10:12 ●───────────────────────│  ← ahora
+ *   │ 11:00   Libre · 1 h   + Agendar│ ← huecos, con una sola profesional
  *   └───────────────────────────────┘
  *
- * El color del profesional vive en el filete de 3px de la fila, igual que en
- * las tarjetas del escritorio, así la lista no se vuelve un arcoíris.
+ * La lista también se desliza: a la izquierda el día (o la semana) que
+ * sigue, a la derecha el anterior.
  */
 export function MobileAgenda({
   professionals,
@@ -86,6 +131,12 @@ export function MobileAgenda({
   const [view, setView] = useState<"day" | "week">("day");
   const [proFilter, setProFilter] = useState<string>("all");
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  /** De qué lado entra el día nuevo: 1 = desde la derecha (hacia adelante). */
+  const [enterFrom, setEnterFrom] = useState<-1 | 0 | 1>(0);
+  /** Lo mismo para la tira, que sólo se mueve cuando cambia la semana. */
+  const [stripEnterFrom, setStripEnterFrom] = useState<-1 | 0 | 1>(0);
+  /** La lista se corrió: el encabezado gana su filete, como en iOS. */
+  const [scrolled, setScrolled] = useState(false);
 
   // Reloj de baja frecuencia: mueve la línea de "ahora" y el apagado de los
   // turnos que ya pasaron sin re-renderizar la lista todo el tiempo.
@@ -105,13 +156,19 @@ export function MobileAgenda({
     [professionals],
   );
 
+  const weekStart = useMemo(
+    () => startOfWeek(cursor, { weekStartsOn: 1 }),
+    [cursor],
+  );
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
+    [weekStart],
+  );
+
   const range = useMemo(() => {
-    if (view === "week") {
-      const start = startOfWeek(cursor, { weekStartsOn: 1 });
-      return { start, end: addDays(start, 7) };
-    }
+    if (view === "week") return { start: weekStart, end: addDays(weekStart, 7) };
     return { start: cursor, end: addDays(cursor, 1) };
-  }, [cursor, view]);
+  }, [cursor, view, weekStart]);
 
   /** Turnos del rango visible, en orden — antes de filtrar por profesional. */
   const inRange = useMemo(() => {
@@ -145,70 +202,118 @@ export function MobileAgenda({
     [inRange, proFilter],
   );
 
-  const totals = useMemo(() => {
-    const counted = visible.filter(countsTowardTotals);
-    return {
-      count: counted.length,
-      revenue: counted.reduce((sum, a) => sum + appointmentTotal(a), 0),
-    };
-  }, [visible]);
-
-  /** Agrupado por día: en "Semana" cada día lleva su propio encabezado. */
-  const groups = useMemo(() => {
-    const map = new Map<string, AppointmentWithRelations[]>();
+  /**
+   * Un grupo por día. En "Semana" van los siete aunque alguno esté vacío:
+   * ver un día libre en el medio de la semana es justamente lo que se busca.
+   */
+  const groups = useMemo<DayGroup[]>(() => {
+    const byDay = new Map<string, AppointmentWithRelations[]>();
     for (const a of visible) {
       const key = format(new Date(a.starts_at), "yyyy-MM-dd");
-      const list = map.get(key);
+      const list = byDay.get(key);
       if (list) list.push(a);
-      else map.set(key, [a]);
+      else byDay.set(key, [a]);
     }
-    return [...map.entries()].map(([key, list]) => ({
-      key,
-      date: new Date(`${key}T00:00:00`),
-      list,
-    }));
-  }, [visible]);
+    return (view === "week" ? weekDays : [cursor]).map((date) => {
+      const key = format(date, "yyyy-MM-dd");
+      const list = byDay.get(key) ?? [];
+      const counted = list.filter(countsTowardTotals);
+      return {
+        key,
+        date,
+        list,
+        count: counted.length,
+        revenue: counted.reduce((sum, a) => sum + appointmentTotal(a), 0),
+      };
+    });
+  }, [visible, view, weekDays, cursor]);
 
   /**
-   * ¿El día visible todavía no llegó del server? Mientras tanto se ve vacío
+   * Puntos de la tira de días: uno por profesional con turnos ese día (hasta
+   * tres), en su color. Sigue al filtro: con una profesional elegida, la tira
+   * muestra sólo los días que ella tiene ocupados.
+   */
+  const dayMarks = useMemo(() => {
+    const from = weekStart.getTime();
+    const to = addDays(weekStart, 7).getTime();
+    const map = new Map<string, string[]>();
+    for (const a of appointments) {
+      const t = new Date(a.starts_at).getTime();
+      if (t < from || t >= to || !countsTowardTotals(a)) continue;
+      if (proFilter !== "all" && a.professional_id !== proFilter) continue;
+      const key = format(new Date(a.starts_at), "yyyy-MM-dd");
+      const color = proById.get(a.professional_id)?.color ?? FALLBACK_COLOR;
+      const colors = map.get(key) ?? [];
+      if (!colors.includes(color)) colors.push(color);
+      map.set(key, colors);
+    }
+    return map;
+  }, [appointments, weekStart, proFilter, proById]);
+
+  /**
+   * ¿El rango visible todavía no llegó del server? Mientras tanto se ve vacío
    * aunque tenga turnos, y hay que decirlo: un "no hay turnos" mentiroso hace
    * que alguien sobrevenda una fecha.
    */
   const loadingRange = useAppointmentWindow(range, loadedWindow);
 
-  const title = useMemo(() => {
-    if (view === "week") {
-      const last = addDays(range.start, 6);
-      const sameMonth = last.getMonth() === range.start.getMonth();
-      const left = sameMonth
-        ? format(range.start, "d", { locale: es })
-        : format(range.start, "d 'de' MMM", { locale: es });
-      return `${left} – ${format(last, "d 'de' MMMM", { locale: es })}`;
-    }
-    if (isSameDay(cursor, now)) {
-      return `Hoy, ${format(cursor, "d 'de' MMMM", { locale: es })}`;
-    }
-    return capitalize(format(cursor, "EEEE d 'de' MMMM", { locale: es }));
-  }, [cursor, now, range.start, view]);
+  /**
+   * La profesional cuya agenda se puede leer como una sola fila de tiempo: la
+   * filtrada, o la única que hay. Sólo ahí un hueco entre dos turnos es un
+   * hueco de verdad — con todas mezcladas, el "libre" de una es el turno de
+   * otra.
+   */
+  const focusedPro =
+    proFilter !== "all"
+      ? proById.get(proFilter)
+      : activeProfessionals.length === 1
+        ? activeProfessionals[0]
+        : undefined;
+
+  const showsToday = now >= range.start && now < range.end;
+  const monthTitle = capitalize(
+    format(cursor, isSameYear(cursor, now) ? "MMMM" : "MMMM yyyy", {
+      locale: es,
+    }),
+  );
+
+  /**
+   * Va a otro día; lo que cambia entra desde el lado que corresponde. En
+   * "Semana", otro día de la misma semana no cambia la lista: sólo la desplaza
+   * (ver el efecto de scroll), así que no se anima.
+   */
+  function goTo(date: Date) {
+    const target = startOfDay(date);
+    const delta = differenceInCalendarDays(target, cursor);
+    if (delta === 0) return;
+    const direction = delta > 0 ? 1 : -1;
+    const sameWeek = isSameWeek(target, cursor, { weekStartsOn: 1 });
+    if (!sameWeek) setStripEnterFrom(direction);
+    if (view === "day" || !sameWeek) setEnterFrom(direction);
+    setCursor(target);
+  }
 
   function shift(direction: -1 | 1) {
-    setCursor((c) => addDays(c, direction * (view === "week" ? 7 : 1)));
+    goTo(addDays(cursor, direction * (view === "week" ? 7 : 1)));
+  }
+
+  function changeView(next: "day" | "week") {
+    setEnterFrom(0);
+    setView(next);
   }
 
   /**
    * Alta rápida. Si hoy cae dentro de lo que estamos mirando arrancamos en la
-   * próxima media hora; si no, a las 10:00 del primer día del rango. Y si hay
-   * una profesional filtrada, el turno ya sale con esa profesional puesta.
+   * próxima media hora; si no, a las 10:00 del día elegido. Y si hay una
+   * profesional filtrada, el turno ya sale con esa profesional puesta.
    */
   function handleCreate() {
-    const pro =
-      (proFilter !== "all" ? proById.get(proFilter) : undefined) ??
-      activeProfessionals[0];
+    const pro = focusedPro ?? activeProfessionals[0];
     if (!pro) return;
 
-    const todayInRange = now >= range.start && now < range.end;
-    const startsAt = todayInRange ? new Date(now) : new Date(range.start);
-    if (todayInRange) {
+    const todayInView = view === "day" ? isSameDay(cursor, now) : showsToday;
+    const startsAt = todayInView ? new Date(now) : new Date(cursor);
+    if (todayInView) {
       startsAt.setSeconds(0, 0);
       const minutes = startsAt.getMinutes();
       startsAt.setMinutes(minutes + ((30 - (minutes % 30)) % 30));
@@ -218,144 +323,220 @@ export function MobileAgenda({
     onCreate(startsAt.toISOString(), pro.id);
   }
 
-  /**
-   * Al cambiar de día o de filtro dejamos la lista parada en la hora actual,
-   * que es lo que hace `scrollTime` en la grilla del escritorio. Depende del
-   * día visible y no del reloj, así que no se mueve sola mientras la leen.
-   */
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const stripRef = useRef<HTMLDivElement | null>(null);
   const nowMarkerRef = useRef<HTMLLIElement | null>(null);
+
+  useHorizontalSwipe(scrollerRef, shift);
+  useHorizontalSwipe(stripRef, (direction) =>
+    goTo(addDays(cursor, direction * 7)),
+  );
+
+  /**
+   * Al cambiar de día dejamos la lista parada en la hora actual, que es lo
+   * que hace `scrollTime` en la grilla del escritorio; en "Semana", en el día
+   * elegido de la tira. Depende del día visible y no del reloj, así que no se
+   * mueve sola mientras la leen.
+   */
   const dayKey = format(cursor, "yyyy-MM-dd");
+  const weekKey = format(weekStart, "yyyy-MM-dd");
   useEffect(() => {
     const scroller = scrollerRef.current;
-    const marker = nowMarkerRef.current;
-    if (!scroller || !marker) return;
-    scroller.scrollTop = Math.max(0, marker.offsetTop - 96);
-  }, [dayKey, view, proFilter]);
+    if (!scroller) return;
+    // En "Día" el ancla es el último turno que pasó, no la línea de ahora:
+    // así queda a la vista dónde se viene.
+    const target =
+      view === "week"
+        ? scroller.querySelector<HTMLElement>(`[data-day="${dayKey}"]`)
+        : ((nowMarkerRef.current?.previousElementSibling as HTMLElement | null) ??
+          nowMarkerRef.current);
+    if (!target) {
+      scroller.scrollTop = 0;
+      return;
+    }
+    const offset =
+      target.getBoundingClientRect().top -
+      scroller.getBoundingClientRect().top +
+      scroller.scrollTop;
+    if (view === "week") {
+      scroller.scrollTop = offset;
+      return;
+    }
+    // Si el ancla está cerca del principio, mejor no mover nada que dejar el
+    // título del día cortado a la mitad debajo del encabezado.
+    const top = offset - 12;
+    scroller.scrollTop = top < 96 ? 0 : top;
+  }, [dayKey, view, proFilter, loadingRange]);
 
-  return (
-    <div className="relative flex h-full min-h-0 flex-col bg-card">
-      {/* ── Franja de contexto: fecha + totales, abre el calendario ─────── */}
-      <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className="flex shrink-0 items-center gap-3 bg-muted/60 px-4 py-3 text-left"
-          >
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-card text-muted-foreground">
-              <CalendarDays className="size-5" strokeWidth={1.75} />
-            </span>
-            <span className="min-w-0 flex-1 leading-tight">
-              <span className="flex items-center gap-1">
-                <span className="truncate text-[1.0625rem] font-medium text-foreground">
-                  {title}
-                </span>
-                <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-              </span>
-              <span className="block truncate text-[0.8125rem] text-muted-foreground tabular-nums">
-                {totals.count} {totals.count === 1 ? "turno" : "turnos"} ·{" "}
-                {money(totals.revenue)}
-              </span>
-            </span>
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-auto p-0">
-          <Calendar
-            mode="single"
-            locale={es}
-            weekStartsOn={1}
-            selected={cursor}
-            defaultMonth={cursor}
-            onSelect={(date) => {
-              if (!date) return;
-              setCursor(startOfDay(date));
-              setDatePickerOpen(false);
+  // El contenido se vuelve a montar al cambiar de día (o de semana): así
+  // entra con la animación del costado. Elegir otro día de la misma semana en
+  // "Semana" sólo desplaza la lista.
+  const contentKey = view === "week" ? `w-${weekKey}` : `d-${dayKey}`;
+
+  function renderRows(group: DayGroup) {
+    const withGaps =
+      view === "day" && focusedPro !== undefined && group.date >= startOfDay(now);
+
+    return buildRows(group.list, group.date, now, withGaps).map((row) => {
+      if (row.kind === "now") {
+        return <NowMarker key="now" ref={nowMarkerRef} now={now} />;
+      }
+      if (row.kind === "gap") {
+        return (
+          <GapRow
+            key={`gap-${row.startsAt.getTime()}`}
+            startsAt={row.startsAt}
+            minutes={row.minutes}
+            onClick={() => {
+              if (focusedPro) onCreate(row.startsAt.toISOString(), focusedPro.id);
             }}
           />
-        </PopoverContent>
-      </Popover>
+        );
+      }
+      return (
+        <AppointmentCard
+          key={row.appointment.id}
+          appointment={row.appointment}
+          professional={proById.get(row.appointment.professional_id)}
+          showProfessional={activeProfessionals.length > 1 && proFilter === "all"}
+          // Apagamos sólo lo que ya pasó HOY: es el "por acá vamos" del día.
+          // En una fecha pasada apagar todo dejaría la pantalla entera lavada
+          // y sin jerarquía.
+          past={
+            isSameDay(group.date, now) &&
+            new Date(row.appointment.ends_at) < now
+          }
+          onOpen={() => onOpenAppointment(row.appointment)}
+          onMessage={() => onMessageClient(row.appointment)}
+        />
+      );
+    });
+  }
 
-      {/* ── Navegación ──────────────────────────────────────────────────── */}
-      <div className="flex shrink-0 items-center gap-2 px-3 py-2">
-        <div className="inline-flex items-center rounded-lg border border-input bg-card">
-          <button
-            type="button"
-            onClick={() => shift(-1)}
-            aria-label={view === "week" ? "Semana anterior" : "Día anterior"}
-            className="flex h-9 w-10 items-center justify-center rounded-l-lg text-muted-foreground active:bg-muted"
-          >
-            <ChevronLeft className="size-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setCursor(startOfDay(new Date()))}
-            className="h-9 border-x border-input px-3 text-sm font-medium active:bg-muted"
-          >
-            Hoy
-          </button>
-          <button
-            type="button"
-            onClick={() => shift(1)}
-            aria-label={view === "week" ? "Semana siguiente" : "Día siguiente"}
-            className="flex h-9 w-10 items-center justify-center rounded-r-lg text-muted-foreground active:bg-muted"
-          >
-            <ChevronRight className="size-4" />
-          </button>
-        </div>
+  const dayGroup = groups[0];
 
-        <div className="segmented ml-auto">
-          <button
-            type="button"
-            data-active={view === "day"}
-            onClick={() => setView("day")}
-            className="segmented-item"
-          >
-            Día
-          </button>
-          <button
-            type="button"
-            data-active={view === "week"}
-            onClick={() => setView("week")}
-            className="segmented-item"
-          >
-            Semana
-          </button>
-        </div>
-      </div>
-
-      {/* ── Filtro por profesional (las columnas del escritorio) ────────── */}
-      {activeProfessionals.length > 1 ? (
-        <div className="flex shrink-0 gap-2 overflow-x-auto px-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <FilterChip
-            active={proFilter === "all"}
-            onClick={() => setProFilter("all")}
-          >
-            Todas
-            <span className="tabular-nums opacity-70">
-              {inRange.filter(countsTowardTotals).length}
-            </span>
-          </FilterChip>
-          {activeProfessionals.map((pro) => (
-            <FilterChip
-              key={pro.id}
-              active={proFilter === pro.id}
-              onClick={() =>
-                setProFilter((current) => (current === pro.id ? "all" : pro.id))
-              }
+  return (
+    <div className="wa-scope relative flex h-full min-h-0 flex-col bg-[var(--wa-panel)] text-[var(--wa-text)]">
+      {/*
+        Encabezado: el mismo de la bandeja. `data-mobile-header` hace que el
+        chrome esconda su barra con el logo, y la cuenta se trae acá adentro
+        con `MobileChromeAccount`.
+      */}
+      <div
+        data-mobile-header
+        className={cn(
+          "shrink-0 border-b transition-colors",
+          scrolled ? "border-[var(--wa-divider)]" : "border-transparent",
+        )}
+      >
+        <div className="flex h-11 items-center gap-2 px-4">
+          {showsToday ? null : (
+            <button
+              type="button"
+              onClick={() => goTo(now)}
+              className="h-8 rounded-full bg-[var(--wa-chip-on)] px-3.5 text-[0.8125rem] font-semibold text-[var(--wa-chip-on-text)] active:opacity-80"
             >
-              <span
-                aria-hidden
-                className="size-2 shrink-0 rounded-full"
-                style={{ backgroundColor: pro.color ?? "#94a3b8" }}
+              Hoy
+            </button>
+          )}
+          <div className="ml-auto flex items-center gap-2">
+            <ViewSwitch value={view} onChange={changeView} />
+            <MobileChromeAccount />
+          </div>
+        </div>
+
+        <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label={`${monthTitle}. Elegir otra fecha`}
+              className="ml-4 mt-1 mb-3 flex items-center gap-1.5 rounded-lg active:opacity-70"
+            >
+              <span className="font-display text-[2rem] font-bold leading-none tracking-tight">
+                {monthTitle}
+              </span>
+              <ChevronDown
+                className="mt-1 size-5 text-[var(--wa-text-2)]"
+                strokeWidth={2.25}
               />
-              {firstName(pro.full_name)}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-auto p-0">
+            <Calendar
+              mode="single"
+              locale={es}
+              weekStartsOn={1}
+              selected={cursor}
+              defaultMonth={cursor}
+              onSelect={(date) => {
+                if (!date) return;
+                goTo(date);
+                setDatePickerOpen(false);
+              }}
+            />
+          </PopoverContent>
+        </Popover>
+
+        {/* ── Tira de la semana ─────────────────────────────────────────── */}
+        <div
+          ref={stripRef}
+          className="group/swipe touch-pan-y overflow-hidden px-2 pb-2 select-none"
+        >
+          <div
+            key={weekKey}
+            className={cn(
+              "grid grid-cols-7",
+              SWIPE_FOLLOW,
+              enterAnimation(stripEnterFrom),
+            )}
+          >
+            {weekDays.map((day) => {
+              const key = format(day, "yyyy-MM-dd");
+              return (
+                <DayCell
+                  key={key}
+                  day={day}
+                  selected={isSameDay(day, cursor)}
+                  today={isSameDay(day, now)}
+                  past={day < startOfDay(now)}
+                  colors={dayMarks.get(key) ?? []}
+                  onSelect={() => goTo(day)}
+                />
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Filtro por profesional (las columnas del escritorio) ────────── */}
+        {activeProfessionals.length > 1 ? (
+          <div className="hide-scrollbar flex gap-2 overflow-x-auto px-4 pb-3">
+            <FilterChip
+              active={proFilter === "all"}
+              onClick={() => setProFilter("all")}
+            >
+              Todas
               <span className="tabular-nums opacity-70">
-                {countsByPro.get(pro.id) ?? 0}
+                {inRange.filter(countsTowardTotals).length}
               </span>
             </FilterChip>
-          ))}
-        </div>
-      ) : null}
+            {activeProfessionals.map((pro) => (
+              <FilterChip
+                key={pro.id}
+                active={proFilter === pro.id}
+                onClick={() =>
+                  setProFilter((current) => (current === pro.id ? "all" : pro.id))
+                }
+              >
+                <ProDot professional={pro} />
+                {firstName(pro.full_name)}
+                <span className="tabular-nums opacity-70">
+                  {countsByPro.get(pro.id) ?? 0}
+                </span>
+              </FilterChip>
+            ))}
+          </div>
+        ) : null}
+      </div>
 
       {/* ── Lista de turnos ─────────────────────────────────────────────── */}
       {/*
@@ -364,72 +545,59 @@ export function MobileAgenda({
       */}
       <div
         ref={scrollerRef}
-        className="min-h-0 flex-1 overflow-y-auto border-t border-border pb-[calc(5.5rem+var(--tabbar-space))]"
+        onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 2)}
+        className="group/swipe min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain pb-[calc(6rem+var(--tabbar-space))]"
       >
-        {groups.length === 0 ? (
-          <div className="px-8 py-14 text-center">
-            <p className="text-sm font-medium text-foreground">
-              {loadingRange
-                ? "Cargando turnos…"
-                : proFilter === "all"
-                  ? "No hay turnos"
-                  : "Sin turnos para esta profesional"}
-            </p>
-            {loadingRange ? null : (
-              <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">
-                Tocá el botón «+» para agendar{" "}
-                {view === "week" ? "en esta semana" : "en este día"}.
-              </p>
-            )}
-          </div>
-        ) : (
-          groups.map((group) => (
-            <section key={group.key}>
-              {view === "week" ? (
-                <h2 className="sticky top-0 z-10 border-b border-border bg-muted/90 px-4 py-1.5 text-[0.75rem] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur">
-                  {capitalize(
-                    format(group.date, "EEEE d 'de' MMMM", { locale: es }),
-                  )}
+        <div key={contentKey} className={cn(SWIPE_FOLLOW, enterAnimation(enterFrom))}>
+          {loadingRange && visible.length === 0 ? (
+            <AgendaSkeleton />
+          ) : view === "day" ? (
+            <>
+              <div className="flex items-baseline justify-between gap-3 px-4 pt-3 pb-3">
+                <h2 className="truncate text-[0.9375rem] font-semibold">
+                  {dayHeading(cursor, now)}
                 </h2>
-              ) : null}
-              <ul>
-                {withNowMarker(group.list, group.date, now).map((row, index) =>
-                  row.kind === "now" ? (
-                    <li
-                      key={`now-${group.key}-${index}`}
-                      ref={nowMarkerRef}
-                      aria-hidden
-                      className="flex items-center gap-2 px-3 py-1"
-                    >
-                      <span className="text-[0.6875rem] font-semibold uppercase tracking-wide text-destructive tabular-nums">
-                        {format(now, "HH:mm")}
-                      </span>
-                      <span className="h-px flex-1 bg-destructive/50" />
-                    </li>
-                  ) : (
-                    <AppointmentRow
-                      key={row.appointment.id}
-                      appointment={row.appointment}
-                      professional={proById.get(row.appointment.professional_id)}
-                      showProfessional={
-                        activeProfessionals.length > 1 && proFilter === "all"
-                      }
-                      // Apagamos sólo lo que ya pasó HOY: es el "por acá
-                      // vamos" del día. En una fecha pasada apagar todo
-                      // dejaría la pantalla entera lavada y sin jerarquía.
-                      past={
-                        isSameDay(group.date, now) &&
-                        new Date(row.appointment.ends_at) < now
-                      }
-                      onClick={() => onOpenAppointment(row.appointment)}
-                      onMessage={() => onMessageClient(row.appointment)}
-                    />
-                  ),
+                {dayGroup.count > 0 ? (
+                  <DayTotals count={dayGroup.count} revenue={dayGroup.revenue} />
+                ) : null}
+              </div>
+              {dayGroup.list.length === 0 ? (
+                <EmptyDay
+                  past={cursor < startOfDay(now)}
+                  professional={proFilter === "all" ? undefined : focusedPro}
+                  onCreate={handleCreate}
+                />
+              ) : (
+                <ul className="space-y-2 px-4">{renderRows(dayGroup)}</ul>
+              )}
+            </>
+          ) : (
+            groups.map((group) => (
+              <section key={group.key} data-day={group.key}>
+                <h2 className="sticky top-0 z-10 flex items-baseline justify-between gap-3 bg-[var(--wa-panel)]/90 px-4 pt-3 pb-2 backdrop-blur-md">
+                  <span
+                    className={cn(
+                      "truncate text-[0.9375rem] font-semibold",
+                      isSameDay(group.date, now) && "text-[var(--wa-badge)]",
+                    )}
+                  >
+                    {dayHeading(group.date, now, false)}
+                  </span>
+                  {group.count > 0 ? (
+                    <DayTotals count={group.count} revenue={group.revenue} />
+                  ) : null}
+                </h2>
+                {group.list.length === 0 ? (
+                  <p className="px-4 pb-3 text-[0.8125rem] text-[var(--wa-text-3)]">
+                    Sin turnos
+                  </p>
+                ) : (
+                  <ul className="space-y-2 px-4 pb-2">{renderRows(group)}</ul>
                 )}
-              </ul>
-            </section>
-          ))
-        )}
+              </section>
+            ))
+          )}
+        </div>
       </div>
 
       {/* ── Acción principal ──────────────────────────────────────────────
@@ -442,37 +610,314 @@ export function MobileAgenda({
         type="button"
         onClick={handleCreate}
         aria-label="Nuevo turno"
-        className="absolute right-4 bottom-[calc(1rem+var(--tabbar-space))] z-30 flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg active:opacity-90"
+        className="absolute right-4 bottom-[calc(1rem+var(--tabbar-space))] z-30 flex size-14 items-center justify-center rounded-2xl bg-[var(--wa-badge)] text-[var(--wa-badge-text)] shadow-[0_12px_28px_-10px_rgb(0_0_0/0.85)] transition-transform active:scale-95"
       >
-        <Plus className="size-6" strokeWidth={2} />
+        <Plus className="size-6" strokeWidth={2.25} />
       </button>
     </div>
   );
 }
 
 /**
- * Inserta la marca de "ahora" entre el último turno que pasó y el próximo.
- * Sólo tiene sentido en el día de hoy; en cualquier otro día no se dibuja.
+ * Lo que sigue al dedo durante el arrastre: lee `--swipe-x` del contenedor
+ * (ver `useHorizontalSwipe`). Con el dedo apoyado va pegado, sin transición;
+ * al soltar sin cambiar de día vuelve a su lugar con una.
  */
-function withNowMarker(
+const SWIPE_FOLLOW =
+  "translate-x-[var(--swipe-x,0px)] transition-[translate] duration-200 ease-out group-data-[swiping=true]/swipe:transition-none";
+
+function enterAnimation(from: -1 | 0 | 1) {
+  if (from === 0) return undefined;
+  return cn(
+    "animate-in fade-in duration-200 ease-out",
+    from === 1 ? "slide-in-from-right-8" : "slide-in-from-left-8",
+  );
+}
+
+/**
+ * Arrastre horizontal para pasar de día o de semana, como en el calendario
+ * del teléfono. Mientras el dedo está apoyado, el contenido lo sigue (la
+ * variable `--swipe-x` del contenedor); al soltar, si recorrió un cuarto del
+ * ancho o salió rápido, cambia — si no, vuelve a su lugar.
+ *
+ * Va con listeners nativos y no con los de React: para quedarse con el gesto
+ * hay que poder `preventDefault()` en `touchmove`, y React los registra
+ * pasivos. Hasta decidir hacia dónde va el dedo no se toca nada, así el
+ * desplazamiento vertical de la lista sigue siendo del navegador.
+ */
+function useHorizontalSwipe(
+  ref: RefObject<HTMLElement | null>,
+  onSwipe: (direction: -1 | 1) => void,
+) {
+  const onSwipeRef = useRef(onSwipe);
+  useEffect(() => {
+    onSwipeRef.current = onSwipe;
+  });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    let gesture: {
+      x: number;
+      y: number;
+      t: number;
+      axis: "x" | "y" | null;
+      dx: number;
+    } | null = null;
+
+    function onStart(e: TouchEvent) {
+      const touch = e.touches[0];
+      if (e.touches.length !== 1 || !touch) {
+        gesture = null;
+        return;
+      }
+      // Desde el borde es el "atrás" del sistema: ese gesto no es nuestro.
+      if (touch.clientX < 20 || touch.clientX > window.innerWidth - 20) {
+        gesture = null;
+        return;
+      }
+      gesture = {
+        x: touch.clientX,
+        y: touch.clientY,
+        t: e.timeStamp,
+        axis: null,
+        dx: 0,
+      };
+    }
+
+    function onMove(e: TouchEvent) {
+      const touch = e.touches[0];
+      if (!gesture || !touch || !el) return;
+      const dx = touch.clientX - gesture.x;
+      const dy = touch.clientY - gesture.y;
+      if (gesture.axis === null) {
+        if (Math.hypot(dx, dy) < 10) return;
+        gesture.axis = Math.abs(dx) > Math.abs(dy) * 1.3 ? "x" : "y";
+        if (gesture.axis === "x") el.dataset.swiping = "true";
+      }
+      if (gesture.axis !== "x") return;
+      if (e.cancelable) e.preventDefault();
+      gesture.dx = dx;
+      el.style.setProperty("--swipe-x", `${dx}px`);
+    }
+
+    function onEnd(e: TouchEvent) {
+      const g = gesture;
+      gesture = null;
+      if (!g || g.axis !== "x" || !el) return;
+
+      const distance = Math.abs(g.dx);
+      const velocity = distance / Math.max(1, e.timeStamp - g.t);
+      const commit =
+        distance > el.clientWidth * 0.22 || (velocity > 0.45 && distance > 30);
+
+      if (!commit) {
+        delete el.dataset.swiping;
+        el.style.setProperty("--swipe-x", "0px");
+        return;
+      }
+      // El contenido viejo no vuelve: se cambia en el lugar y el nuevo entra
+      // desde el costado. La transición se apaga hasta el cuadro siguiente
+      // para que el salto a 0 no se vea.
+      el.style.setProperty("--swipe-x", "0px");
+      requestAnimationFrame(() => {
+        delete el.dataset.swiping;
+      });
+      onSwipeRef.current(g.dx < 0 ? 1 : -1);
+    }
+
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd);
+    el.addEventListener("touchcancel", onEnd);
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, [ref]);
+}
+
+/**
+ * Las filas de un día: los turnos, la marca de "ahora" entre el último que
+ * pasó y el próximo (sólo hoy), y —si se pide— los huecos libres entre
+ * turnos. Un hueco de hoy arranca recién en el próximo cuarto de hora: lo
+ * que ya pasó no se puede ofrecer.
+ */
+function buildRows(
   list: AppointmentWithRelations[],
   date: Date,
   now: Date,
+  withGaps: boolean,
 ): Row[] {
-  const rows: Row[] = list.map((appointment) => ({
-    kind: "appointment",
-    appointment,
-  }));
-  if (!isSameDay(date, now)) return rows;
+  const rows: Row[] = [];
+  const isToday = isSameDay(date, now);
+  const earliest = isToday ? ceilToQuarter(now) : 0;
+  let nowPlaced = !isToday;
+  let busyUntil: number | null = null;
 
-  const next = rows.findIndex(
-    (row) =>
-      row.kind === "appointment" &&
-      new Date(row.appointment.starts_at).getTime() > now.getTime(),
-  );
-  if (next === -1) rows.push({ kind: "now" });
-  else rows.splice(next, 0, { kind: "now" });
+  for (const appointment of list) {
+    const start = new Date(appointment.starts_at).getTime();
+
+    if (!nowPlaced && start > now.getTime()) {
+      rows.push({ kind: "now" });
+      nowPlaced = true;
+    }
+
+    const counts = countsTowardTotals(appointment);
+    if (withGaps && counts && busyUntil !== null) {
+      const from = Math.max(busyUntil, earliest);
+      const minutes = Math.round((start - from) / 60_000);
+      if (minutes >= MIN_GAP_MINUTES) {
+        rows.push({ kind: "gap", startsAt: new Date(from), minutes });
+      }
+    }
+
+    rows.push({ kind: "appointment", appointment });
+    if (counts) {
+      busyUntil = Math.max(
+        busyUntil ?? 0,
+        new Date(appointment.ends_at).getTime(),
+      );
+    }
+  }
+
+  if (!nowPlaced) rows.push({ kind: "now" });
   return rows;
+}
+
+function ceilToQuarter(date: Date): number {
+  const step = 15 * 60_000;
+  return Math.ceil(date.getTime() / step) * step;
+}
+
+/**
+ * "Hoy, miércoles 15" · "Mañana, jueves 16" · "Viernes 17 de octubre". En
+ * "Semana" el mes sobra: ya está en el título y es el mismo para los siete.
+ */
+function dayHeading(date: Date, now: Date, withMonth = true): string {
+  const delta = differenceInCalendarDays(date, now);
+  const relative =
+    delta === 0 ? "Hoy" : delta === 1 ? "Mañana" : delta === -1 ? "Ayer" : null;
+  if (relative) return `${relative}, ${format(date, "EEEE d", { locale: es })}`;
+  return capitalize(
+    format(date, withMonth ? "EEEE d 'de' MMMM" : "EEEE d", { locale: es }),
+  );
+}
+
+/** 45 → "45 min" · 60 → "1 h" · 90 → "1 h 30". */
+function durationLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours} h` : `${hours} h ${String(rest).padStart(2, "0")}`;
+}
+
+function DayTotals({ count, revenue }: { count: number; revenue: number }) {
+  return (
+    <span className="shrink-0 text-[0.8125rem] text-[var(--wa-text-2)] tabular-nums">
+      {count} {count === 1 ? "turno" : "turnos"}
+      {revenue > 0 ? ` · ${money(revenue)}` : null}
+    </span>
+  );
+}
+
+function ViewSwitch({
+  value,
+  onChange,
+}: {
+  value: "day" | "week";
+  onChange: (view: "day" | "week") => void;
+}) {
+  return (
+    <div className="inline-flex rounded-full bg-[var(--wa-search-bg)] p-0.5">
+      {(["day", "week"] as const).map((option) => (
+        <button
+          key={option}
+          type="button"
+          aria-pressed={value === option}
+          onClick={() => onChange(option)}
+          className={cn(
+            "h-7 rounded-full px-3 text-[0.8125rem] font-medium transition-colors",
+            value === option
+              ? "bg-[color-mix(in_oklab,var(--wa-text)_16%,var(--wa-search-bg))] text-[var(--wa-text)]"
+              : "text-[var(--wa-text-2)]",
+          )}
+        >
+          {option === "day" ? "Día" : "Semana"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Un día de la tira. Elegido = círculo lleno (verde si es hoy, claro si no),
+ * como en el calendario del iPhone; hoy sin elegir = el número en verde.
+ */
+function DayCell({
+  day,
+  selected,
+  today,
+  past,
+  colors,
+  onSelect,
+}: {
+  day: Date;
+  selected: boolean;
+  today: boolean;
+  past: boolean;
+  colors: string[];
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      aria-current={today ? "date" : undefined}
+      aria-label={`${capitalize(format(day, "EEEE d 'de' MMMM", { locale: es }))}${
+        colors.length > 0 ? ", con turnos" : ""
+      }`}
+      className="flex flex-col items-center gap-1 rounded-2xl py-1 [-webkit-tap-highlight-color:transparent]"
+    >
+      <span
+        className={cn(
+          "text-[0.6875rem] font-medium tracking-wide uppercase",
+          today ? "text-[var(--wa-badge)]" : "text-[var(--wa-text-3)]",
+        )}
+      >
+        {format(day, "EEEEEE", { locale: es })}
+      </span>
+      <span
+        className={cn(
+          "flex size-9 items-center justify-center rounded-full text-[1.0625rem] font-semibold tabular-nums transition-colors",
+          selected
+            ? today
+              ? "bg-[var(--wa-badge)] text-[var(--wa-badge-text)]"
+              : "bg-[var(--wa-text)] text-[var(--wa-panel)]"
+            : today
+              ? "text-[var(--wa-badge)]"
+              : past
+                ? "text-[var(--wa-text-2)]"
+                : "text-[var(--wa-text)]",
+        )}
+      >
+        {format(day, "d")}
+      </span>
+      <span aria-hidden className="flex h-1.5 items-center gap-[3px]">
+        {colors.slice(0, 3).map((color) => (
+          <span
+            key={color}
+            className="size-1.5 rounded-full"
+            style={{ backgroundColor: color }}
+          />
+        ))}
+      </span>
+    </button>
+  );
 }
 
 function FilterChip({
@@ -482,7 +927,7 @@ function FilterChip({
 }: {
   active: boolean;
   onClick: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <button
@@ -490,10 +935,10 @@ function FilterChip({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[0.8125rem] transition-colors",
+        "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[0.8125rem] transition-colors",
         active
-          ? "border-accent bg-accent font-medium text-accent-foreground"
-          : "border-transparent bg-muted text-muted-foreground",
+          ? "bg-[var(--wa-chip-on)] font-medium text-[var(--wa-chip-on-text)]"
+          : "bg-[var(--wa-search-bg)] text-[var(--wa-text-2)]",
       )}
     >
       {children}
@@ -501,19 +946,49 @@ function FilterChip({
   );
 }
 
-function AppointmentRow({
+/** Inicial de la profesional sobre su color: la firma de cada una en la lista. */
+function ProDot({ professional }: { professional: ProfessionalRow }) {
+  return (
+    <span
+      aria-hidden
+      className="flex size-4 shrink-0 items-center justify-center rounded-full text-[0.5625rem] font-bold text-[#0b141a]"
+      style={{ backgroundColor: professional.color ?? FALLBACK_COLOR }}
+    >
+      {initialOf(professional.full_name)}
+    </span>
+  );
+}
+
+function Pill({ className, children }: { className: string; children: ReactNode }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-5 items-center rounded-full px-2 text-[0.6875rem] font-medium tabular-nums",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+/**
+ * Tarjeta de turno: teñida con el color de la profesional y con su filete a
+ * la izquierda, el mismo código de color de las tarjetas del escritorio.
+ */
+function AppointmentCard({
   appointment,
   professional,
   showProfessional,
   past,
-  onClick,
+  onOpen,
   onMessage,
 }: {
   appointment: AppointmentWithRelations;
   professional: ProfessionalRow | undefined;
   showProfessional: boolean;
   past: boolean;
-  onClick: () => void;
+  onOpen: () => void;
   onMessage: () => void;
 }) {
   const start = new Date(appointment.starts_at);
@@ -522,118 +997,233 @@ function AppointmentRow({
   const total = appointmentTotal(appointment);
   const dropped =
     appointment.status === "cancelled" || appointment.status === "no_show";
-  const tone = STATUS_TONE[appointment.status];
+  const color = professional?.color ?? FALLBACK_COLOR;
+  const clientName = appointment.clients?.full_name ?? "Sin clienta";
+
+  const showStatus = appointment.status !== "scheduled";
+  const showPayment = appointment.charged_at || appointment.deposit_amount > 0;
+  const showMeta =
+    (showProfessional && professional) || showStatus || showPayment;
 
   return (
-    <li className="flex items-stretch">
-      <button
-        type="button"
-        onClick={onClick}
+    <li
+      className={cn(
+        "flex gap-3 transition-opacity",
+        past && !dropped && "opacity-55",
+      )}
+    >
+      {/* Riel de horas: es por donde se recorre la lista con la vista. */}
+      <div className="w-11 shrink-0 pt-3 text-right leading-tight">
+        <div className="text-[0.875rem] font-semibold tabular-nums">
+          {format(start, "HH:mm")}
+        </div>
+        <div className="mt-0.5 text-[0.6875rem] text-[var(--wa-text-3)] tabular-nums">
+          {format(end, "HH:mm")}
+        </div>
+      </div>
+
+      <div
         className={cn(
-          "flex min-w-0 flex-1 items-stretch gap-3 pl-3 text-left transition-opacity active:bg-muted/60",
-          past && !dropped && "opacity-60",
+          "flex min-w-0 flex-1 items-stretch overflow-hidden rounded-2xl",
+          dropped
+            ? "border border-dashed border-[var(--wa-border)]"
+            : "ring-1 ring-white/[0.04] ring-inset",
         )}
+        style={
+          dropped
+            ? undefined
+            : {
+                backgroundColor: `color-mix(in oklab, ${color} 11%, var(--card))`,
+              }
+        }
       >
-        {/* Riel de horas: es por donde se recorre la lista con la vista. */}
-        <span className="w-[3.25rem] shrink-0 pt-2.5 text-right leading-tight">
-          <span className="block text-[0.9375rem] font-semibold text-foreground tabular-nums">
-            {format(start, "HH:mm")}
-          </span>
-          <span className="block text-[0.75rem] text-muted-foreground tabular-nums">
-            {format(end, "HH:mm")}
-          </span>
-        </span>
-
-        {/* Filete del profesional — el mismo código de color del escritorio. */}
-        <span
-          aria-hidden
-          className="my-2.5 w-[3px] shrink-0 rounded-full"
-          style={{
-            backgroundColor: dropped
-              ? "var(--border)"
-              : (professional?.color ?? "#94a3b8"),
-          }}
-        />
-
-        <span className="min-w-0 flex-1 border-b border-border py-2.5 [li:last-child_&]:border-b-0">
-          <span className="flex items-baseline justify-between gap-2">
-            <span
-              className={cn(
-                "truncate text-[0.9375rem] font-medium text-foreground",
-                dropped && "line-through decoration-1",
-              )}
-            >
-              {appointment.clients?.full_name ?? "Sin clienta"}
+        <button
+          type="button"
+          onClick={onOpen}
+          className="flex min-w-0 flex-1 items-stretch gap-2.5 py-2.5 pl-2.5 pr-1 text-left active:bg-white/5"
+        >
+          <span
+            aria-hidden
+            className="w-[3px] shrink-0 rounded-full"
+            style={{
+              backgroundColor: dropped ? "var(--wa-border)" : color,
+            }}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="flex items-baseline justify-between gap-2">
+              <span
+                className={cn(
+                  "truncate text-[0.9375rem] font-semibold",
+                  dropped &&
+                    "text-[var(--wa-text-2)] line-through decoration-1",
+                )}
+              >
+                {clientName}
+              </span>
+              {total > 0 ? (
+                <span className="shrink-0 text-[0.8125rem] font-medium text-[var(--wa-text-2)] tabular-nums">
+                  {money(total)}
+                </span>
+              ) : null}
             </span>
-            {total > 0 ? (
-              <span className="shrink-0 text-[0.8125rem] text-muted-foreground tabular-nums">
-                {money(total)}
+
+            {services ? (
+              <span className="mt-0.5 block truncate text-[0.8125rem] text-[var(--wa-text-2)]">
+                {services}
+              </span>
+            ) : null}
+
+            {showMeta ? (
+              <span className="mt-2 flex flex-wrap items-center gap-1.5">
+                {showProfessional && professional ? (
+                  <span className="mr-0.5 inline-flex items-center gap-1.5 text-[0.75rem] text-[var(--wa-text-2)]">
+                    <ProDot professional={professional} />
+                    {firstName(professional.full_name)}
+                  </span>
+                ) : null}
+                {showStatus ? (
+                  <Pill className={STATUS_PILL[appointment.status]}>
+                    {STATUS_LABEL[appointment.status]}
+                  </Pill>
+                ) : null}
+                {/* Verde sólo cuando se cerró la venta. Una seña es plata a
+                    cuenta, no un turno pago: va en ámbar hasta que se cobre. */}
+                {appointment.charged_at ? (
+                  <Pill className="bg-emerald-400/15 text-emerald-300">
+                    Cobrado
+                  </Pill>
+                ) : appointment.deposit_amount > 0 ? (
+                  <Pill className="bg-amber-400/15 text-amber-300">
+                    Seña {money(appointment.deposit_amount)} · falta cobrar
+                  </Pill>
+                ) : null}
               </span>
             ) : null}
           </span>
+        </button>
 
-          {services ? (
-            <span className="mt-0.5 block truncate text-[0.8125rem] text-muted-foreground">
-              {services}
-            </span>
-          ) : null}
+        {/*
+          Escribirle por WhatsApp, en su propia columna y no encima de la
+          tarjeta: acá el dedo elige entre "abrir el turno" y "mandarle un
+          mensaje", y dos blancos que se pisan terminan siempre en el toque
+          equivocado.
+        */}
+        <button
+          type="button"
+          onClick={onMessage}
+          aria-label={`Mandarle un WhatsApp a ${appointment.clients?.full_name ?? "la clienta"}`}
+          className="flex w-12 shrink-0 items-center justify-center border-l border-white/5 text-[var(--wa-accent)] active:bg-white/5"
+        >
+          <MessageCircle className="size-5" strokeWidth={1.9} />
+        </button>
+      </div>
+    </li>
+  );
+}
 
-          {showProfessional ||
-          appointment.status !== "scheduled" ||
-          appointment.deposit_amount > 0 ||
-          appointment.charged_at ? (
-            <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              {showProfessional && professional ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[0.6875rem] text-muted-foreground">
-                  <span
-                    aria-hidden
-                    className="size-1.5 rounded-full"
-                    style={{ backgroundColor: professional.color ?? "#94a3b8" }}
-                  />
-                  {firstName(professional.full_name)}
-                </span>
-              ) : null}
-              {appointment.status !== "scheduled" ? (
-                <span
-                  className={cn(
-                    "inline-flex items-center rounded-full border px-2 py-0.5 text-[0.6875rem] font-medium",
-                    tone.bg,
-                    tone.text,
-                    tone.border,
-                  )}
-                >
-                  {STATUS_LABEL[appointment.status]}
-                </span>
-              ) : null}
-              {/* Verde sólo cuando se cerró la venta. Una seña es plata a
-                  cuenta, no un turno pago: va en ámbar hasta que se cobre. */}
-              {appointment.charged_at ? (
-                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[0.6875rem] font-medium text-emerald-900">
-                  Cobrado
-                </span>
-              ) : appointment.deposit_amount > 0 ? (
-                <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[0.6875rem] font-medium text-amber-900 tabular-nums">
-                  Seña {money(appointment.deposit_amount)} · falta cobrar
-                </span>
-              ) : null}
-            </span>
-          ) : null}
-        </span>
-      </button>
+function NowMarker({
+  ref,
+  now,
+}: {
+  ref: RefObject<HTMLLIElement | null>;
+  now: Date;
+}) {
+  return (
+    <li ref={ref} aria-hidden className="flex items-center gap-3 py-0.5">
+      <span className="w-11 shrink-0 text-right text-[0.6875rem] font-bold text-destructive tabular-nums">
+        {format(now, "HH:mm")}
+      </span>
+      <span className="relative h-[1.5px] flex-1 rounded-full bg-destructive">
+        <span className="absolute top-1/2 -left-1 size-2 -translate-y-1/2 rounded-full bg-destructive" />
+      </span>
+    </li>
+  );
+}
 
-      {/*
-        Escribirle por WhatsApp, en su propia columna y no encima de la fila:
-        acá el dedo elige entre "abrir el turno" y "mandarle un mensaje", y dos
-        blancos que se pisan terminan siempre en el toque equivocado.
-      */}
+function GapRow({
+  startsAt,
+  minutes,
+  onClick,
+}: {
+  startsAt: Date;
+  minutes: number;
+  onClick: () => void;
+}) {
+  return (
+    <li className="flex gap-3">
+      <span className="w-11 shrink-0 pt-2.5 text-right text-[0.6875rem] text-[var(--wa-text-3)] tabular-nums">
+        {format(startsAt, "HH:mm")}
+      </span>
       <button
         type="button"
-        onClick={onMessage}
-        aria-label={`Mandarle un WhatsApp a ${appointment.clients?.full_name ?? "la clienta"}`}
-        className="flex w-12 shrink-0 items-center justify-center border-b border-border text-muted-foreground active:bg-muted/60 [li:last-child_&]:border-b-0"
+        onClick={onClick}
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-dashed border-[var(--wa-border)] px-3.5 py-2.5 text-left text-[0.8125rem] text-[var(--wa-text-2)] active:bg-[var(--wa-hover)]"
       >
-        <MessageCircle className="size-5" strokeWidth={1.75} />
+        <span className="flex-1">Libre · {durationLabel(minutes)}</span>
+        <span className="inline-flex items-center gap-1 font-medium text-[var(--wa-accent)]">
+          <Plus className="size-4" strokeWidth={2.25} />
+          Agendar
+        </span>
       </button>
     </li>
+  );
+}
+
+function EmptyDay({
+  past,
+  professional,
+  onCreate,
+}: {
+  past: boolean;
+  professional: ProfessionalRow | undefined;
+  onCreate: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center px-8 pt-10 text-center">
+      <span className="flex size-16 items-center justify-center rounded-full bg-[var(--wa-search-bg)] text-[var(--wa-text-2)]">
+        <CalendarCheck className="size-7" strokeWidth={1.6} />
+      </span>
+      <p className="mt-4 text-[1.0625rem] font-semibold">
+        {professional
+          ? `${firstName(professional.full_name)} no tiene turnos`
+          : past
+            ? "No hubo turnos"
+            : "Día libre"}
+      </p>
+      <p className="mt-1 max-w-[17rem] text-[0.8125rem] leading-relaxed text-balance text-[var(--wa-text-2)]">
+        {past
+          ? "No quedó nada agendado para este día."
+          : "Todavía no hay nada agendado para este día."}
+      </p>
+      {past ? null : (
+        <button
+          type="button"
+          onClick={onCreate}
+          className="mt-5 inline-flex h-10 items-center gap-1.5 rounded-full bg-[var(--wa-chip-on)] px-5 text-[0.875rem] font-semibold text-[var(--wa-chip-on-text)] active:opacity-80"
+        >
+          <Plus className="size-4" strokeWidth={2.25} />
+          Agendar turno
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Mientras llega la ventana nueva: la forma de la lista, no un "cargando". */
+function AgendaSkeleton() {
+  return (
+    <div role="status" aria-label="Cargando turnos" className="space-y-2 px-4 pt-4">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex gap-3">
+          <div className="w-11 shrink-0 pt-3">
+            <div className="ml-auto h-3.5 w-9 animate-pulse rounded bg-[var(--wa-search-bg)]" />
+          </div>
+          <div
+            className="h-[4.5rem] flex-1 animate-pulse rounded-2xl bg-[var(--wa-search-bg)]"
+            style={{ animationDelay: `${i * 120}ms` }}
+          />
+        </div>
+      ))}
+    </div>
   );
 }

@@ -71,5 +71,5 @@ export async function registerAction(
     return { error: message };
   }
 
-  redirect("/turnos");
+  redirect("/");
 }
