@@ -17,10 +17,10 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#0b141a",
     theme_color: "#0b141a",
     /*
-     * El ícono de la app instalada es el de WhatsApp y no el logo de Zenna: en
-     * iPhone es también el ícono de cada notificación (iOS no deja poner uno
-     * por aviso), y el aviso tiene que verse como un mensaje de WhatsApp. El
-     * de iOS sale de app/apple-icon.png; estos son para Android.
+     * La Z de Zenna. En iPhone es también el ícono de cada notificación (iOS
+     * no deja poner uno por aviso). El de iOS sale de app/apple-icon.png;
+     * estos son para Android y la compu. El maskable lleva la Z más chica para
+     * que entre en el círculo seguro cuando Android le recorta la forma.
      */
     icons: [
       {
@@ -36,7 +36,7 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: "any",
       },
       {
-        src: "/icons/app-512.png",
+        src: "/icons/app-maskable-512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",

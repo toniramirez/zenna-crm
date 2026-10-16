@@ -26,10 +26,10 @@ cerrada. Es Web Push estándar (VAPID), sin servicios de terceros ni costo.
   mensaje. Solo llevan etiqueta las excepciones: `· Instagram` y
   `· WhatsApp viejo`.
 - El logo del aviso es el del canal, como en WhatsApp:
-  - **iPhone**: iOS muestra siempre el ícono de la app instalada y no deja
-    poner uno por aviso. Por eso el ícono de la app es el de WhatsApp
-    (`app/apple-icon.png`) y no el de Zenna. Los mensajes de Instagram también
-    llevan ese logo; lo que los distingue es el `· Instagram` del título.
+  - **iPhone**: iOS muestra siempre el ícono de la app instalada (la Z de
+    Zenna, `app/apple-icon.png`) y no deja poner uno por aviso, así que ahí el
+    logo no cambia por canal. Lo que distingue a Instagram es el
+    `· Instagram` del título.
   - **Android**: el logo chiquito de arriba (`badge`) cambia según el canal:
     el de WhatsApp (`public/icons/badge.png`) o el de Instagram
     (`badge-instagram.png`). El ícono grande es la foto de perfil de la
