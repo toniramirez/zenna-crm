@@ -143,6 +143,31 @@ export default async function CrmPage({ searchParams }: Props) {
       .order("name"),
   ]);
 
+  const conversations =
+    (conversationsResult.data as ConversationWithClient[] | null) ?? [];
+  const legacyConversations =
+    (legacyResult.data as ConversationWithClient[] | null) ?? [];
+
+  // El chat que pide la URL (desde la agenda, desde un push) puede no estar
+  // entre los INBOX_LIMIT más recientes: uno viejo o archivado. Se trae aparte;
+  // si no, la bandeja abre sin nada seleccionado.
+  if (
+    c &&
+    !conversations.some((x) => x.id === c) &&
+    !legacyConversations.some((x) => x.id === c)
+  ) {
+    const { data: requested } = await supabase
+      .from("conversations")
+      .select("*, clients ( id, full_name, phone, tags )")
+      .eq("id", c)
+      .maybeSingle();
+    if (requested) {
+      const row = requested as ConversationWithClient;
+      if (row.channel === WA_LEGACY_CHANNEL) legacyConversations.push(row);
+      else conversations.push(row);
+    }
+  }
+
   const bookingServices = servicesFullResult.data ?? [];
   const servicesSlim: ServiceSlim[] = bookingServices.map((s) => ({
     id: s.id,
@@ -156,12 +181,8 @@ export default async function CrmPage({ searchParams }: Props) {
     <div data-bleed className="flex h-full min-h-0 flex-col">
       <CrmShell
         initialTab={initialTab}
-        conversations={
-          (conversationsResult.data as ConversationWithClient[] | null) ?? []
-        }
-        legacyConversations={
-          (legacyResult.data as ConversationWithClient[] | null) ?? []
-        }
+        conversations={conversations}
+        legacyConversations={legacyConversations}
         initialSelectedId={c ?? null}
         tags={(tagsResult.data as ClientTag[] | null) ?? []}
         quickReplies={(repliesResult.data as QuickReply[] | null) ?? []}

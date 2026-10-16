@@ -336,6 +336,12 @@ export function CrmView({
     legacyRef.current = legacyConversations;
   }, [legacyConversations]);
 
+  /** El chat abierto, para los callbacks estables (refetch de lista y mensajes). */
+  const selectedIdRef = useRef(selectedId);
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
   // Subscribe to conversation changes (new conversations, last_message_at updates)
   const refetchConversations = useCallback(async () => {
     // Las dos bandejas se refrescan juntas: son la misma tabla y el globo del
@@ -359,10 +365,29 @@ export function CrmView({
         .limit(100),
     ]);
     if (primary.data) {
-      setConversations(primary.data as ConversationWithClient[]);
+      setConversations((prev) =>
+        keepSelected(prev, primary.data as ConversationWithClient[]),
+      );
     }
     if (legacy.data) {
-      setLegacyConversations(legacy.data as ConversationWithClient[]);
+      setLegacyConversations((prev) =>
+        keepSelected(prev, legacy.data as ConversationWithClient[]),
+      );
+    }
+
+    /**
+     * El chat abierto puede no estar entre los 100 que trae la lista: uno
+     * viejo o archivado que se abrió desde la agenda (/crm?c=…). Si el refresco
+     * lo dejara afuera, se cerraría solo a los pocos segundos.
+     */
+    function keepSelected(
+      prev: ConversationWithClient[],
+      next: ConversationWithClient[],
+    ): ConversationWithClient[] {
+      const sid = selectedIdRef.current;
+      if (!sid || next.some((c) => c.id === sid)) return next;
+      const kept = prev.find((c) => c.id === sid);
+      return kept ? [...next, kept] : next;
     }
   }, [supabase]);
 
@@ -397,11 +422,6 @@ export function CrmView({
    * la comparación de abajo la descarta en vez de pintar los mensajes del
    * chat anterior sobre el nuevo.
    */
-  const selectedIdRef = useRef(selectedId);
-  useEffect(() => {
-    selectedIdRef.current = selectedId;
-  }, [selectedId]);
-
   const refetchMessages = useCallback(
     async (initial = false) => {
       const sid = selectedIdRef.current;

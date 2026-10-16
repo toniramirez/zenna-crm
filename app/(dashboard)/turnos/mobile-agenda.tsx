@@ -11,8 +11,16 @@ import {
   startOfWeek,
 } from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarCheck, ChevronDown, Plus } from "lucide-react";
-import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { CalendarCheck, ChevronDown, Loader2, Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  type RefObject,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { toast } from "sonner";
 import { MobileChromeAccount } from "@/components/dashboard/mobile-chrome";
 import {
@@ -32,7 +40,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { phoneDigits } from "@/lib/channels";
 import { cn } from "@/lib/utils";
 import {
   type AppointmentStatus,
@@ -47,6 +54,7 @@ import {
   money,
   servicesLabel,
 } from "./appointment-utils";
+import { openClientConversationAction } from "../crm/actions";
 import type { AppointmentWithRelations, ProfessionalRow } from "./types";
 import {
   type LoadedWindow,
@@ -818,7 +826,35 @@ function AppointmentCard({
     appointment.status === "cancelled" || appointment.status === "no_show";
   const color = professional?.color ?? FALLBACK_COLOR;
   const clientName = appointment.clients?.full_name ?? "Sin clienta";
-  const phone = phoneDigits(appointment.clients?.phone);
+  const client = appointment.clients;
+
+  const router = useRouter();
+  const [openingChat, startOpeningChat] = useTransition();
+
+  /**
+   * Abre el chat de la clienta en la bandeja de la app — no en el WhatsApp
+   * del teléfono: la conversación tiene que quedar en Zenna, con su historial
+   * y sus automatizaciones. Si nunca hubo chat con ella en el número nuevo,
+   * se abre uno (es lo mismo que hace "Abrir chat" en el diálogo de mensajes).
+   */
+  function openChat() {
+    if (!client) {
+      toast.error("Este turno no tiene una clienta cargada.");
+      return;
+    }
+    startOpeningChat(async () => {
+      const result = await openClientConversationAction({
+        clientId: client.id,
+        phone: client.phone,
+        displayName: client.full_name,
+      });
+      if (result.error || !result.conversationId) {
+        toast.error(result.error ?? "No pudimos abrir el chat.");
+        return;
+      }
+      router.push(`/crm?c=${result.conversationId}`);
+    });
+  }
 
   const showStatus = appointment.status !== "scheduled";
   const showPayment = appointment.charged_at || appointment.deposit_amount > 0;
@@ -926,37 +962,25 @@ function AppointmentCard({
           Escribirle por WhatsApp, en su propia columna y no encima de la
           tarjeta: acá el dedo elige entre "abrir el turno" y "mandarle un
           mensaje", y dos blancos que se pisan terminan siempre en el toque
-          equivocado. Desde el teléfono va directo a la app de WhatsApp con
-          el chat de la clienta abierto, sin pasar por un diálogo.
+          equivocado. Lleva al chat de la clienta en la pestaña Chats.
         */}
-        {phone ? (
-          <a
-            href={`https://wa.me/${phone}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`Abrir el WhatsApp de ${appointment.clients?.full_name ?? "la clienta"}`}
-            className="flex w-12 shrink-0 items-center justify-center border-l border-white/5 text-[#25D366] active:bg-white/5"
-          >
+        <button
+          type="button"
+          onClick={openChat}
+          disabled={openingChat}
+          aria-busy={openingChat}
+          aria-label={`Abrir el chat de ${client?.full_name ?? "la clienta"}`}
+          className={cn(
+            "flex w-12 shrink-0 items-center justify-center border-l border-white/5 active:bg-white/5",
+            client ? "text-[#25D366]" : "text-[var(--wa-text-3)] opacity-50",
+          )}
+        >
+          {openingChat ? (
+            <Loader2 className="size-5 animate-spin" />
+          ) : (
             <WhatsAppIcon className="size-[1.375rem]" />
-          </a>
-        ) : (
-          // Sin teléfono no hay a dónde ir, pero el ícono se queda (apagado)
-          // para que la columna no baile entre tarjetas y el toque explique
-          // por qué no abre nada.
-          <button
-            type="button"
-            aria-disabled="true"
-            onClick={() =>
-              toast.error(
-                "Esta clienta no tiene un teléfono cargado. Agregalo desde Clientas para poder escribirle.",
-              )
-            }
-            aria-label={`${appointment.clients?.full_name ?? "La clienta"} no tiene teléfono cargado`}
-            className="flex w-12 shrink-0 items-center justify-center border-l border-white/5 text-[var(--wa-text-3)] opacity-50"
-          >
-            <WhatsAppIcon className="size-[1.375rem]" />
-          </button>
-        )}
+          )}
+        </button>
       </div>
     </li>
   );
