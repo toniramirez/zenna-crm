@@ -1,11 +1,12 @@
 "use client";
 
 import { Headset, PanelLeft, Search } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import type { AppRole } from "@/lib/auth";
 import { cn } from "@/lib/utils";
-import { BrandWordmark } from "./brand-wordmark";
+import logoBlanco from "@/public/zenna-logo-blanco.png";
 import { useFocusMode } from "./focus-mode-context";
 import { MobileChromeProvider } from "./mobile-chrome";
 import { MobileTabBar } from "./mobile-tabbar";
@@ -224,11 +225,18 @@ export function DashboardChrome({
           ahora vive abajo, en la barra de pestañas. Una pantalla que trae su
           propio encabezado a pantalla completa la reemplaza marcándolo con
           `data-mobile-header` (la bandeja de mensajes): así no se apilan dos
-          barras y el contenido arranca ~56px más arriba.
+          barras y el contenido arranca ~56px más arriba. El logo es el
+          blanco sin fondo: esta barra solo existe en el teléfono, y ahí la
+          app es siempre oscura.
         */}
         <div className="flex flex-col min-w-0 min-h-0 [&:has([data-mobile-header])>header]:hidden">
           <header className="md:hidden flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-4">
-            <BrandWordmark size="sm" />
+            <Image
+              src={logoBlanco}
+              alt="Zenna Hair Salon"
+              loading="eager"
+              className="h-9 w-auto select-none"
+            />
           </header>
 
           {/*
