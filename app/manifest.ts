@@ -19,8 +19,8 @@ export default function manifest(): MetadataRoute.Manifest {
     /*
      * La Z de Zenna. En iPhone es también el ícono de cada notificación (iOS
      * no deja poner uno por aviso). El de iOS sale de app/apple-icon.png;
-     * estos son para Android y la compu. El maskable lleva la Z más chica para
-     * que entre en el círculo seguro cuando Android le recorta la forma.
+     * estos son para Android y la compu. El maskable va a sangre: la Z ya entra
+     * en el círculo seguro cuando Android le recorta la forma.
      */
     icons: [
       {
