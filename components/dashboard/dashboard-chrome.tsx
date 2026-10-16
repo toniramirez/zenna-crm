@@ -3,7 +3,13 @@
 import { Headset, PanelLeft, Search } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { AppRole } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import logoBlanco from "@/public/zenna-logo-blanco.png";
@@ -44,14 +50,66 @@ import { UserMenu } from "./user-menu";
  * El `scrollTo(0, 0)` deshace el empujón: con el shell ya achicado, la barra
  * de escritura queda apoyada sobre las teclas sin que nadie tenga que
  * desplazar nada.
+ *
+ * Instalada en la pantalla de inicio hay además un bug de iOS: la primera vez
+ * que sube el teclado la ventana entera se achica el alto de la barra de
+ * estado (~59px) y no vuelve a crecer cuando el teclado baja. No es sólo la
+ * `visualViewport`: `innerHeight` y el bloque de `position: fixed` también
+ * quedan cortos, así que la barra de pestañas flota alta, la lista se corta
+ * en seco y abajo queda una franja negra. Lo único que la devuelve es que
+ * WebKit vuelva a maquetar un elemento del alto de la ventana: esconder y
+ * mostrar el shell en el mismo cuadro, sin pintar en el medio. Ver `heal`.
  */
-function useViewportMetrics() {
+function useViewportMetrics(shellRef: RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
 
     const root = document.documentElement;
     let frame = 0;
+
+    // El bug es sólo de la app instalada: en Safari la ventana cambia de alto
+    // de verdad cuando la barra de direcciones se esconde o aparece.
+    const standalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (window.navigator as { standalone?: boolean }).standalone === true;
+    // El alto más grande visto por ancho (girar el teléfono cambia los dos):
+    // es la referencia para saber que la ventana quedó corta.
+    const tallest = new Map<number, number>();
+    let settle = 0;
+    let healedAt = 0;
+
+    const heal = () => {
+      settle = 0;
+      const shell = shellRef.current;
+      const full = tallest.get(window.innerWidth) ?? 0;
+      if (!shell || full - window.innerHeight <= 4) return;
+      // Esconder el shell le saca el foco a un campo a medio escribir.
+      if (
+        document.activeElement?.matches(
+          "input, textarea, [contenteditable]:not([contenteditable='false'])",
+        )
+      ) {
+        return;
+      }
+      // Si una pasada no alcanzó, no insistir en cada evento.
+      if (Date.now() - healedAt < 1000) return;
+      healedAt = Date.now();
+
+      // `display: none` tira las cajas y con ellas el desplazamiento de cada
+      // lista: se anota y se repone.
+      const scrolled = Array.from(shell.querySelectorAll<HTMLElement>("*"))
+        .filter((el) => el.scrollTop !== 0 || el.scrollLeft !== 0)
+        .map((el) => [el, el.scrollTop, el.scrollLeft] as const);
+      shell.style.display = "none";
+      void shell.offsetHeight;
+      shell.style.display = "";
+      for (const [el, top, left] of scrolled) {
+        el.scrollTop = top;
+        el.scrollLeft = left;
+      }
+      schedule();
+    };
 
     const apply = () => {
       frame = 0;
@@ -64,6 +122,17 @@ function useViewportMetrics() {
       // Con el teclado arriba el navegador ya desplazó el documento; el shell
       // mide lo que se ve, así que ese desplazamiento sobra.
       if (overlap > 0 && window.scrollY !== 0) window.scrollTo(0, 0);
+
+      if (!standalone) return;
+      const width = window.innerWidth;
+      const full = Math.max(tallest.get(width) ?? 0, window.innerHeight);
+      tallest.set(width, full);
+      // Teclado abajo y ventana corta: quedó trabada. Se espera a que la
+      // animación del teclado termine (los eventos llegan de a ráfagas).
+      if (overlap === 0 && full - window.innerHeight > 4) {
+        window.clearTimeout(settle);
+        settle = window.setTimeout(heal, 150);
+      }
     };
 
     // Los eventos de la visualViewport llegan de a ráfagas mientras el teclado
@@ -80,13 +149,14 @@ function useViewportMetrics() {
 
     return () => {
       if (frame) cancelAnimationFrame(frame);
+      window.clearTimeout(settle);
       vv.removeEventListener("resize", schedule);
       vv.removeEventListener("scroll", schedule);
       window.removeEventListener("orientationchange", schedule);
       root.style.removeProperty("--app-height");
       root.style.removeProperty("--kb-inset");
     };
-  }, []);
+  }, [shellRef]);
 }
 
 export function DashboardChrome({
@@ -103,7 +173,8 @@ export function DashboardChrome({
   unreadCount?: number;
   children: ReactNode;
 }) {
-  useViewportMetrics();
+  const shellRef = useRef<HTMLDivElement>(null);
+  useViewportMetrics(shellRef);
 
   const { focused, toggle } = useFocusMode();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -122,6 +193,7 @@ export function DashboardChrome({
   return (
     <MobileChromeProvider value={{ items, email, role: profile.role }}>
       <div
+        ref={shellRef}
         data-app-shell
         className={cn(
           // `--app-height` y no `h-screen`: los 100vh del navegador móvil
