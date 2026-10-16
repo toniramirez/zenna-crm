@@ -337,6 +337,15 @@
    */
   --kb-inset: 0px;
   --safe-bottom: max(0px, calc(env(safe-area-inset-bottom) - var(--kb-inset)));
+
+  /*
+   * Lo que a la ventana le falta para llegar al borde inferior de la
+   * pantalla cuando iOS, en la app instalada, la da corta por el alto de la
+   * barra de estado. Lo fijo abajo se corre esa cantidad para apoyarse en el
+   * borde de verdad — ver `useViewportMetrics` en
+   * components/dashboard/dashboard-chrome.tsx. Casi siempre vale 0.
+   */
+  --vp-gap: 0px;
 }
 
 @media (width < 48rem) {
@@ -1035,6 +1044,16 @@
     "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla",
     "EmojiOne Color", "Android Emoji", sans-serif;
   line-height: 1;
+}
+
+/*
+ * Los velos de los diálogos y las hojas cubren hasta el borde de la pantalla
+ * aunque iOS dé la ventana corta (ver `--vp-gap`). Fuera de una capa para
+ * ganarle al `inset-0` de las utilidades.
+ */
+[data-slot="sheet-overlay"],
+[data-slot="dialog-overlay"] {
+  bottom: calc(0px - var(--vp-gap));
 }
 
 /* ── Barra de pestañas del teléfono ───────────────────────────────────────

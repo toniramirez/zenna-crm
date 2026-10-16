@@ -194,7 +194,7 @@ export function MobileTabBar({
       <nav
         data-app-tabbar
         aria-label="Navegación principal"
-        className="fixed inset-x-0 bottom-0 z-40 px-4 pb-[var(--tabbar-bottom)] md:hidden"
+        className="fixed inset-x-0 bottom-[calc(0px-var(--vp-gap))] z-40 px-4 pb-[var(--tabbar-bottom)] md:hidden"
       >
         {/*
           Los eventos de puntero viven en la barra entera y no en cada link:
@@ -286,7 +286,7 @@ export function MobileTabBar({
         <SheetContent
           side="bottom"
           showCloseButton={false}
-          className="gap-0 rounded-t-3xl border-border pb-[calc(1rem+env(safe-area-inset-bottom))] md:hidden"
+          className="bottom-[calc(0px-var(--vp-gap))] gap-0 rounded-t-3xl border-border pb-[calc(1rem+env(safe-area-inset-bottom))] md:hidden"
         >
           <SheetTitle className="sr-only">Más opciones</SheetTitle>
           <SheetDescription className="sr-only">

@@ -107,7 +107,7 @@ export default function RootLayout({
           closeButton
           position="bottom-right"
           mobileOffset={{
-            bottom: "calc(1rem + var(--tabbar-space))",
+            bottom: "calc(1rem + var(--tabbar-space) - var(--vp-gap))",
             right: "0.75rem",
             left: "0.75rem",
           }}
