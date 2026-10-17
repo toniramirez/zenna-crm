@@ -537,7 +537,7 @@ export function NewTurnoDialog({
                     center: "title",
                     right: "",
                   }}
-                  titleFormat={{ day: "numeric", month: "short" }}
+                  titleFormat={{ weekday: "long", day: "numeric", month: "short" }}
                   buttonText={{ today: "Hoy" }}
                   allDaySlot={false}
                   slotMinTime="08:00:00"
