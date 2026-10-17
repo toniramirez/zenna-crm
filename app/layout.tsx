@@ -78,7 +78,7 @@ export const metadata: Metadata = {
  */
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(max-width: 767px)", color: "#0b141a" },
+    { media: "(max-width: 767px)", color: "#000000" },
     { media: "(min-width: 768px)", color: "#fbfaf9" },
   ],
   viewportFit: "cover",

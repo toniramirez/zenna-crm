@@ -802,7 +802,7 @@ function ProTag({
     <span className="inline-flex items-center gap-1.5 text-[0.75rem] text-[var(--wa-text-2)]">
       <span
         aria-hidden
-        className="flex size-4 shrink-0 items-center justify-center rounded-full text-[0.5625rem] font-bold text-[#0b141a]"
+        className="flex size-4 shrink-0 items-center justify-center rounded-full text-[0.5625rem] font-bold text-black"
         style={{ backgroundColor: professional.color || FALLBACK_COLOR }}
       >
         {(professional.full_name.trim()[0] ?? "?").toUpperCase()}

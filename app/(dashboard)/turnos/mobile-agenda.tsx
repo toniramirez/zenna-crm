@@ -793,7 +793,7 @@ function ProDot({ professional }: { professional: ProfessionalRow }) {
   return (
     <span
       aria-hidden
-      className="flex size-4 shrink-0 items-center justify-center rounded-full text-[0.5625rem] font-bold text-[#0b141a]"
+      className="flex size-4 shrink-0 items-center justify-center rounded-full text-[0.5625rem] font-bold text-black"
       style={{ backgroundColor: professional.color ?? FALLBACK_COLOR }}
     >
       {initialOf(professional.full_name)}

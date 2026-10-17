@@ -14,8 +14,8 @@ export default function manifest(): MetadataRoute.Manifest {
      * pantalla de arranque y la barra de estado prendían en blanco y después
      * saltaban a negro.
      */
-    background_color: "#0b141a",
-    theme_color: "#0b141a",
+    background_color: "#000000",
+    theme_color: "#000000",
     /*
      * La Z de Zenna. En iPhone es también el ícono de cada notificación (iOS
      * no deja poner uno por aviso). El de iOS sale de app/apple-icon.png;

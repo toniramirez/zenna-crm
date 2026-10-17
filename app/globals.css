@@ -305,11 +305,18 @@
 }
 
 /* ── Teléfono: el tema es el de WhatsApp ──────────────────────────────────
- * Abajo de 768px la app no compite con WhatsApp: se hace pasar por él. El
- * gris azulado de WhatsApp (#0b141a de fondo, #111b21 de superficie, #202c33
- * de control) y el verde como único color de acción. Es una capa de tokens,
- * no un rediseño: cada pantalla ya pinta con `bg-card`, `text-muted-
- * foreground`, etc., así que hereda el oscuro sin tocar una sola clase.
+ * Abajo de 768px la app no compite con WhatsApp: se hace pasar por él. Es
+ * el oscuro de WhatsApp en el iPhone, que es el de iOS: negro puro de fondo
+ * (#000000), grises neutros para lo que se apoya encima (#1c1c1e la
+ * tarjeta, #2c2c2e el control, #3a3a3c lo activo, #8e8e93 el texto
+ * secundario) y el verde como único color de acción. Antes iba el gris
+ * azulado de WhatsApp Web (#0b141a): al lado del WhatsApp del teléfono se
+ * veía azul. Cada gris nuevo tiene el brillo del azulado que reemplaza, así
+ * que el orden de las capas es el mismo y sólo se fue el tinte.
+ *
+ * Es una capa de tokens, no un rediseño: cada pantalla ya pinta con
+ * `bg-card`, `text-muted-foreground`, etc., así que hereda el oscuro sin
+ * tocar una sola clase.
  *
  * La consulta es por ancho y no por `prefers-color-scheme`: el pedido es que
  * el teléfono se vea siempre así, prenda o no el modo oscuro del sistema.
@@ -371,62 +378,62 @@
 
 @media (width < 48rem) {
   :root {
-    --background: #0b141a;
-    --foreground: #e9edef;
+    --background: #000000;
+    --foreground: #ffffff;
 
-    --card: #111b21;
-    --card-foreground: #e9edef;
+    --card: #1c1c1e;
+    --card-foreground: #ffffff;
 
-    --popover: #233138;
-    --popover-foreground: #e9edef;
+    --popover: #2c2c2e;
+    --popover-foreground: #ffffff;
 
     /* Acción = el verde del botón "+" de WhatsApp, no el mocha de marca. */
     --primary: #21c063;
-    --primary-foreground: #0b141a;
+    --primary-foreground: #000000;
 
-    --secondary: #202c33;
-    --secondary-foreground: #e9edef;
+    --secondary: #2c2c2e;
+    --secondary-foreground: #ffffff;
 
-    --muted: #202c33;
-    --muted-foreground: #8696a0;
+    --muted: #2c2c2e;
+    --muted-foreground: #8e8e93;
 
-    --accent: #2a3942;
-    --accent-foreground: #e9edef;
+    --accent: #3a3a3c;
+    --accent-foreground: #ffffff;
 
     --destructive: #f15c6d;
-    --destructive-foreground: #0b141a;
+    --destructive-foreground: #000000;
 
-    --border: #22303a;
-    --input: #2a3942;
+    --border: #2c2c2e;
+    --input: #3a3a3c;
     --ring: #00a884;
 
     --chart-1: #00a884;
     --chart-2: #f0aa63;
     --chart-3: #53bdeb;
-    --chart-4: #8696a0;
+    --chart-4: #8e8e93;
     --chart-5: #f15c6d;
 
     /* El rail no existe en el teléfono; van igual para que nada quede claro. */
-    --sidebar: #0b141a;
-    --sidebar-foreground: #e9edef;
+    --sidebar: #000000;
+    --sidebar-foreground: #ffffff;
     --sidebar-primary: #00a884;
-    --sidebar-primary-foreground: #0b141a;
-    --sidebar-accent: #202c33;
-    --sidebar-accent-foreground: #e9edef;
-    --sidebar-border: #22303a;
+    --sidebar-primary-foreground: #000000;
+    --sidebar-accent: #2c2c2e;
+    --sidebar-accent-foreground: #ffffff;
+    --sidebar-border: #2c2c2e;
     --sidebar-ring: #00a884;
 
     --appt-tint: 78%;
 
     /*
      * El dorado sobrevive: en finanzas y caja marca cifras, no acciones, y
-     * sobre el gris de WhatsApp sigue leyéndose. El verde se reserva para lo
+     * sobre el negro sigue leyéndose. El verde se reserva para lo
      * que se toca.
      */
     --gold: #f0aa63;
     --gold-soft: #3a2a15;
-    --bone: #111b21;
-    --ink: #e9edef;
+    --bone: #1c1c1e;
+    --ink: #ffffff;
 
     --wa: #00a884;
     --wa-soft: #005c4b;
@@ -464,8 +471,8 @@
  *
  * Caja, finanzas y configuración pintan sus cifras y avisos con la rampa de
  * día: `text-emerald-700` para lo que entró, `bg-rose-50 text-rose-900` para
- * un error, `bg-amber-100` para una pastilla. Sobre el gris de WhatsApp eso
- * es verde oscuro sobre negro y calcomanías blancas. Igual que con los tokens
+ * un error, `bg-amber-100` para una pastilla. Sobre el negro del teléfono eso
+ * es verde oscuro que no se lee y calcomanías blancas. Igual que con los tokens
  * semánticos de arriba, se arregla en la capa de tokens y no clase por clase:
  * en el teléfono los tonos oscuros (600 en adelante) pasan a ser los claros,
  * y los fondos pálidos (50–200) pasan a ser el mismo color translúcido.
@@ -541,14 +548,14 @@
     --color-stone-200: rgb(255 255 255 / 0.12);
     --color-stone-700: #c9c5c3;
     --color-stone-800: #c9c5c3;
-    --color-stone-900: #e9edef;
+    --color-stone-900: #ffffff;
   }
 }
 
 /*
  * Las tarjetas de los paneles (finanzas, configuración) adentro de una
- * pantalla del teléfono: sin el borde del escritorio —sobre el gris de
- * WhatsApp se lee como un recuadro de formulario— y con el filete de luz y
+ * pantalla del teléfono: sin el borde del escritorio —sobre el negro del
+ * teléfono se lee como un recuadro de formulario— y con el filete de luz y
  * la esquina de las tarjetas de la agenda. Mismo criterio que arriba: se
  * resuelve acá y no tarjeta por tarjeta.
  */
@@ -851,39 +858,40 @@
    * como llega en el teléfono.
    */
   @variant dark {
-    --wa-app: #0b141a;
-    --wa-panel: #0b141a;
-    --wa-panel-header: #202c33;
-    --wa-search-bg: #202c33;
-    --wa-search-field: #2a3942;
-    --wa-hover: #202c33;
-    --wa-active: #2a3942;
-    --wa-divider: #222d34;
-    --wa-border: #22303a;
-    --wa-conv: #0b141a;
-    --wa-bubble-in: #202c33;
+    /* Los mismos negros y grises de iOS que el tema del teléfono (arriba). */
+    --wa-app: #000000;
+    --wa-panel: #000000;
+    --wa-panel-header: #2c2c2e;
+    --wa-search-bg: #2c2c2e;
+    --wa-search-field: #3a3a3c;
+    --wa-hover: #2c2c2e;
+    --wa-active: #3a3a3c;
+    --wa-divider: #2c2c2e;
+    --wa-border: #2c2c2e;
+    --wa-conv: #000000;
+    --wa-bubble-in: #2c2c2e;
     --wa-bubble-out: #005c4b;
-    --wa-text: #e9edef;
-    --wa-text-2: #8696a0;
-    --wa-text-3: #8696a0;
-    --wa-meta: #8696a0;
-    --wa-meta-out: #e9edef99;
+    --wa-text: #ffffff;
+    --wa-text-2: #8e8e93;
+    --wa-text-3: #8e8e93;
+    --wa-meta: #8e8e93;
+    --wa-meta-out: #ffffff99;
     --wa-accent: #00a884;
     --wa-accent-strong: #00a884;
     --wa-badge: #21c063;
-    --wa-badge-text: #0b141a;
-    --wa-tick: #8696a0;
+    --wa-badge-text: #000000;
+    --wa-tick: #8e8e93;
     --wa-tick-read: #53bdeb;
     --wa-link: #53bdeb;
-    --wa-composer: #0b141a;
-    --wa-composer-field: #202c33;
-    --wa-icon: #8696a0;
-    --wa-system-bubble: #182229;
-    --wa-system-text: #8696a0;
-    --wa-avatar-bg: #6a7175;
-    --wa-avatar-fg: #cfd5d9;
-    --wa-bubble-shadow: 0 1px 0.5px #0b141a61;
-    --wa-overlay: #0b141a8c;
+    --wa-composer: #000000;
+    --wa-composer-field: #2c2c2e;
+    --wa-icon: #8e8e93;
+    --wa-system-bubble: #1c1c1e;
+    --wa-system-text: #8e8e93;
+    --wa-avatar-bg: #636366;
+    --wa-avatar-fg: #d1d1d6;
+    --wa-bubble-shadow: 0 1px 0.5px #00000061;
+    --wa-overlay: #0000008c;
     /*
      * El verde de la burbuja saliente (#005c4b) sobre su propio verde no daba
      * contraste para texto chico; el chip usa un fondo más profundo y el verde
@@ -915,7 +923,7 @@
   --wa-doodle-opacity: 0.06;
   --wa-doodle-filter: none;
 
-  /* En oscuro invertimos el trazo: queda claro sobre el papel casi negro. */
+  /* En oscuro invertimos el trazo: queda claro sobre el papel negro. */
   @variant dark {
     --wa-doodle-opacity: 0.05;
     --wa-doodle-filter: invert(1);
