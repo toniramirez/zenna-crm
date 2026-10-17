@@ -38,6 +38,10 @@ export type LinkedClient = {
  * Tag names that exist on the client but aren't in the master list still
  * render — with a neutral color and no metadata — so legacy free-text tags
  * stay visible without a migration.
+ *
+ * `layout="grid"` es la versión de la ficha del contacto en el teléfono: todas
+ * las etiquetas a la vista como pastillas que se prenden y se apagan con un
+ * toque, sin el buscador del popover (que ahí levantaría el teclado encima).
  */
 export function ChatTagsBar({
   conversationId,
@@ -45,12 +49,16 @@ export function ChatTagsBar({
   contactName,
   allTags,
   onChange,
+  layout = "bar",
+  className,
 }: {
   conversationId: string;
   currentTags: string[];
   contactName: string;
   allTags: ClientTag[];
   onChange?: (next: string[], linkedClient: LinkedClient) => void;
+  layout?: "bar" | "grid";
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -96,8 +104,65 @@ export function ChatTagsBar({
 
   const firstName = contactName.split(" ")[0] || contactName;
 
+  if (layout === "grid") {
+    // Las del maestro en su orden, y al final las sueltas que tenga la
+    // clienta, para que también se puedan sacar desde acá.
+    const names = [
+      ...activeMasterTags.map((t) => t.name),
+      ...tags.filter((name) => !activeMasterTags.some((t) => t.name === name)),
+    ];
+    if (names.length === 0) {
+      return (
+        <p
+          className={cn(
+            "text-[0.8125rem] leading-snug text-[var(--wa-text-2)]",
+            className,
+          )}
+        >
+          Todavía no hay etiquetas. Se crean en Configuración → Etiquetas.
+        </p>
+      );
+    }
+    return (
+      <div className={cn("flex flex-wrap gap-2", className)}>
+        {names.map((name) => {
+          const checked = tags.includes(name);
+          const color = byName.get(name)?.color ?? NEUTRAL_COLOR;
+          return (
+            <button
+              key={name}
+              type="button"
+              aria-pressed={checked}
+              onClick={() => toggle(name)}
+              disabled={isPending}
+              className={cn(
+                "inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[0.875rem] transition-colors disabled:opacity-70",
+                checked
+                  ? "bg-[var(--wa-active)] font-medium text-[var(--wa-text)]"
+                  : "border-transparent bg-[var(--wa-search-bg)] text-[var(--wa-text-2)]",
+              )}
+              style={checked ? { borderColor: color } : undefined}
+            >
+              <span
+                className="size-2 rounded-full"
+                style={{ backgroundColor: color }}
+              />
+              {name}
+              {checked ? <Check className="size-3.5 opacity-70" /> : null}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--wa-divider)] bg-[var(--wa-panel-header)] px-4 py-2">
+    <div
+      className={cn(
+        "flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--wa-divider)] bg-[var(--wa-panel-header)] px-4 py-2",
+        className,
+      )}
+    >
       {tags.length === 0 ? (
         <span className="text-xs text-[var(--wa-text-2)]">
           Sin etiquetas para {firstName}

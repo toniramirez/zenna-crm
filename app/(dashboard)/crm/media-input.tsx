@@ -10,7 +10,7 @@ import {
   Video,
   X,
 } from "lucide-react";
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,23 +51,22 @@ function extFromMime(mime: string): string {
   return map[mime.split(";")[0]?.toLowerCase() ?? ""] ?? "bin";
 }
 
+/** "0:07", "1:32": el reloj de una grabación en curso. */
+export function formatRecElapsed(sec: number): string {
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+}
+
+export type MediaSender = ReturnType<typeof useMediaSender>;
+
 /**
- * Bottom-row input controls — paperclip for file pick, mic for voice
- * recording. Both flows share the same upload+enqueue pipeline so the
- * worker treats them identically.
+ * El envío de adjuntos y audios, sin botones. Va aparte de `MediaInput`
+ * porque el teléfono reparte los mismos gestos en otros lugares de la barra
+ * (el clip dentro del "+", el micrófono a la derecha, como en WhatsApp) y los
+ * dos caminos tienen que terminar en el mismo upload + encolado.
  */
-export function MediaInput({
-  conversationId,
-  disabled,
-}: {
-  conversationId: string;
-  disabled?: boolean;
-}) {
+export function useMediaSender(conversationId: string) {
   const [isPending, startTransition] = useTransition();
   const [recording, setRecording] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -103,20 +102,22 @@ export function MediaInput({
     if (result.error) throw new Error(result.error);
   }
 
-  function handleFiles(files: FileList | null, restrictType?: "image") {
-    if (!files || files.length === 0) return;
+  /** Devuelve si el archivo se aceptó (y ya está subiendo). */
+  function sendFiles(
+    files: FileList | null,
+    restrictType?: "image",
+  ): boolean {
+    if (!files || files.length === 0) return false;
     const file = files[0];
     if (file.size > MAX_FILE_MB * 1024 * 1024) {
       toast.error(`El archivo supera ${MAX_FILE_MB} MB.`);
-      return;
+      return false;
     }
     const mime = file.type || "application/octet-stream";
     if (restrictType === "image" && !mime.startsWith("image/")) {
       toast.error("Elegí una imagen.");
-      return;
+      return false;
     }
-
-    setPickerOpen(false);
 
     startTransition(async () => {
       try {
@@ -127,6 +128,7 @@ export function MediaInput({
         );
       }
     });
+    return true;
   }
 
   async function startRecording() {
@@ -202,6 +204,55 @@ export function MediaInput({
     recorderRef.current = null;
     setRecording(false);
     setRecElapsedSec(0);
+  }
+
+  /*
+    Cambiar de chat (o volver a la lista) con el micrófono abierto descarta la
+    grabación. Sin esto el audio seguía grabándose sin nada en pantalla que lo
+    dijera, y al cortarlo salía para la conversación donde había empezado.
+  */
+  useEffect(
+    () => () => stopRecording(true),
+    // Sólo el cambio de chat: `stopRecording` trabaja con refs y setters.
+    [conversationId],
+  );
+
+  return {
+    isPending,
+    recording,
+    recElapsedSec,
+    sendFiles,
+    startRecording,
+    stopRecording,
+  };
+}
+
+/**
+ * Bottom-row input controls — paperclip for file pick, mic for voice
+ * recording. Both flows share the same upload+enqueue pipeline so the
+ * worker treats them identically.
+ */
+export function MediaInput({
+  conversationId,
+  disabled,
+}: {
+  conversationId: string;
+  disabled?: boolean;
+}) {
+  const {
+    isPending,
+    recording,
+    recElapsedSec,
+    sendFiles,
+    startRecording,
+    stopRecording,
+  } = useMediaSender(conversationId);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+
+  function handleFiles(files: FileList | null, restrictType?: "image") {
+    if (sendFiles(files, restrictType)) setPickerOpen(false);
   }
 
   // While recording, the input bar collapses to a recorder UI

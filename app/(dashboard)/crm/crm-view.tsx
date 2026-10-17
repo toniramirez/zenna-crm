@@ -9,6 +9,7 @@ import {
   Check,
   CheckCheck,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   CircleAlert,
   Clock,
@@ -81,14 +82,20 @@ import type {
   ServiceRow,
 } from "../turnos/types";
 import { ChatAvatar } from "./chat-avatar";
-import { ChatTagsBar } from "./chat-tags-bar";
+import { ChatTagsBar, type LinkedClient } from "./chat-tags-bar";
 import type { ClientTag, PaymentMethod, QuickReply } from "./config-types";
+import { ContactSheet } from "./contact-sheet";
 import { EmojiPicker } from "./emoji-picker";
 import { ForwardDialog } from "./forward-dialog";
-import { MediaInput } from "./media-input";
+import { MediaInput, useMediaSender } from "./media-input";
 import { MessageActions } from "./message-actions";
 import { MessageContent } from "./message-content";
 import { NewTurnoDialog } from "./new-turno-dialog";
+import {
+  PhoneAttachButton,
+  PhoneMediaButtons,
+  PhoneRecordingBar,
+} from "./phone-composer";
 import { PresupuestoDialog } from "./presupuesto-dialog";
 import { QuickReplyPicker } from "./quick-reply-picker";
 import { ReactionPicker, ReactionsPill } from "./reaction-picker";
@@ -313,6 +320,8 @@ export function CrmView({
    * mismo, sin obligar a bajar hasta el composer a buscar el botón.
    */
   const [templateOpen, setTemplateOpen] = useState(false);
+  /** La info del contacto: se abre tocando el nombre arriba del chat. */
+  const [contactOpen, setContactOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   /**
@@ -560,6 +569,7 @@ export function CrmView({
   const [lastSelectedId, setLastSelectedId] = useState(selectedId);
   if (selectedId !== lastSelectedId) {
     setLastSelectedId(selectedId);
+    setContactOpen(false);
     if (editing) {
       setEditing(null);
       setDraft("");
@@ -630,6 +640,14 @@ export function CrmView({
 
   /** Este chat es del número viejo: archivo, sin automatizaciones. */
   const selectedIsLegacy = isLegacyChannel(selected?.channel);
+
+  /**
+   * Adjuntos y audios de la barra del teléfono, donde el "+", la cámara y el
+   * micrófono están repartidos por la barra (en la compu los maneja
+   * `MediaInput` entero). Sin chat abierto el id va vacío: no hay barra que
+   * lo use, y el cambio de id descarta una grabación a medias.
+   */
+  const media = useMediaSender(selected?.id ?? "");
 
   const legacyUnread = useMemo(
     () => legacyConversations.filter((c) => c.unread_count > 0).length,
@@ -824,6 +842,29 @@ export function CrmView({
         );
       }
     })();
+  }
+
+  /**
+   * Las etiquetas se cambian desde la barra (compu) o desde la info del
+   * contacto (teléfono). La lista se parchea en el acto: la conversación puede
+   * haber quedado vinculada a una clienta recién creada.
+   */
+  function handleTagsChange(next: string[], linkedClient: LinkedClient) {
+    if (!selected) return;
+    const id = selected.id;
+    patchConversations((c) =>
+      c.id === id
+        ? {
+            ...c,
+            clients: {
+              id: linkedClient.id,
+              full_name: linkedClient.full_name,
+              phone: linkedClient.phone,
+              tags: next,
+            },
+          }
+        : c,
+    );
   }
 
   function startEdit(message: MessageRow) {
@@ -1442,67 +1483,87 @@ export function CrmView({
           </div>
         ) : (
           <>
-            <div className="flex h-[var(--wa-header-h)] shrink-0 items-center gap-3 border-b border-[var(--wa-divider)] bg-[var(--wa-panel-header)] px-4">
+            {/*
+              En el teléfono la cabecera mide lo que la de WhatsApp para iOS
+              (54px, avatar de 40, nombre en semibold de 17px, íconos de 24) y
+              va sobre el mismo negro del chat; la franja gris es de la compu.
+            */}
+            <div className="flex h-[54px] shrink-0 items-center gap-1 border-b border-[var(--wa-divider)] bg-[var(--wa-panel)] pr-2 pl-1 md:h-[var(--wa-header-h)] md:gap-3 md:bg-[var(--wa-panel-header)] md:px-4">
               <button
                 type="button"
                 aria-label="Volver a la lista"
-                className="-ml-1 flex size-9 shrink-0 items-center justify-center rounded-full text-[var(--wa-icon)] hover:bg-[var(--wa-hover)] md:hidden"
+                className="flex size-10 shrink-0 items-center justify-center rounded-full text-[var(--wa-text)] active:bg-[var(--wa-hover)] md:hidden"
                 onClick={() => setSelectedId(null)}
               >
-                <ArrowLeft className="size-5" strokeWidth={1.75} />
+                <ChevronLeft className="size-7" strokeWidth={2} />
               </button>
-              <ChatAvatar
-                name={conversationTitle(selected)}
-                avatarPath={selected.avatar_path}
-                channel={selected.channel}
-                size={40}
-              />
-              <div className="flex flex-col min-w-0 leading-tight flex-1">
-                <span className="truncate text-[1rem] text-[var(--wa-text)]">
-                  {conversationTitle(selected)}
-                </span>
-                {(() => {
-                  const phone = conversationPhone(selected);
-                  // Don't repeat the phone underneath the title when the
-                  // title itself already IS the phone (no name available).
-                  const titleIsPhone =
-                    !selected.clients?.full_name && !selected.display_name;
-                  if (phone && !titleIsPhone) {
-                    return (
-                      <span className="text-[0.8125rem] text-[var(--wa-text-2)] truncate tabular-nums">
-                        {phone}
-                        {!selected.clients ? (
-                          <span className="not-tabular-nums">
-                            {" "}
-                            · sin clienta asociada
-                          </span>
-                        ) : null}
-                      </span>
-                    );
-                  }
-                  if (!selected.clients) {
-                    return (
-                      <span className="text-[0.8125rem] text-[var(--wa-text-2)] truncate">
-                        {phone
-                          ? "Sin clienta asociada"
-                          : "Sin número visible · sin clienta"}
-                      </span>
-                    );
-                  }
-                  return null;
-                })()}
-              </div>
+              {/*
+                Tocar el nombre abre la info del contacto, como en WhatsApp:
+                ahí viven las etiquetas, que en el teléfono ya no ocupan un
+                renglón fijo arriba del chat.
+              */}
+              <button
+                type="button"
+                onClick={() => setContactOpen(true)}
+                aria-label={`Info de ${conversationTitle(selected)}`}
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-left md:gap-3"
+              >
+                <ChatAvatar
+                  name={conversationTitle(selected)}
+                  avatarPath={selected.avatar_path}
+                  channel={selected.channel}
+                  windowLeftMs={windowLeft ?? undefined}
+                  size={40}
+                />
+                <div className="flex flex-col min-w-0 leading-tight flex-1">
+                  <span className="truncate text-[1.0625rem] font-semibold text-[var(--wa-text)] md:text-[1rem] md:font-normal">
+                    {conversationTitle(selected)}
+                  </span>
+                  {(() => {
+                    const phone = conversationPhone(selected);
+                    // Don't repeat the phone underneath the title when the
+                    // title itself already IS the phone (no name available).
+                    const titleIsPhone =
+                      !selected.clients?.full_name && !selected.display_name;
+                    if (phone && !titleIsPhone) {
+                      return (
+                        <span className="text-[0.8125rem] text-[var(--wa-text-2)] truncate tabular-nums">
+                          {phone}
+                          {!selected.clients ? (
+                            <span className="not-tabular-nums">
+                              {" "}
+                              · sin clienta asociada
+                            </span>
+                          ) : null}
+                        </span>
+                      );
+                    }
+                    if (!selected.clients) {
+                      return (
+                        <span className="text-[0.8125rem] text-[var(--wa-text-2)] truncate">
+                          {phone
+                            ? "Sin clienta asociada"
+                            : "Sin número visible · sin clienta"}
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+              </button>
               {/*
                 Acciones del encabezado: en WhatsApp son íconos pelados sobre
                 la barra gris, sin caja. El texto aparece recién en desktop.
+                En el teléfono son dos, como la videollamada y la llamada.
               */}
               <button
                 type="button"
                 title="Nuevo turno"
-                className="flex h-9 shrink-0 items-center gap-2 rounded-full px-2.5 text-[var(--wa-icon)] hover:bg-[var(--wa-hover)]"
+                aria-label="Nuevo turno"
+                className="flex size-10 shrink-0 items-center justify-center gap-2 rounded-full text-[var(--wa-text)] active:bg-[var(--wa-hover)] md:h-9 md:w-auto md:px-2.5 md:text-[var(--wa-icon)] md:hover:bg-[var(--wa-hover)]"
                 onClick={() => setNewTurnoOpen(true)}
               >
-                <CalendarPlus className="size-5" strokeWidth={1.75} />
+                <CalendarPlus className="size-6 md:size-5" strokeWidth={1.75} />
                 <span className="hidden text-[0.8125rem] lg:inline">
                   Nuevo turno
                 </span>
@@ -1510,38 +1571,25 @@ export function CrmView({
               <button
                 type="button"
                 title="Presupuestar"
-                className="flex h-9 shrink-0 items-center gap-2 rounded-full px-2.5 text-[var(--wa-icon)] hover:bg-[var(--wa-hover)]"
+                aria-label="Presupuestar"
+                className="flex size-10 shrink-0 items-center justify-center gap-2 rounded-full text-[var(--wa-text)] active:bg-[var(--wa-hover)] md:h-9 md:w-auto md:px-2.5 md:text-[var(--wa-icon)] md:hover:bg-[var(--wa-hover)]"
                 onClick={() => setPresupuestoOpen(true)}
               >
-                <FileText className="size-5" strokeWidth={1.75} />
+                <FileText className="size-6 md:size-5" strokeWidth={1.75} />
                 <span className="hidden text-[0.8125rem] lg:inline">
                   Presupuestar
                 </span>
               </button>
             </div>
 
+            {/* En el teléfono las etiquetas están en la info del contacto. */}
             <ChatTagsBar
+              className="phone:hidden"
               conversationId={selected.id}
               contactName={conversationTitle(selected)}
               currentTags={selected.clients?.tags ?? []}
               allTags={allTags}
-              onChange={(next, linkedClient) => {
-                // Patch local list: ensure the conversation now reflects the
-                // (possibly newly-created) clienta + the latest tags.
-                patchConversations((c) =>
-                  c.id === selected.id
-                    ? {
-                        ...c,
-                        clients: {
-                          id: linkedClient.id,
-                          full_name: linkedClient.full_name,
-                          phone: linkedClient.phone,
-                          tags: next,
-                        },
-                      }
-                    : c,
-                );
-              }}
+              onChange={handleTagsChange}
             />
 
             {/*
@@ -1663,6 +1711,10 @@ export function CrmView({
                 mensaje de la clienta el texto libre deja de entrar, y sin
                 contador eso se descubre recién con la burbuja en rojo. Late
                 una vez por minuto, como el resto de la bandeja.
+
+                En el teléfono el renglón aparece recién en el último tramo:
+                antes alcanza con el anillo del avatar de arriba (el mismo de
+                la lista), y el tiempo exacto está en la info del contacto.
               */}
               {windowLeft !== null && windowLeft > 0 ? (
                 <div
@@ -1670,7 +1722,7 @@ export function CrmView({
                     "flex items-center gap-2 px-3 pt-2 text-[0.75rem] leading-snug sm:px-4",
                     windowUrgent
                       ? "text-[var(--wa-wait-warm)]"
-                      : "text-[var(--wa-text-2)]",
+                      : "text-[var(--wa-text-2)] phone:hidden",
                   )}
                 >
                   <Hourglass className="size-3.5 shrink-0" />
@@ -1686,40 +1738,67 @@ export function CrmView({
                   </p>
                 </div>
               ) : null}
+              {media.recording ? (
+                <PhoneRecordingBar media={media} />
+              ) : (
               <form
                 onSubmit={handleSend}
-                className="wa-composer flex items-end gap-1.5 p-2 pb-[calc(0.5rem+var(--safe-bottom))] sm:gap-2 sm:px-4 md:pb-2"
+                className="wa-composer flex items-end gap-1 pt-2.5 pr-2.5 pb-[calc(0.5rem+var(--safe-bottom))] pl-1 md:gap-2 md:px-4 md:py-2"
               >
                 {/* Editando no se adjuntan archivos: WhatsApp sólo deja
                     cambiar el texto de un mensaje ya mandado. */}
                 {editing ? null : (
-                  <>
-                    <MediaInput
-                      conversationId={selected.id}
-                      disabled={isPending}
-                    />
-                    <QuickReplyPicker
-                      replies={quickReplies}
-                      onSelect={(body) =>
+                  <div className="contents md:hidden">
+                    <PhoneAttachButton
+                      media={media}
+                      quickReplies={quickReplies}
+                      onQuickReply={(body) =>
                         setDraft((d) => (d.trim() ? `${d} ${body}` : body))
+                      }
+                      onOpenTemplates={
+                        selected.channel === WA_CLOUD_CHANNEL &&
+                        hasApprovedTemplates
+                          ? () => setTemplateOpen(true)
+                          : undefined
                       }
                       disabled={isPending}
                     />
-                    {selected.channel === WA_CLOUD_CHANNEL ? (
-                      <TemplatePicker
-                        templates={waTemplates}
+                  </div>
+                )}
+                {/*
+                  La fila de la compu, ícono por ícono. En el teléfono todo
+                  esto vive en el "+", y los emojis los pone el teclado.
+                */}
+                <div className="contents phone:hidden">
+                  {editing ? null : (
+                    <>
+                      <MediaInput
                         conversationId={selected.id}
                         disabled={isPending}
                       />
-                    ) : null}
-                  </>
-                )}
-                {/* Los emojis sí se ofrecen editando: cambiar el texto de un
-                    mensaje incluye poder agregarle una carita. */}
-                <EmojiPicker
-                  onSelect={insertEmoji}
-                  onOpenChange={handleEmojiOpenChange}
-                />
+                      <QuickReplyPicker
+                        replies={quickReplies}
+                        onSelect={(body) =>
+                          setDraft((d) => (d.trim() ? `${d} ${body}` : body))
+                        }
+                        disabled={isPending}
+                      />
+                      {selected.channel === WA_CLOUD_CHANNEL ? (
+                        <TemplatePicker
+                          templates={waTemplates}
+                          conversationId={selected.id}
+                          disabled={isPending}
+                        />
+                      ) : null}
+                    </>
+                  )}
+                  {/* Los emojis sí se ofrecen editando: cambiar el texto de
+                      un mensaje incluye poder agregarle una carita. */}
+                  <EmojiPicker
+                    onSelect={insertEmoji}
+                    onOpenChange={handleEmojiOpenChange}
+                  />
+                </div>
                 {/*
                   A propósito no se deshabilita mientras se envía: `disabled`
                   le saca el foco al input y obliga a volver a clickear para
@@ -1755,15 +1834,27 @@ export function CrmView({
                   // El mismo tope que acepta el servidor (ver actions.ts).
                   maxLength={4000}
                   autoComplete="off"
-                  // Una línea mide lo mismo que los botones de al lado (36px);
-                  // el tope son seis renglones en el teléfono, siete en la compu.
-                  className="max-h-40 min-h-9 min-w-0 flex-1 resize-none border-transparent bg-[var(--wa-composer-field)] py-[5px] text-[var(--wa-text)] shadow-none placeholder:text-[var(--wa-text-2)] md:py-[7px]"
+                  // Un renglón mide 28px en el teléfono (el campo de WhatsApp
+                  // para iOS, con letra de 16px para que iOS no haga zoom) y
+                  // 36px en la compu; el tope son seis renglones en el
+                  // teléfono, siete en la compu.
+                  className="max-h-40 min-h-7 min-w-0 flex-1 resize-none border-transparent bg-[var(--wa-composer-field)] py-px text-[var(--wa-text)] caret-[var(--wa-accent)] shadow-none placeholder:text-[var(--wa-text-2)] md:min-h-9 md:py-[7px]"
                 />
+                {/* Con la barra vacía, cámara y micrófono; al escribir, enviar. */}
+                {!editing && draft.trim().length === 0 ? (
+                  <div className="contents md:hidden">
+                    <PhoneMediaButtons media={media} disabled={isPending} />
+                  </div>
+                ) : null}
                 <Button
                   type="submit"
                   disabled={draft.trim().length === 0}
                   size="icon"
-                  className="shrink-0 rounded-full bg-[var(--wa-accent)] text-white hover:bg-[var(--wa-accent-strong)]"
+                  className={cn(
+                    "shrink-0 rounded-full bg-[var(--wa-accent)] text-white hover:bg-[var(--wa-accent-strong)]",
+                    "phone:-mb-0.5 phone:size-8 phone:bg-[var(--wa-badge)] phone:text-[var(--wa-badge-text)] phone:hover:bg-[var(--wa-badge)]",
+                    !editing && draft.trim().length === 0 && "phone:hidden",
+                  )}
                 >
                   {editing ? (
                     <Check className="size-4" />
@@ -1775,12 +1866,30 @@ export function CrmView({
                   </span>
                 </Button>
               </form>
+              )}
               </>
               )}
             </div>
           </>
         )}
       </section>
+
+      {selected ? (
+        <ContactSheet
+          open={contactOpen}
+          onOpenChange={setContactOpen}
+          conversation={selected}
+          title={conversationTitle(selected)}
+          phone={conversationPhone(selected)}
+          windowLeft={
+            windowLeft !== null && windowLeft > 0 ? windowLeft : undefined
+          }
+          allTags={allTags}
+          onTagsChange={handleTagsChange}
+          onNewTurno={() => setNewTurnoOpen(true)}
+          onPresupuesto={() => setPresupuestoOpen(true)}
+        />
+      ) : null}
 
       <NewTurnoDialog
         open={newTurnoOpen}

@@ -1043,6 +1043,18 @@
 }
 
 /*
+ * En el teléfono el renglón mide 28px (el campo de WhatsApp para iOS), así
+ * que la pastilla va con la mitad de eso, y el texto arranca a 12px del
+ * borde, como el cursor de WhatsApp.
+ */
+@media screen and (width < 48rem) {
+  .wa-composer [data-slot="textarea"] {
+    border-radius: 0.875rem;
+    padding-inline: 0.75rem;
+  }
+}
+
+/*
  * Emojis del selector. Se pide la fuente de emojis del sistema antes que la
  * de la app: si no, los que tienen versión en blanco y negro (❤️, ✂️, ⚠️)
  * salen dibujados como texto en algunas plataformas y la grilla queda
