@@ -1018,16 +1018,19 @@
 
 /*
  * El campo es una pastilla, no una caja: es la silueta que tiene la barra de
- * escritura de WhatsApp y lo primero que delata a un clon cuando falta.
+ * escritura de WhatsApp y lo primero que delata a un clon cuando falta. El
+ * radio es la mitad del alto de un renglón (36px) y no 9999px: con un solo
+ * renglón es pastilla, y cuando el texto baja de renglón se vuelve una caja
+ * redondeada en vez de un óvalo.
  */
-.wa-composer [data-slot="input"] {
+.wa-composer [data-slot="textarea"] {
   background-color: var(--wa-composer-field);
-  border-radius: 9999px;
+  border-radius: 1.125rem;
   padding-inline: 0.875rem;
 }
 
-.wa-composer [data-slot="input"]:focus,
-.wa-composer [data-slot="input"]:focus-visible {
+.wa-composer [data-slot="textarea"]:focus,
+.wa-composer [data-slot="textarea"]:focus-visible {
   border-color: transparent;
   box-shadow: none;
 }

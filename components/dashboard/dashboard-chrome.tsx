@@ -96,14 +96,20 @@ function useViewportMetrics() {
 
     const apply = () => {
       frame = 0;
-      const overlap = Math.max(
-        0,
-        Math.round(window.innerHeight - vv.height - vv.offsetTop),
-      );
+      const zoomed = Math.abs(vv.scale - 1) >= 0.01;
+      // Sin restar `offsetTop`: cuando el documento no tiene para dónde
+      // desplazarse (el shell mide justo la ventana), iOS sube la visualViewport
+      // dentro de la ventana en vez de mover la ventana, y descontarlo daba 0
+      // con el teclado arriba. El shell se achicaba igual pero nadie deshacía
+      // el empujón: la barra de escritura quedaba arriba de todo y entre ella
+      // y el teclado, un hueco vacío.
+      const overlap = zoomed
+        ? 0
+        : Math.max(0, Math.round(window.innerHeight - vv.height));
 
       let height = Math.round(vv.height);
       let gap = 0;
-      if (standalone && overlap === 0 && Math.abs(vv.scale - 1) < 0.01) {
+      if (standalone && overlap === 0 && !zoomed) {
         const full = screenHeight();
         const short = full - Math.round(window.innerHeight);
         if (short > 2 && short <= 120) {
@@ -116,8 +122,14 @@ function useViewportMetrics() {
       root.style.setProperty("--vp-gap", `${gap}px`);
       root.style.setProperty("--kb-inset", `${overlap}px`);
       // Con el teclado arriba el navegador ya desplazó el documento; el shell
-      // mide lo que se ve, así que ese desplazamiento sobra.
-      if (overlap > 0 && window.scrollY !== 0) window.scrollTo(0, 0);
+      // mide lo que se ve, así que ese desplazamiento sobra. En iOS `scrollY`
+      // ya cuenta lo que subió la visualViewport; `offsetTop` va por las dudas.
+      if (
+        overlap > 0 &&
+        (window.scrollY !== 0 || Math.round(vv.offsetTop) !== 0)
+      ) {
+        window.scrollTo(0, 0);
+      }
     };
 
     // Los eventos de la visualViewport llegan de a ráfagas mientras el teclado
@@ -143,6 +155,9 @@ function useViewportMetrics() {
     remeasure();
     vv.addEventListener("resize", schedule);
     vv.addEventListener("scroll", schedule);
+    // Si lo que se mueve es la ventana y no la visualViewport dentro de ella,
+    // `vv` no avisa: el empujón del teclado llega sólo como scroll del documento.
+    window.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
     window.addEventListener("orientationchange", schedule);
     window.addEventListener("pageshow", remeasure);
@@ -153,6 +168,7 @@ function useViewportMetrics() {
       for (const id of timers) window.clearTimeout(id);
       vv.removeEventListener("resize", schedule);
       vv.removeEventListener("scroll", schedule);
+      window.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
       window.removeEventListener("orientationchange", schedule);
       window.removeEventListener("pageshow", remeasure);

@@ -33,6 +33,7 @@ import {
   type CSSProperties,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -48,7 +49,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -313,7 +314,7 @@ export function CrmView({
    */
   const [templateOpen, setTemplateOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const composerRef = useRef<HTMLInputElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   /**
    * Dónde va a caer el próximo emoji. Se guarda al abrir el selector porque
    * ahí el campo pierde el foco y, con él, la selección visible: sin esto los
@@ -706,6 +707,21 @@ export function CrmView({
     () => waTemplates.some((t) => t.status.toUpperCase() === "APPROVED"),
     [waTemplates],
   );
+
+  /*
+    El campo de escritura crece con el texto, como en WhatsApp: lo que no entra
+    a lo ancho baja al renglón siguiente y la barra sube hasta un tope (ver
+    `max-h` en el campo), de ahí en más se desplaza adentro. Donde existe
+    `field-sizing: content` lo hace el navegador solo; si no, se mide acá. Va
+    en un efecto y no en el onChange porque el texto también cambia desde
+    afuera: un emoji, una respuesta rápida, entrar a editar, vaciarlo al mandar.
+  */
+  useLayoutEffect(() => {
+    const el = composerRef.current;
+    if (!el || CSS.supports("field-sizing", "content")) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+  }, [draft, selectedId, cloudWindowClosed]);
 
   const filteredConversations = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -1672,7 +1688,7 @@ export function CrmView({
               ) : null}
               <form
                 onSubmit={handleSend}
-                className="wa-composer flex items-center gap-1.5 p-2 pb-[calc(0.5rem+var(--safe-bottom))] sm:gap-2 sm:px-4 md:pb-2"
+                className="wa-composer flex items-end gap-1.5 p-2 pb-[calc(0.5rem+var(--safe-bottom))] sm:gap-2 sm:px-4 md:pb-2"
               >
                 {/* Editando no se adjuntan archivos: WhatsApp sólo deja
                     cambiar el texto de un mensaje ya mandado. */}
@@ -1709,21 +1725,39 @@ export function CrmView({
                   le saca el foco al input y obliga a volver a clickear para
                   escribir el mensaje siguiente.
                 */}
-                <Input
+                <Textarea
                   ref={composerRef}
+                  rows={1}
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Escape" && editing) {
                       e.preventDefault();
                       cancelEdit();
+                      return;
+                    }
+                    // En la compu Enter manda y Shift+Enter baja de renglón,
+                    // como en WhatsApp Web. En el teléfono la tecla de retorno
+                    // baja de renglón y se manda con el botón, como en la app.
+                    if (
+                      e.key === "Enter" &&
+                      !e.shiftKey &&
+                      !e.nativeEvent.isComposing &&
+                      !window.matchMedia("(pointer: coarse)").matches
+                    ) {
+                      e.preventDefault();
+                      e.currentTarget.form?.requestSubmit();
                     }
                   }}
                   placeholder={
                     editing ? "Editá el mensaje" : "Escribí un mensaje"
                   }
+                  // El mismo tope que acepta el servidor (ver actions.ts).
+                  maxLength={4000}
                   autoComplete="off"
-                  className="min-w-0 flex-1 border-transparent bg-[var(--wa-composer-field)] text-[var(--wa-text)] placeholder:text-[var(--wa-text-2)]"
+                  // Una línea mide lo mismo que los botones de al lado (36px);
+                  // el tope son seis renglones en el teléfono, siete en la compu.
+                  className="max-h-40 min-h-9 min-w-0 flex-1 resize-none border-transparent bg-[var(--wa-composer-field)] py-[5px] text-[var(--wa-text)] shadow-none placeholder:text-[var(--wa-text-2)] md:py-[7px]"
                 />
                 <Button
                   type="submit"
