@@ -10,7 +10,6 @@ import {
   CheckCheck,
   ChevronDown,
   ChevronLeft,
-  ChevronRight,
   CircleAlert,
   Clock,
   CornerDownRight,
@@ -649,11 +648,6 @@ export function CrmView({
    */
   const media = useMediaSender(selected?.id ?? "");
 
-  const legacyUnread = useMemo(
-    () => legacyConversations.filter((c) => c.unread_count > 0).length,
-    [legacyConversations],
-  );
-
   /**
    * Cambiar de bandeja suelta el chat abierto salvo que también viva en la
    * bandeja de destino (no puede pasar hoy, pero deja el cambio a prueba de
@@ -1096,11 +1090,10 @@ export function CrmView({
         </div>
 
         {/*
-          El acceso al número viejo. Es un botón y no una solapa a propósito:
-          las solapas se leen como dos bandejas del mismo rango, y ésta es un
-          archivo al que se entra y del que se vuelve. Solo aparece si hay algo
-          adentro — un salón que nunca usó Baileys no tiene por qué enterarse
-          de que existió.
+          La bandeja del número viejo ya no tiene acceso desde la lista: los
+          chats siguen guardados, pero no ocupan lugar arriba de todo. Solo se
+          llega por un link directo (/crm?c=…, por ejemplo desde un aviso), y
+          ahí está la vuelta a la bandeja principal.
         */}
         {inbox === "legacy" ? (
           <div className="shrink-0 px-4 pb-2 md:px-3">
@@ -1113,30 +1106,6 @@ export function CrmView({
               <span className="min-w-0 flex-1 truncate">
                 Volver a la bandeja principal
               </span>
-            </button>
-          </div>
-        ) : legacyConversations.length > 0 ? (
-          <div className="shrink-0 px-4 pb-2 md:px-3">
-            <button
-              type="button"
-              onClick={() => switchInbox("legacy")}
-              className="flex w-full items-center gap-2 rounded-lg bg-[var(--wa-search-bg)] px-3 py-2 text-left text-[0.8125rem] text-[var(--wa-text-2)] transition-colors hover:text-[var(--wa-text)]"
-            >
-              <PhoneOff className="size-4 shrink-0" />
-              <span className="min-w-0 flex-1 truncate">
-                Número viejo
-                <span className="text-[var(--wa-text-3)]">
-                  {" · "}
-                  {legacyConversations.length} chat
-                  {legacyConversations.length === 1 ? "" : "s"}
-                </span>
-              </span>
-              {legacyUnread > 0 ? (
-                <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[var(--wa-badge)] px-1.5 text-[0.6875rem] font-medium tabular-nums text-[var(--wa-badge-text)]">
-                  {legacyUnread > 99 ? "99+" : legacyUnread}
-                </span>
-              ) : null}
-              <ChevronRight className="size-4 shrink-0 opacity-60" />
             </button>
           </div>
         ) : null}

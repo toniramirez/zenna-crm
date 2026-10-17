@@ -126,12 +126,6 @@ export function CrmShell({
           <span className="ml-auto text-[0.8125rem] text-muted-foreground tabular-nums">
             {conversations.length}{" "}
             {conversations.length === 1 ? "conversación" : "conversaciones"}
-            {legacyConversations.length > 0 ? (
-              <span className="text-muted-foreground/70">
-                {" · "}
-                {legacyConversations.length} en el número viejo
-              </span>
-            ) : null}
           </span>
         </div>
         <div className="p-4 sm:p-6">
