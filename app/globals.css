@@ -349,10 +349,24 @@
 
   /*
    * Dónde empieza la parte visible dentro de la ventana. Con el teclado
-   * arriba iOS la baja para mostrar el campo, y el shell (que es `fixed`) la
-   * sigue desde acá. Mismo origen que las de arriba; casi siempre 0.
+   * arriba iOS la baja para mostrar el campo, y el shell flotante la sigue
+   * desde acá (ver abajo). Mismo origen que las de arriba; casi siempre 0.
    */
   --vv-top: 0px;
+}
+
+/*
+ * Con un campo enfocado o el teclado arriba (`data-keyboard`, lo pone
+ * `useViewportMetrics`) el shell flota: `fixed` no se mueve con el empujón
+ * con que iOS revela el campo, y `--vv-top` lo baja hasta donde empieza lo
+ * que se ve. Con el teclado abajo vuelve al flujo, que es lo que hace que el
+ * shell y la barra de pestañas se pinten más allá de una ventana corta (ver
+ * `--vp-gap`): lo `fixed` no alarga el documento y queda cortado al borde.
+ */
+:root[data-keyboard] [data-app-shell] {
+  position: fixed;
+  inset-inline: 0;
+  top: var(--vv-top);
 }
 
 @media (width < 48rem) {

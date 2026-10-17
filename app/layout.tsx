@@ -72,8 +72,9 @@ export const metadata: Metadata = {
  * `interactiveWidget: "resizes-content"` es el pedido de que el teclado achique
  * la ventana en vez de taparla: sin eso el navegador deja el alto como estaba y
  * empuja el documento hacia arriba para mostrar el campo, que es lo que se
- * llevaba puesto el encabezado del chat. Donde no está soportado lo suple el
- * cálculo por visualViewport del shell.
+ * llevaba puesto el encabezado del chat. La app instalada en iOS 26 ya le
+ * hace caso; donde no está soportado lo suple el cálculo por visualViewport
+ * del shell, que contempla las dos cosas (ver `useViewportMetrics`).
  */
 export const viewport: Viewport = {
   themeColor: [

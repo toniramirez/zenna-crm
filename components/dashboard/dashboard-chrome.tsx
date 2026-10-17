@@ -31,28 +31,38 @@ import { UserMenu } from "./user-menu";
  * la cuenta y las secciones que no entran están en "Más".
  */
 /**
- * Alto real de la ventana y cuánto de ella tapa el teclado.
+ * Alto real de la ventana, cuánto de ella tapa el teclado y desde dónde se ve.
  *
  * En el teléfono `100dvh` no alcanza: el teclado no es chrome del navegador,
- * así que `dvh` sigue midiendo la pantalla entera y iOS resuelve el estorbo
- * empujando el documento hacia arriba — el encabezado del chat se va de la
- * pantalla y abajo queda una franja muerta. La `visualViewport` sí sabe qué
- * parte se ve: de ahí salen `--app-height` (el alto que toma el shell) y
- * `--kb-inset` (lo que hay que descontarle al respiro del gesto de inicio,
- * que con teclado abierto ya no esquiva nada).
+ * así que `dvh` sigue midiendo la pantalla entera. La `visualViewport` sí
+ * sabe qué parte se ve: de ahí salen `--app-height` (el alto que toma el
+ * shell) y `--kb-inset` (lo que hay que descontarle al respiro del gesto de
+ * inicio, que con teclado abierto ya no esquiva nada).
  *
- * El empujón no se pelea: el shell es `fixed` y `--vv-top` lo baja hasta donde
- * empieza la parte visible (`visualViewport.offsetTop`), así que mida lo que
- * mida el desplazamiento de iOS, el shell tapa justo lo que se ve y la barra
- * de escritura queda apoyada sobre las teclas. Deshacerlo con `scrollTo(0, 0)`
- * corría contra la animación de iOS hacia el campo: si la última medición
- * caía a mitad de camino, el shell quedaba arriba y entre la barra y el
- * teclado un hueco vacío que recién se iba al volver a tocar la pantalla.
+ * El teclado llega de dos maneras. En iOS 26 la app instalada hace caso a
+ * `interactive-widget=resizes-content` (ver app/layout.tsx): la ventana
+ * entera se achica y `innerHeight` queda igual a la visualViewport, así que
+ * cuánto tapa el teclado es cuánto le falta a la ventana para la pantalla.
+ * Antes de eso —y en Safari— la ventana queda como estaba y la visualViewport
+ * se achica dentro de ella: la diferencia es el teclado. Medir sólo la
+ * segunda daba 0 en la primera, y la barra de escritura seguía reservando
+ * los 34px del gesto de inicio arriba de las teclas.
+ *
+ * De cualquiera de las dos maneras, al enfocar el campo iOS empuja la página
+ * hacia arriba para mostrarlo y después no la suelta, aunque el shell ya se
+ * haya achicado y el documento no tenga para dónde desplazarse: la barra de
+ * escritura quedaba arriba de todo y entre ella y el teclado un hueco vacío
+ * que recién se iba al volver a tocar la pantalla. Por eso, mientras hay un
+ * campo con el foco o el teclado arriba, el shell flota (`data-keyboard` en
+ * <html>, ver app/globals.css): `fixed` no se mueve con el documento, y
+ * `--vv-top` lo baja hasta donde empieza la parte visible
+ * (`visualViewport.offsetTop`) por si lo que iOS corrió fue eso. Deshacer el
+ * empujón con `scrollTo(0, 0)` corría contra la animación de iOS y perdía.
  *
  * Instalada en la pantalla de inicio hay además un bug de iOS: una página que
  * no es más alta que la pantalla —y el shell nunca lo es, se desplazan sus
  * listas y no el documento— recibe una ventana corta por el alto de la barra
- * de estado (~59px). No es sólo la `visualViewport`: `innerHeight` y el
+ * de estado (~60px). No es sólo la `visualViewport`: `innerHeight` y el
  * bloque de `position: fixed` también, así que la barra de pestañas flota
  * alta, la lista se corta en seco y abajo queda una franja vacía. Pasa al
  * entrar a la app y también después del teclado, y se corrige recién cuando
@@ -62,7 +72,10 @@ import { UserMenu } from "./user-menu";
  * el alto de la pantalla es el piso: con el teclado abajo y la ventana entre
  * 2 y 120px más corta que ella, el shell toma el alto de la pantalla y
  * `--vp-gap` lleva la diferencia, que es lo que baja lo que está fijo al
- * borde inferior (barra de pestañas, hojas, velos). Cuando iOS se corrige
+ * borde inferior (barra de pestañas, hojas, velos). Para eso el shell tiene
+ * que estar en el flujo: lo que se pasa de la ventana se pinta sólo si el
+ * documento llega hasta ahí, y un shell `fixed` no lo alarga —así fue como
+ * la barra de pestañas quedó cortada por la mitad. Cuando iOS se corrige
  * solo, la diferencia vuelve a 0 y todo queda como siempre.
  */
 function useViewportMetrics() {
@@ -98,37 +111,60 @@ function useViewportMetrics() {
       return 0;
     };
 
+    /** Hay un campo de texto con el foco: el teclado está arriba o en camino. */
+    const isTyping = () =>
+      document.activeElement?.matches(
+        "textarea, [contenteditable]:not([contenteditable='false']), input:is(:not([type]), [type='text'], [type='search'], [type='email'], [type='tel'], [type='url'], [type='password'], [type='number'])",
+      ) ?? false;
+
     const apply = () => {
       frame = 0;
       const zoomed = Math.abs(vv.scale - 1) >= 0.01;
-      // Sin restar `offsetTop`: cuando el documento no tiene para dónde
-      // desplazarse, iOS baja la visualViewport dentro de la ventana en vez de
-      // mover la ventana, y descontarlo daba 0 con el teclado arriba.
-      const overlap = zoomed
+      // Con un campo enfocado el shell flota desde ya, antes de que llegue el
+      // teclado: así el empujón de iOS no lo agarra en el flujo.
+      const typing = ios && isTyping();
+      // Teclado por encima de una ventana que no cambió de alto. Sin restar
+      // `offsetTop`: cuando el documento no tiene para dónde desplazarse, iOS
+      // baja la visualViewport dentro de la ventana en vez de mover la
+      // ventana, y descontarlo daba 0 con el teclado arriba.
+      const overlay = zoomed
         ? 0
         : Math.max(0, Math.round(window.innerHeight - vv.height));
 
       let height = Math.round(vv.height);
       let gap = 0;
-      if (standalone && overlap === 0 && !zoomed) {
+      let keyboard = overlay;
+      if (standalone && !zoomed && overlay === 0) {
         const full = screenHeight();
         const short = full - Math.round(window.innerHeight);
-        if (short > 2 && short <= 120) {
-          height = full;
-          gap = short;
+        if (short > 2) {
+          if (typing || short > 120) {
+            // La ventana misma se achicó: es el teclado. Más de 120px no es
+            // la barra de estado; y con un campo enfocado tampoco lo es
+            // aunque mida menos (con teclado físico queda sólo la barra de
+            // accesorios).
+            keyboard = short;
+          } else {
+            height = full;
+            gap = short;
+          }
         }
       }
 
-      root.style.setProperty("--app-height", `${height}px`);
-      root.style.setProperty("--vp-gap", `${gap}px`);
-      root.style.setProperty("--kb-inset", `${overlap}px`);
+      const floating = typing || keyboard > 0;
       // Lo `fixed` cuelga de la ventana y `offsetTop` es cuánto bajó la parte
       // visible dentro de ella: el shell arranca ahí. El scroll del documento
       // no entra en la cuenta, a lo `fixed` no lo mueve. Con zoom se queda
       // arriba: perseguir la vista mientras una se pasea por la página
       // ampliada la marearía.
-      const top = zoomed ? 0 : Math.max(0, Math.round(vv.offsetTop));
+      const top =
+        floating && !zoomed ? Math.max(0, Math.round(vv.offsetTop)) : 0;
+
+      root.style.setProperty("--app-height", `${height}px`);
+      root.style.setProperty("--vp-gap", `${gap}px`);
+      root.style.setProperty("--kb-inset", `${keyboard}px`);
       root.style.setProperty("--vv-top", `${top}px`);
+      root.toggleAttribute("data-keyboard", floating);
     };
 
     // Los eventos de la visualViewport llegan de a ráfagas mientras el teclado
@@ -179,6 +215,7 @@ function useViewportMetrics() {
       root.style.removeProperty("--vp-gap");
       root.style.removeProperty("--kb-inset");
       root.style.removeProperty("--vv-top");
+      root.removeAttribute("data-keyboard");
     };
   }, []);
 }
@@ -221,10 +258,11 @@ export function DashboardChrome({
           // `--app-height` y no `h-screen`: los 100vh del navegador móvil
           // (que incluyen la barra de URL retraída) le comían el borde
           // inferior, y `100dvh` —el valor de arranque de la variable— no se
-          // entera del teclado. Ver `useViewportMetrics`. Se corre con `top`
-          // y no con un `transform`: un transform volvería al shell la
+          // entera del teclado. Ver `useViewportMetrics`. Con el teclado
+          // arriba el shell pasa a `fixed` desde app/globals.css
+          // (`data-keyboard`); nunca con un `transform`, que lo volvería la
           // referencia de todo lo `fixed` de adentro (la barra de pestañas).
-          "fixed inset-x-0 top-[var(--vv-top)] grid h-[var(--app-height)] overflow-hidden transition-[grid-template-columns] duration-200",
+          "grid h-[var(--app-height)] w-full overflow-hidden transition-[grid-template-columns] duration-200",
           collapsed ? "md:grid-cols-[64px_1fr]" : "md:grid-cols-[232px_1fr]",
         )}
       >
