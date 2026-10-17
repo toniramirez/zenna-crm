@@ -7,10 +7,10 @@
  *
  * - **Principal** — `whatsapp_cloud` + `instagram`. Es la bandeja que se abre
  *   en /crm y de donde salen TODAS las automatizaciones.
- * - **Archivo** — `whatsapp` (Baileys). Queda a un botón de distancia, con su
- *   historial intacto y el composer vivo por si hay que contestarle a alguien
- *   que insiste por el número viejo. Nada automático sale de ahí, salvo el
- *   aviso de redirección al número nuevo.
+ * - **Archivo** — `whatsapp` (Baileys). Los chats que ya estaban, con su
+ *   historial intacto. Lo que entra al número viejo ya no se guarda (ver
+ *   `handleLegacyMessage` en worker/baileys.ts): Baileys sigue conectado para
+ *   el aviso de redirección y las fotos de perfil del número nuevo.
  *
  * Este módulo es la única fuente de esa decisión: importarlo en vez de
  * escribir `"whatsapp_cloud"` a mano es lo que hace que el día que se apague

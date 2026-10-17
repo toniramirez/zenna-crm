@@ -9,6 +9,7 @@ import {
   fetchLatestBaileysVersion,
   jidNormalizedUser,
   makeWASocket,
+  normalizeMessageContent,
   proto,
   WAMessageStubType,
   type Contact,
@@ -37,14 +38,12 @@ import baileysLogger from "@whiskeysockets/baileys/lib/Utils/logger.js";
 import type { ILogger } from "@whiskeysockets/baileys/lib/Utils/logger.js";
 import qrcode from "qrcode-terminal";
 import { WA_LEGACY_CHANNEL } from "@/lib/channels";
-import { notifyInboundMessage } from "@/lib/push/send";
 import { renderTemplate } from "@/lib/validations/crm-config";
 import type { Database } from "@/types/database.types";
 
 import { syncCloudAvatars } from "./cloud-avatars";
-import { downloadAndStoreMedia, fetchAndStoreAvatar } from "./media";
+import { fetchAndStoreAvatar } from "./media";
 import { useSupabaseAuthState } from "./supabase-auth";
-import { transcribeAndStore } from "./transcribe";
 
 const SESSION_ID = process.env.WA_SESSION_ID || "default";
 
@@ -358,113 +357,10 @@ function watchfulLogger(): ILogger {
   };
 }
 
-// ─────────────────────────────────────────── Helpers (CRM ingest)
+// ─────────────────────────────────────────── Helpers
 
 function jidPhoneDigits(jid: string): string {
   return jid.split("@")[0]?.replace(/\D/g, "") ?? "";
-}
-
-/**
- * Recover the contact's real phone digits when the message originated from a
- * @lid JID (WhatsApp's privacy-preserving ID). For legacy `@s.whatsapp.net`
- * JIDs the digits are already in the JID itself.
- */
-function resolvePhoneDigits(
-  externalId: string,
-  senderPn: string | null | undefined,
-): string | null {
-  if (externalId.endsWith("@lid")) {
-    const d = senderPn ? jidPhoneDigits(senderPn) : "";
-    return d.length >= 8 ? d : null;
-  }
-  const d = jidPhoneDigits(externalId);
-  return d.length >= 8 ? d : null;
-}
-
-async function getOrCreateConversation(
-  externalId: string,
-  displayName?: string | null,
-  senderPn?: string | null,
-): Promise<string | null> {
-  const phoneDigits = resolvePhoneDigits(externalId, senderPn);
-
-  const { data: existing } = await supabase
-    .from("conversations")
-    .select("id, avatar_path, display_name, wa_phone, client_id")
-    .eq("channel", WA_LEGACY_CHANNEL)
-    .eq("external_id", externalId)
-    .maybeSingle();
-  if (existing) {
-    const patch: Database["public"]["Tables"]["conversations"]["Update"] = {};
-    // Refresh display_name if WhatsApp gave us one and the conversation
-    // doesn't have it stored yet (or it changed). Empty pushName never
-    // overwrites a non-empty stored name.
-    const trimmed = displayName?.trim();
-    if (trimmed && trimmed !== existing.display_name) {
-      patch.display_name = trimmed;
-    }
-    // Backfill wa_phone the first time WhatsApp shares senderPn for a LID.
-    if (phoneDigits && phoneDigits !== existing.wa_phone) {
-      patch.wa_phone = phoneDigits;
-    }
-    // Con el teléfono recién aparecido ya se puede enganchar la ficha: la
-    // conversación pudo haber nacido de un `@lid` pelado, sin número.
-    if (phoneDigits && !existing.client_id) {
-      const clientId = await findClientIdByPhone(phoneDigits);
-      if (clientId) patch.client_id = clientId;
-    }
-    if (Object.keys(patch).length > 0) {
-      await supabase
-        .from("conversations")
-        .update(patch)
-        .eq("id", existing.id);
-    }
-    // Lazy backfill: if we don't have an avatar yet, fire one fetch in the
-    // background. Skipped if we already have one cached.
-    if (!existing.avatar_path && currentSock) {
-      void fetchAndStoreAvatar(
-        supabase,
-        currentSock,
-        externalId,
-        existing.id,
-        phoneDigits,
-      );
-    }
-    return existing.id;
-  }
-
-  const clientId = phoneDigits ? await findClientIdByPhone(phoneDigits) : null;
-
-  const { data: created, error } = await supabase
-    .from("conversations")
-    .insert({
-      channel: WA_LEGACY_CHANNEL,
-      external_id: externalId,
-      display_name: displayName ?? null,
-      client_id: clientId,
-      wa_phone: phoneDigits,
-    })
-    .select("id")
-    .single();
-
-  if (error) {
-    console.error("[conversations] insert error:", error);
-    return null;
-  }
-
-  // Fetch the avatar in the background (no await) — most users keep their
-  // picture private so we don't want to block on this.
-  if (currentSock) {
-    void fetchAndStoreAvatar(
-      supabase,
-      currentSock,
-      externalId,
-      created.id,
-      phoneDigits,
-    );
-  }
-
-  return created.id;
 }
 
 // ─────────────────────────────────────────── Identidad del contacto
@@ -727,68 +623,6 @@ async function reconcileOrphanLidConversations(sock: WASocket): Promise<void> {
   console.log(`[identidad] ${matches.length} chats completados con su número.`);
 }
 
-function extractMessageBody(msg: WAMessage): string | null {
-  const m = msg.message;
-  if (!m) return null;
-  return (
-    m.conversation ??
-    m.extendedTextMessage?.text ??
-    m.imageMessage?.caption ??
-    m.videoMessage?.caption ??
-    m.documentMessage?.caption ??
-    null
-  );
-}
-
-/**
- * Persist an inbound reaction as a `messages` row with type='reaction'.
- * `body=''` means the remote removed their previous reaction.
- */
-async function storeInboundReaction(args: {
-  remoteJid: string | null;
-  targetExternalId: string | null;
-  targetFromMe: boolean;
-  emoji: string;
-  timestampMs?: number;
-}) {
-  if (!args.remoteJid || !args.targetExternalId) return;
-  if (args.remoteJid.endsWith("@broadcast")) return;
-  if (args.remoteJid.endsWith("@g.us")) return;
-  if (args.remoteJid.endsWith("@newsletter")) return;
-
-  const conversationId = await getOrCreateConversation(args.remoteJid);
-  if (!conversationId) return;
-
-  const sentAt = args.timestampMs
-    ? new Date(args.timestampMs).toISOString()
-    : new Date().toISOString();
-
-  const { error } = await supabase.from("messages").insert({
-    conversation_id: conversationId,
-    direction: "inbound",
-    type: "reaction",
-    body: args.emoji ?? "",
-    reaction_target_external_id: args.targetExternalId,
-    status: "delivered",
-    sent_at: sentAt,
-  });
-  if (error) console.error("[reaction] insert error:", error.message);
-}
-
-async function handleIncomingReaction(msg: WAMessage) {
-  const reaction = msg.message?.reactionMessage;
-  if (!reaction) return;
-  await storeInboundReaction({
-    remoteJid: msg.key.remoteJid ?? null,
-    targetExternalId: reaction.key?.id ?? null,
-    targetFromMe: !!reaction.key?.fromMe,
-    emoji: reaction.text ?? "",
-    timestampMs: reaction.senderTimestampMs
-      ? Number(reaction.senderTimestampMs)
-      : undefined,
-  });
-}
-
 // ─────────────────────────────────────────── Redirección al número nuevo
 
 type LegacySettings =
@@ -826,19 +660,52 @@ async function legacySettings(): Promise<LegacySettings | null> {
 }
 
 /**
+ * Memoria de los avisos mandados. Vive en el proceso y no en la base porque el
+ * número viejo ya no guarda chats (ver handleLegacyMessage): un reinicio del
+ * worker la vacía, y lo peor que puede pasar es un aviso de más.
+ *
+ * - `lastRedirectAt`: cuándo se le avisó a cada chat, para el cooldown.
+ * - `answeredIds`: mensajes ya contestados. WhatsApp puede reentregar el mismo
+ *   mensaje encolado en varias reconexiones, y con cooldown 0 cada reentrega
+ *   sería otro aviso.
+ * - `sentRedirects`: el contenido de cada aviso, para contestar los
+ *   retry-receipts (ver `getMessage` en connect()). El resto de los salientes
+ *   lo tiene en su fila de `messages`; el aviso no tiene fila.
+ */
+const REDIRECT_MEMORY = 500;
+const lastRedirectAt = new Map<string, number>();
+const answeredIds = new Map<string, number>();
+const sentRedirects = new Map<string, WAMessageContent>();
+
+/** Guarda al final y descarta lo más viejo pasado el tope. */
+function remember<V>(store: Map<string, V>, key: string, value: V) {
+  store.delete(key);
+  store.set(key, value);
+  while (store.size > REDIRECT_MEMORY) {
+    const oldest = store.keys().next().value;
+    if (oldest === undefined) break;
+    store.delete(oldest);
+  }
+}
+
+/**
  * Contesta el aviso de "escribinos al número nuevo".
  *
  * Es lo único que este número manda por su cuenta desde que dejó de ser el
- * principal. Se encola como cualquier saliente —`status='queued'`— así que lo
- * despacha el mismo `pollOutgoing` de siempre y queda visible en el chat: el
- * salón ve qué se le contestó a quién.
+ * principal. Sale directo por el socket, sin pasar por `messages`: ni lo que
+ * entra al número viejo ni lo que contesta aparecen en el chat del CRM.
  *
  * El cooldown es configurable y por defecto es 0, o sea que contesta cada vez
- * que escriban. Con un valor mayor, `conversations.legacy_redirect_at` guarda
- * cuándo fue el último aviso de ESE chat.
+ * que escriban. Con un valor mayor, no repite el aviso en ese chat hasta que
+ * pase ese lapso.
  */
-async function maybeSendRedirect(conversationId: string): Promise<void> {
+async function maybeSendRedirect(
+  jid: string,
+  messageId: string | null,
+): Promise<void> {
   try {
+    if (messageId && answeredIds.has(messageId)) return;
+
     const settings = await legacySettings();
     if (!settings?.redirect_enabled) return;
 
@@ -855,16 +722,9 @@ async function maybeSendRedirect(conversationId: string): Promise<void> {
     }
 
     const cooldownMs = settings.redirect_cooldown_minutes * 60_000;
-    if (cooldownMs > 0) {
-      const { data: conv } = await supabase
-        .from("conversations")
-        .select("legacy_redirect_at")
-        .eq("id", conversationId)
-        .maybeSingle();
-      if (conv?.legacy_redirect_at) {
-        const since = Date.now() - new Date(conv.legacy_redirect_at).getTime();
-        if (since < cooldownMs) return;
-      }
+    const last = lastRedirectAt.get(jid);
+    if (cooldownMs > 0 && last !== undefined && Date.now() - last < cooldownMs) {
+      return;
     }
 
     const body = renderTemplate(template, {
@@ -872,28 +732,20 @@ async function maybeSendRedirect(conversationId: string): Promise<void> {
     }).trim();
     if (!body) return;
 
-    const { error } = await supabase.from("messages").insert({
-      conversation_id: conversationId,
-      direction: "outbound",
-      type: "text",
-      body,
-      status: "queued",
-    });
+    const sock = isSocketAlive() ? currentSock : null;
+    if (!sock) return;
+    const sent = await sock.sendMessage(jid, { text: body });
 
-    if (error) {
-      console.error("[redirect] no pudimos encolar el aviso:", error.message);
-      return;
+    const now = Date.now();
+    remember(lastRedirectAt, jid, now);
+    if (messageId) remember(answeredIds, messageId, now);
+    if (sent?.key.id && sent.message) {
+      remember(sentRedirects, sent.key.id, sent.message);
     }
-
-    await supabase
-      .from("conversations")
-      .update({ legacy_redirect_at: new Date().toISOString() })
-      .eq("id", conversationId);
-
-    console.log(`↪️  aviso de redirección encolado para ${conversationId}`);
+    // Si WhatsApp nos aceptó un envío, la sesión anda.
+    markTraffic();
+    console.log(`↪️  aviso de redirección mandado a ${jid}`);
   } catch (err) {
-    // El mensaje entrante ya quedó guardado; que falle el aviso no puede
-    // tumbar el manejo del mensaje.
     console.error(
       "[redirect] fallo mandando el aviso:",
       err instanceof Error ? err.message : err,
@@ -901,127 +753,52 @@ async function maybeSendRedirect(conversationId: string): Promise<void> {
   }
 }
 
-async function handleUpsertedMessage(msg: WAMessage) {
+/**
+ * Lo que entra al número viejo. No se guarda: desde que el salón atiende por
+ * la Cloud API, lo que alguien le escriba a este número no aparece en el chat
+ * del CRM —ni en la bandeja principal ni en la del número viejo— y no manda
+ * pushes. Tampoco se guarda lo que se conteste desde el teléfono. Los chats
+ * que ya estaban quedan como archivo.
+ *
+ * Lo único que se hace con un mensaje es contestar la redirección, si está
+ * activa en Configuración.
+ */
+async function handleLegacyMessage(msg: WAMessage) {
   const remoteJid = msg.key.remoteJid;
   if (!remoteJid) return;
-  // Filter chats that are not 1-1 conversations with a real contact. WhatsApp
-  // emits @broadcast (status + business broadcast lists), @g.us (groups) and
-  // @newsletter (channels) here too — none of those belong in the CRM inbox.
+  // Estados, listas de difusión, grupos y canales: no son el chat de una
+  // clienta, y ahí no se contesta nada.
   if (remoteJid.endsWith("@broadcast")) return;
   if (remoteJid.endsWith("@g.us")) return;
   if (remoteJid.endsWith("@newsletter")) return;
 
-  const fromMe = !!msg.key.fromMe;
-  const externalId = msg.key.id ?? null;
-
-  // Dedupe por external_id, en ambas direcciones:
-  //  - salientes: pollOutgoing guarda el key.id que devuelve Baileys y
-  //    WhatsApp nos reenvía el mismo mensaje con fromMe=true (eco multi-device).
-  //  - entrantes: al aceptar 'append', WhatsApp puede reentregar el mismo
-  //    mensaje encolado en varias reconexiones. Sin este chequeo cada
-  //    reconexión duplicaría la conversación entera.
-  if (externalId) {
-    // `.limit(1)` porque maybeSingle() devuelve error si ya hay más de una
-    // fila con ese external_id (duplicados históricos): sin el limit ese error
-    // se traduciría en data=null y volveríamos a insertar el mismo mensaje.
-    const { data: existing } = await supabase
-      .from("messages")
-      .select("id")
-      .eq("external_id", externalId)
-      .limit(1)
-      .maybeSingle();
-    if (existing) return;
-  }
-
-  // Ni el nombre ni el teléfono del stanza sirven cuando el mensaje es
-  // nuestro: `pushName` es el del salón y `senderPn` también — es el número
-  // de quien manda, no el del chat. Tomarlo escribiría el teléfono del salón
-  // en la ficha de la clienta.
-  const conversationId = await getOrCreateConversation(
-    remoteJid,
-    fromMe ? null : (msg.pushName ?? null),
-    fromMe ? null : (msg.key.senderPn ?? null),
-  );
-  if (!conversationId) return;
-
-  const sentAt = msg.messageTimestamp
-    ? new Date(Number(msg.messageTimestamp) * 1000).toISOString()
-    : new Date().toISOString();
-
-  const textBody = extractMessageBody(msg);
-
-  let mediaResult: Awaited<ReturnType<typeof downloadAndStoreMedia>> = null;
-  if (currentSock) {
-    mediaResult = await downloadAndStoreMedia(
-      supabase,
-      currentSock,
-      msg,
-      conversationId,
-    );
-  }
-
-  if (!textBody && !mediaResult) return;
-
-  const ctxInfo = msg.message?.extendedTextMessage?.contextInfo;
-  const replyToExternalId = ctxInfo?.stanzaId ?? null;
-
-  // Llegó un mensaje entero: la sesión descifra bien.
+  // Sin contenido es un mensaje que no se pudo descifrar (lo cuenta el
+  // logger, ver watchfulLogger).
+  const content = normalizeMessageContent(msg.message);
+  if (!content) return;
   noteDecryptSuccess();
 
-  const { data: inserted, error } = await supabase
-    .from("messages")
-    .insert({
-      conversation_id: conversationId,
-      external_id: externalId,
-      direction: fromMe ? "outbound" : "inbound",
-      type: mediaResult?.type ?? "text",
-      body: mediaResult?.caption ?? textBody ?? null,
-      media_url: mediaResult?.path ?? null,
-      media_mime: mediaResult?.mime ?? null,
-      media_filename: mediaResult?.filename ?? null,
-      reply_to_external_id: replyToExternalId,
-      status: fromMe ? "sent" : "delivered",
-      sent_at: sentAt,
-    })
-    .select("id")
-    .single();
-  if (error) {
-    console.error("[messages] insert error:", error);
-    return;
-  }
+  // Lo que sale del teléfono del salón, incluido el eco del propio aviso.
+  if (msg.key.fromMe) return;
+  if (!isSomeoneWriting(content)) return;
 
-  // Fire-and-forget transcription for INBOUND voice notes / audio. We don't
-  // transcribe outbound audios — those were recorded by the operator so they
-  // already know what they said.
-  if (
-    !fromMe &&
-    inserted?.id &&
-    mediaResult?.type === "audio" &&
-    mediaResult.path &&
-    mediaResult.mime
-  ) {
-    void transcribeAndStore(
-      supabase,
-      inserted.id,
-      mediaResult.path,
-      mediaResult.mime,
-    );
-  }
+  await maybeSendRedirect(remoteJid, msg.key.id ?? null);
+}
 
-  // Este número es archivo: las automatizaciones (bienvenida, reactivación,
-  // encuestas de reseña) dejaron de dispararse acá y salen todas por el
-  // número de la Cloud API. Lo único que contesta solo es la redirección.
-  if (!fromMe && inserted?.id) {
-    void maybeSendRedirect(conversationId);
-
-    // Aviso al teléfono. Va suelto a propósito: si el push falla, el mensaje
-    // ya quedó guardado y la bandeja lo muestra igual.
-    void notifyInboundMessage(supabase, {
-      conversationId,
-      body: mediaResult?.caption ?? textBody ?? null,
-      type: mediaResult?.type ?? "text",
-    });
-  }
+/**
+ * Un mensaje que alguien escribió —texto, foto, video, audio, documento o
+ * sticker—, y no una reacción, una edición o un aviso interno de WhatsApp.
+ */
+function isSomeoneWriting(m: WAMessageContent): boolean {
+  return !!(
+    m.conversation ||
+    m.extendedTextMessage?.text ||
+    m.imageMessage ||
+    m.videoMessage ||
+    m.audioMessage ||
+    m.documentMessage ||
+    m.stickerMessage
+  );
 }
 
 /**
@@ -1493,6 +1270,9 @@ async function connect() {
         key: WAMessageKey,
       ): Promise<WAMessageContent | undefined> => {
         if (!key.id) return undefined;
+        // El aviso de redirección no tiene fila: su contenido quedó en memoria.
+        const redirect = sentRedirects.get(key.id);
+        if (redirect) return redirect;
         const { data } = await supabase
           .from("messages")
           .select("wa_content")
@@ -1628,48 +1408,24 @@ async function connect() {
       // 'notify' = mensaje que entra en vivo.
       // 'append' = mensaje que WhatsApp tenía encolado y nos entrega al
       //            reconectar (Baileys lo marca así cuando el nodo trae
-      //            attrs.offline).
+      //            attrs.offline). También lleva el aviso: la clienta escribió
+      //            igual, solo que con el worker caído.
       //
-      // Antes descartábamos 'append', así que TODO lo que llegaba mientras el
-      // worker estaba caído o reconectando se descifraba y se tiraba en
-      // silencio: la sesión quedaba "conectada" y el CRM vacío. Ingerimos los
-      // dos tipos; el dedupe por external_id de abajo cubre las reentregas.
+      // Uno por vez, no en paralelo: así una reentrega del mismo mensaje
+      // dentro de la tanda ya encuentra el aviso anotado y no lo repite.
       if (type !== "notify" && type !== "append") return;
       for (const msg of messages) {
         try {
-          // Reactions arrive embedded as reactionMessage; handle separately
-          // so we can store them as type='reaction' instead of plain media.
-          if (msg.message?.reactionMessage) {
-            await handleIncomingReaction(msg);
-          } else {
-            await handleUpsertedMessage(msg);
-          }
+          await handleLegacyMessage(msg);
         } catch (err) {
           console.error("[messages.upsert] error:", err);
         }
       }
     });
 
-    // Some Baileys events surface reactions via a dedicated channel.
-    // Listening to both means we don't lose any depending on protocol path.
-    sock.ev.on("messages.reaction", async (reactions) => {
-      markTraffic();
-      for (const r of reactions) {
-        try {
-          await storeInboundReaction({
-            remoteJid: r.key.remoteJid ?? null,
-            targetExternalId: r.key.id ?? null,
-            targetFromMe: !!r.key.fromMe,
-            emoji: r.reaction?.text ?? "",
-            timestampMs: r.reaction?.senderTimestampMs
-              ? Number(r.reaction.senderTimestampMs)
-              : undefined,
-          });
-        } catch (err) {
-          console.error("[messages.reaction] error:", err);
-        }
-      }
-    });
+    // Las reacciones tampoco se guardan: solo cuentan como tráfico para el
+    // vigía del socket sordo.
+    sock.ev.on("messages.reaction", () => markTraffic());
 
     sock.ev.on("messages.update", async (updates) => {
       markTraffic();

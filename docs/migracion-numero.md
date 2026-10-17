@@ -6,14 +6,28 @@ son pares:
 | | Número viejo — Baileys (`whatsapp`) | Número nuevo — Cloud API (`whatsapp_cloud`) |
 |---|---|---|
 | Rol | archivo + redirección + fotos de perfil | **canal principal** |
-| Bandeja | a un botón de distancia | la que se abre en /crm |
+| Bandeja | solo los chats viejos, por link directo | la que se abre en /crm |
+| Mensajes nuevos en el CRM | **no**: llegan solo al teléfono | sí |
 | Automatizaciones | ninguna | **todas** |
 | Turnero ("Mandar WhatsApp") | no | sí |
 | Encuestas de reseña | no | sí |
 | Respuesta automática | solo el aviso de redirección | ninguna propia |
-| Se puede responder a mano | sí | sí |
 
 Instagram (`instagram`) no cambió: comparte la bandeja principal como antes.
+
+## Lo que se le escribe al número viejo no entra al CRM
+
+Baileys sigue conectado al número viejo, pero `zenna-worker` ya no guarda lo
+que llega ahí: ni los mensajes de las clientas, ni sus reacciones, ni lo que
+se conteste desde el teléfono. No aparecen en ninguna bandeja y no mandan
+pushes. Lo ven solo el teléfono viejo y sus dispositivos vinculados. Los chats
+que ya estaban guardados quedan como archivo.
+
+Con un mensaje que entra el worker hace una sola cosa: contestar el aviso de
+redirección, si está activo. El aviso sale directo por el socket y tampoco se
+guarda. El cooldown ("Repetir cada") se lleva en la memoria del proceso, así
+que un reinicio de `zenna-worker` lo vacía. Lo peor que puede pasar es un
+aviso de más.
 
 La decisión de qué canal es cuál vive en **`lib/channels.ts`**. Es el único
 lugar donde están escritos los nombres de los canales: el día que se apague
@@ -180,7 +194,7 @@ completan cuando vuelve.
 | Automatizaciones de entrada y encuestas | Next (webhook) | `runInboundHooks` en `lib/whatsapp-cloud/ingest.ts` |
 | Reloj de automatizaciones (cada 60 s) | `zenna-wpp-api` | `worker/whatsapp-cloud.ts` |
 | Salientes del número nuevo | `zenna-wpp-api` | `worker/whatsapp-cloud.ts` |
-| Entrantes/salientes del número viejo | `zenna-worker` | `worker/baileys.ts` |
+| Entrantes del número viejo (no se guardan) | `zenna-worker` | `handleLegacyMessage` en `worker/baileys.ts` |
 | Aviso de redirección | `zenna-worker` | `maybeSendRedirect` en `worker/baileys.ts` |
 | Fotos de perfil del número nuevo (cada 15 s) | `zenna-worker` | `worker/cloud-avatars.ts` |
 | Crear/editar/borrar plantillas | Next (server action) | `app/(dashboard)/configuracion/whatsapp-cloud-actions.ts` |
@@ -206,6 +220,11 @@ ya no usamos siguiera vivo.
   el mensaje usa `{{numero}}` y no hay número cargado; queda un warning
   `[redirect]` en los logs de `zenna-worker`. La config se relee como mucho una
   vez por minuto, así que un cambio del panel puede tardar eso en aplicarse.
+  Cada aviso que sale deja una línea `↪️` en los logs: como no se guarda, ese
+  es el único registro.
+- **"Le escribieron al número viejo y no aparece en el CRM"** → es así a
+  propósito: ver [Lo que se le escribe al número viejo no entra al
+  CRM](#lo-que-se-le-escribe-al-número-viejo-no-entra-al-crm).
 - **"Un chat del número nuevo no tiene foto"** → mirar en los logs de
   `zenna-worker` la línea `🖼` con ese número: `no visible` es la privacidad
   de la clienta, y se vuelve a intentar la semana siguiente si sigue

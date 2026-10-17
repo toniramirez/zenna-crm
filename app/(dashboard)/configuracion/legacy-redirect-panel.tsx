@@ -19,9 +19,9 @@ export type LegacySettings =
  * La respuesta automática del número viejo.
  *
  * Vive dentro del panel de Baileys porque es lo único que ese número hace por
- * su cuenta desde la migración: recibir, guardar en el archivo, y mandar a la
- * gente al número nuevo. Todo lo demás —automatizaciones, turnero, encuestas—
- * pasó a salir por la WhatsApp API.
+ * su cuenta desde la migración: mandar a la gente al número nuevo. Lo que le
+ * escriban ya no se guarda en el CRM, y todo lo demás —automatizaciones,
+ * turnero, encuestas— pasó a salir por la WhatsApp API.
  */
 export function LegacyRedirectPanel({
   settings,
@@ -150,8 +150,8 @@ export function LegacyRedirectPanel({
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Apagada: los mensajes al número viejo se guardan en su bandeja pero
-          nadie recibe respuesta automática.
+          Apagada: los mensajes al número viejo llegan solo al teléfono y nadie
+          recibe respuesta automática.
         </p>
       )}
 

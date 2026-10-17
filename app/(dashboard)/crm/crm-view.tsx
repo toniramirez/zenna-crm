@@ -1571,8 +1571,8 @@ export function CrmView({
                 <PhoneOff className="mt-0.5 size-4 shrink-0" />
                 <p className="min-w-0 flex-1">
                   Chat del <strong className="font-medium">número viejo</strong>
-                  . Se puede responder a mano, pero las automatizaciones y los
-                  mensajes del turnero salen por el número nuevo.
+                  . Es archivo: lo que le escriban a ese número ya no llega
+                  acá. Para hablar con la clienta, usá el número nuevo.
                 </p>
               </div>
             ) : null}

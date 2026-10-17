@@ -6,10 +6,10 @@ con Supabase.
 
 > **Desde la migración de número este canal es archivo.** El salón atiende por
 > la WhatsApp Cloud API (`worker/whatsapp-cloud.ts`, canal `whatsapp_cloud`);
-> Baileys sigue conectado solo para guardar lo que llegue al número viejo y
-> contestar el aviso de redirección al nuevo. Las automatizaciones, el turnero
-> y las encuestas de reseña ya **no** salen por acá — ver
-> [`docs/migracion-numero.md`](../docs/migracion-numero.md).
+> Baileys sigue conectado solo para contestar el aviso de redirección al
+> nuevo: lo que llega al número viejo **ya no se guarda** en el CRM. Las
+> automatizaciones, el turnero y las encuestas de reseña tampoco salen por
+> acá — ver [`docs/migracion-numero.md`](../docs/migracion-numero.md).
 >
 > Además saca las **fotos de perfil** de los chats del número nuevo, que la
 > Cloud API no da (`worker/cloud-avatars.ts`).
@@ -37,10 +37,10 @@ con Supabase.
 
 ## Cómo funciona
 
-- **Entrantes**: cualquier mensaje que llegue al WhatsApp del salón se
-  inserta en `public.messages` como `direction='inbound'`. Si la conversación
-  no existe, se crea, y se intenta linkear automáticamente con una `client`
-  matchando por teléfono (últimos 8 dígitos).
+- **Entrantes**: no se guardan. Un mensaje que llega al número viejo solo
+  dispara el aviso de redirección, si está activo, y el aviso sale directo
+  por el socket (`handleLegacyMessage` y `maybeSendRedirect`). Los chats que
+  ya estaban en `public.messages` quedan como archivo.
 - **Salientes**: la UI inserta mensajes con `status='queued'`. El worker
   poll'ea cada 2s, los marca como `'sending'` (atómicamente, para evitar
   doble envío), los manda por Baileys, y los actualiza a `'sent'` con el
