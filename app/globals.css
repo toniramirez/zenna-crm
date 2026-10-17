@@ -348,11 +348,11 @@
   --vp-gap: 0px;
 
   /*
-   * Cuánto bajar el shell para que quede en la parte de la página que se ve
-   * cuando iOS, con el teclado arriba, deja el documento empujado hacia
-   * arriba y no lo suelta. Mismo origen que las de arriba; casi siempre 0.
+   * Dónde empieza la parte visible dentro de la ventana. Con el teclado
+   * arriba iOS la baja para mostrar el campo, y el shell (que es `fixed`) la
+   * sigue desde acá. Mismo origen que las de arriba; casi siempre 0.
    */
-  --vv-shift: 0px;
+  --vv-top: 0px;
 }
 
 @media (width < 48rem) {

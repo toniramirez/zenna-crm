@@ -41,9 +41,13 @@ import { UserMenu } from "./user-menu";
  * `--kb-inset` (lo que hay que descontarle al respiro del gesto de inicio,
  * que con teclado abierto ya no esquiva nada).
  *
- * El `scrollTo(0, 0)` deshace el empujón: con el shell ya achicado, la barra
- * de escritura queda apoyada sobre las teclas sin que nadie tenga que
- * desplazar nada.
+ * El empujón no se pelea: el shell es `fixed` y `--vv-top` lo baja hasta donde
+ * empieza la parte visible (`visualViewport.offsetTop`), así que mida lo que
+ * mida el desplazamiento de iOS, el shell tapa justo lo que se ve y la barra
+ * de escritura queda apoyada sobre las teclas. Deshacerlo con `scrollTo(0, 0)`
+ * corría contra la animación de iOS hacia el campo: si la última medición
+ * caía a mitad de camino, el shell quedaba arriba y entre la barra y el
+ * teclado un hueco vacío que recién se iba al volver a tocar la pantalla.
  *
  * Instalada en la pantalla de inicio hay además un bug de iOS: una página que
  * no es más alta que la pantalla —y el shell nunca lo es, se desplazan sus
@@ -98,11 +102,8 @@ function useViewportMetrics() {
       frame = 0;
       const zoomed = Math.abs(vv.scale - 1) >= 0.01;
       // Sin restar `offsetTop`: cuando el documento no tiene para dónde
-      // desplazarse (el shell mide justo la ventana), iOS sube la visualViewport
-      // dentro de la ventana en vez de mover la ventana, y descontarlo daba 0
-      // con el teclado arriba. El shell se achicaba igual pero nadie deshacía
-      // el empujón: la barra de escritura quedaba arriba de todo y entre ella
-      // y el teclado, un hueco vacío.
+      // desplazarse, iOS baja la visualViewport dentro de la ventana en vez de
+      // mover la ventana, y descontarlo daba 0 con el teclado arriba.
       const overlap = zoomed
         ? 0
         : Math.max(0, Math.round(window.innerHeight - vv.height));
@@ -121,20 +122,13 @@ function useViewportMetrics() {
       root.style.setProperty("--app-height", `${height}px`);
       root.style.setProperty("--vp-gap", `${gap}px`);
       root.style.setProperty("--kb-inset", `${overlap}px`);
-      // Con el teclado arriba el navegador ya desplazó el documento; el shell
-      // mide lo que se ve, así que ese desplazamiento sobra. En iOS `scrollY`
-      // ya cuenta lo que subió la visualViewport; `offsetTop` va por las dudas.
-      let shift = 0;
-      if (overlap > 0) {
-        if (window.scrollY !== 0 || Math.round(vv.offsetTop) !== 0) {
-          window.scrollTo(0, 0);
-        }
-        // Si iOS no lo soltó (pasa mientras anima su propio desplazamiento
-        // hacia el campo), el shell baja hasta la parte de la página que se
-        // está viendo en vez de quedarse arriba, fuera de la pantalla.
-        shift = Math.max(0, Math.round(vv.pageTop));
-      }
-      root.style.setProperty("--vv-shift", `${shift}px`);
+      // Lo `fixed` cuelga de la ventana y `offsetTop` es cuánto bajó la parte
+      // visible dentro de ella: el shell arranca ahí. El scroll del documento
+      // no entra en la cuenta, a lo `fixed` no lo mueve. Con zoom se queda
+      // arriba: perseguir la vista mientras una se pasea por la página
+      // ampliada la marearía.
+      const top = zoomed ? 0 : Math.max(0, Math.round(vv.offsetTop));
+      root.style.setProperty("--vv-top", `${top}px`);
     };
 
     // Los eventos de la visualViewport llegan de a ráfagas mientras el teclado
@@ -160,28 +154,31 @@ function useViewportMetrics() {
     remeasure();
     vv.addEventListener("resize", schedule);
     vv.addEventListener("scroll", schedule);
-    // Si lo que se mueve es la ventana y no la visualViewport dentro de ella,
-    // `vv` no avisa: el empujón del teclado llega sólo como scroll del documento.
-    window.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
     window.addEventListener("orientationchange", schedule);
     window.addEventListener("pageshow", remeasure);
     document.addEventListener("visibilitychange", onVisibility);
+    // El teclado entra y sale animado, y el último aviso de iOS puede llegar
+    // antes de que termine de acomodarse: se vuelve a medir un rato después de
+    // tocar un campo o de soltarlo.
+    document.addEventListener("focusin", remeasure);
+    document.addEventListener("focusout", remeasure);
 
     return () => {
       if (frame) cancelAnimationFrame(frame);
       for (const id of timers) window.clearTimeout(id);
       vv.removeEventListener("resize", schedule);
       vv.removeEventListener("scroll", schedule);
-      window.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
       window.removeEventListener("orientationchange", schedule);
       window.removeEventListener("pageshow", remeasure);
       document.removeEventListener("visibilitychange", onVisibility);
+      document.removeEventListener("focusin", remeasure);
+      document.removeEventListener("focusout", remeasure);
       root.style.removeProperty("--app-height");
       root.style.removeProperty("--vp-gap");
       root.style.removeProperty("--kb-inset");
-      root.style.removeProperty("--vv-shift");
+      root.style.removeProperty("--vv-top");
     };
   }, []);
 }
@@ -224,10 +221,10 @@ export function DashboardChrome({
           // `--app-height` y no `h-screen`: los 100vh del navegador móvil
           // (que incluyen la barra de URL retraída) le comían el borde
           // inferior, y `100dvh` —el valor de arranque de la variable— no se
-          // entera del teclado. Ver `useViewportMetrics`. El margen y no un
-          // `transform` para correrlo: un transform volvería al shell la
+          // entera del teclado. Ver `useViewportMetrics`. Se corre con `top`
+          // y no con un `transform`: un transform volvería al shell la
           // referencia de todo lo `fixed` de adentro (la barra de pestañas).
-          "grid mt-[var(--vv-shift)] h-[var(--app-height)] w-full overflow-hidden transition-[grid-template-columns] duration-200",
+          "fixed inset-x-0 top-[var(--vv-top)] grid h-[var(--app-height)] overflow-hidden transition-[grid-template-columns] duration-200",
           collapsed ? "md:grid-cols-[64px_1fr]" : "md:grid-cols-[232px_1fr]",
         )}
       >
