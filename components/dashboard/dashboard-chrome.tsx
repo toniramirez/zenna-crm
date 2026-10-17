@@ -124,12 +124,17 @@ function useViewportMetrics() {
       // Con el teclado arriba el navegador ya desplazó el documento; el shell
       // mide lo que se ve, así que ese desplazamiento sobra. En iOS `scrollY`
       // ya cuenta lo que subió la visualViewport; `offsetTop` va por las dudas.
-      if (
-        overlap > 0 &&
-        (window.scrollY !== 0 || Math.round(vv.offsetTop) !== 0)
-      ) {
-        window.scrollTo(0, 0);
+      let shift = 0;
+      if (overlap > 0) {
+        if (window.scrollY !== 0 || Math.round(vv.offsetTop) !== 0) {
+          window.scrollTo(0, 0);
+        }
+        // Si iOS no lo soltó (pasa mientras anima su propio desplazamiento
+        // hacia el campo), el shell baja hasta la parte de la página que se
+        // está viendo en vez de quedarse arriba, fuera de la pantalla.
+        shift = Math.max(0, Math.round(vv.pageTop));
       }
+      root.style.setProperty("--vv-shift", `${shift}px`);
     };
 
     // Los eventos de la visualViewport llegan de a ráfagas mientras el teclado
@@ -176,6 +181,7 @@ function useViewportMetrics() {
       root.style.removeProperty("--app-height");
       root.style.removeProperty("--vp-gap");
       root.style.removeProperty("--kb-inset");
+      root.style.removeProperty("--vv-shift");
     };
   }, []);
 }
@@ -218,8 +224,10 @@ export function DashboardChrome({
           // `--app-height` y no `h-screen`: los 100vh del navegador móvil
           // (que incluyen la barra de URL retraída) le comían el borde
           // inferior, y `100dvh` —el valor de arranque de la variable— no se
-          // entera del teclado. Ver `useViewportMetrics`.
-          "grid h-[var(--app-height)] w-full overflow-hidden transition-[grid-template-columns] duration-200",
+          // entera del teclado. Ver `useViewportMetrics`. El margen y no un
+          // `transform` para correrlo: un transform volvería al shell la
+          // referencia de todo lo `fixed` de adentro (la barra de pestañas).
+          "grid mt-[var(--vv-shift)] h-[var(--app-height)] w-full overflow-hidden transition-[grid-template-columns] duration-200",
           collapsed ? "md:grid-cols-[64px_1fr]" : "md:grid-cols-[232px_1fr]",
         )}
       >
