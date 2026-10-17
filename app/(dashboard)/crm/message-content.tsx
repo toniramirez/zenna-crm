@@ -15,6 +15,7 @@ import {
   DialogContent,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { splitLinks } from "@/lib/linkify";
 import { cn } from "@/lib/utils";
 import type { MessageRow } from "./types";
 import { useSignedUrl } from "./use-signed-url";
@@ -43,7 +44,7 @@ export function MessageContent({
     if (!message.body) return null;
     return (
       <div className="whitespace-pre-wrap break-words text-sm leading-[1.35]">
-        {message.body}
+        <LinkifiedText text={message.body} />
         {trailing}
       </div>
     );
@@ -61,6 +62,28 @@ export function MessageContent({
     return <DocumentContent message={message} />;
   }
   return null;
+}
+
+/**
+ * Texto con los links tocables, como en WhatsApp. Se abren en otra pestaña:
+ * en la app instalada eso los muestra encima sin sacarte del chat.
+ */
+function LinkifiedText({ text }: { text: string }) {
+  return splitLinks(text).map((part, i) =>
+    part.type === "link" ? (
+      <a
+        key={i}
+        href={part.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-[var(--wa-link)] hover:underline"
+      >
+        {part.value}
+      </a>
+    ) : (
+      part.value
+    ),
+  );
 }
 
 // ──────────────────────────── Image / Sticker
@@ -99,7 +122,7 @@ function ImageContent({ message }: { message: MessageRow }) {
       </div>
       {message.body ? (
         <div className="whitespace-pre-wrap break-words text-sm mt-1">
-          {message.body}
+          <LinkifiedText text={message.body} />
         </div>
       ) : null}
 
@@ -142,7 +165,7 @@ function VideoContent({ message }: { message: MessageRow }) {
       </div>
       {message.body ? (
         <div className="whitespace-pre-wrap break-words text-sm mt-1">
-          {message.body}
+          <LinkifiedText text={message.body} />
         </div>
       ) : null}
     </>
