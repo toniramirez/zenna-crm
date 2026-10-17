@@ -703,6 +703,7 @@ export type Database = {
       conversations: {
         Row: {
           archived: boolean
+          avatar_checked_at: string | null
           avatar_path: string | null
           awaiting_reply: boolean
           channel: string
@@ -722,6 +723,7 @@ export type Database = {
         }
         Insert: {
           archived?: boolean
+          avatar_checked_at?: string | null
           avatar_path?: string | null
           awaiting_reply?: boolean
           channel?: string
@@ -741,6 +743,7 @@ export type Database = {
         }
         Update: {
           archived?: boolean
+          avatar_checked_at?: string | null
           avatar_path?: string | null
           awaiting_reply?: boolean
           channel?: string

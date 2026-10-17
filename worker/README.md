@@ -10,6 +10,9 @@ con Supabase.
 > contestar el aviso de redirección al nuevo. Las automatizaciones, el turnero
 > y las encuestas de reseña ya **no** salen por acá — ver
 > [`docs/migracion-numero.md`](../docs/migracion-numero.md).
+>
+> Además saca las **fotos de perfil** de los chats del número nuevo, que la
+> Cloud API no da (`worker/cloud-avatars.ts`).
 
 ## Setup (1 sola vez)
 

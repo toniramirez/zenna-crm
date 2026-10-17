@@ -5,7 +5,7 @@ son pares:
 
 | | Número viejo — Baileys (`whatsapp`) | Número nuevo — Cloud API (`whatsapp_cloud`) |
 |---|---|---|
-| Rol | archivo + redirección | **canal principal** |
+| Rol | archivo + redirección + fotos de perfil | **canal principal** |
 | Bandeja | a un botón de distancia | la que se abre en /crm |
 | Automatizaciones | ninguna | **todas** |
 | Turnero ("Mandar WhatsApp") | no | sí |
@@ -142,6 +142,36 @@ historial está en el viejo. `resolveCloudConversation`
 Un flujo en modo texto libre **no** abre chats: el envío rebotaría igual y solo
 ensuciaría la bandeja. La ejecución queda en `skipped` con el motivo.
 
+## Las fotos de perfil del número nuevo
+
+La Cloud API no da la foto de quien escribe: el webhook trae el nombre del
+perfil y nada más. Las pide el número viejo, que sigue conectado por Baileys:
+WhatsApp le muestra la foto a cualquier cuenta con sesión abierta que tenga
+permiso de verla. En la bandeja la foto va dentro del anillo de la ventana de
+24 h, igual que en los chats del número viejo.
+
+Puesta en marcha: correr `scripts/sql/whatsapp-cloud-avatars.sql` (necesita
+`whatsapp-window-countdown.sql`) y reiniciar `zenna-worker`. El resto es
+automático.
+
+- **Qué chats.** Los del número nuevo en los que la clienta escribió alguna
+  vez. La primera pasada los recorre todos, del más reciente al más viejo; a
+  partir de ahí, cada chat se revisa cuando la clienta escribe, como mucho una
+  vez por semana. Lo marca `conversations.avatar_checked_at`.
+- **Qué fotos se ven.** Depende de la privacidad de cada clienta: con "Todos"
+  sale siempre; con "Mis contactos", solo si tiene agendado el número viejo;
+  con "Nadie", nunca. Las clientas nuevas que solo conocen el número nuevo van
+  a tener foto únicamente si la tienen en "Todos".
+- **El 9 de los celulares.** El `wa_id` de Meta viene sin el 9 y en WhatsApp
+  el usuario lo lleva; `onWhatsApp` resuelve el JID verdadero antes de pedir
+  la foto.
+- **Despacio a propósito.** Unas 12 consultas por minuto: un número que pide
+  fotos en ráfaga a gente con la que nunca habló se parece a un bot, y el
+  número viejo no se puede perder.
+
+Si Baileys está desconectado no pasa nada: los chats quedan pendientes y se
+completan cuando vuelve.
+
 ## Dónde corre cada cosa
 
 | | Proceso | Archivo |
@@ -152,6 +182,7 @@ ensuciaría la bandeja. La ejecución queda en `skipped` con el motivo.
 | Salientes del número nuevo | `zenna-wpp-api` | `worker/whatsapp-cloud.ts` |
 | Entrantes/salientes del número viejo | `zenna-worker` | `worker/baileys.ts` |
 | Aviso de redirección | `zenna-worker` | `maybeSendRedirect` en `worker/baileys.ts` |
+| Fotos de perfil del número nuevo (cada 15 s) | `zenna-worker` | `worker/cloud-avatars.ts` |
 | Crear/editar/borrar plantillas | Next (server action) | `app/(dashboard)/configuracion/whatsapp-cloud-actions.ts` |
 
 El reloj de las automatizaciones vivía en el worker de Baileys, que era el
@@ -175,6 +206,11 @@ ya no usamos siguiera vivo.
   el mensaje usa `{{numero}}` y no hay número cargado; queda un warning
   `[redirect]` en los logs de `zenna-worker`. La config se relee como mucho una
   vez por minuto, así que un cambio del panel puede tardar eso en aplicarse.
+- **"Un chat del número nuevo no tiene foto"** → mirar en los logs de
+  `zenna-worker` la línea `🖼` con ese número: `no visible` es la privacidad
+  de la clienta, y se vuelve a intentar la semana siguiente si sigue
+  escribiendo. Sin ninguna línea `🖼`: ¿se corrió el SQL? (queda un
+  `[fotos] select error` en los logs) ¿Está conectado el número viejo?
 - **"Aparecieron chats duplicados de la misma clienta"** → esperado y correcto:
   el chat viejo (Baileys) y el nuevo (Cloud API) son dos números distintos, y
   viven en bandejas distintas.

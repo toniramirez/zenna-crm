@@ -41,6 +41,7 @@ import { notifyInboundMessage } from "@/lib/push/send";
 import { renderTemplate } from "@/lib/validations/crm-config";
 import type { Database } from "@/types/database.types";
 
+import { syncCloudAvatars } from "./cloud-avatars";
 import { downloadAndStoreMedia, fetchAndStoreAvatar } from "./media";
 import { useSupabaseAuthState } from "./supabase-auth";
 import { transcribeAndStore } from "./transcribe";
@@ -1448,6 +1449,19 @@ setInterval(() => void pollMessageOps(), 2000);
 // Cloud API (worker/whatsapp-cloud.ts) junto con el resto de los envíos
 // automáticos. Este número quedó como archivo y lo único que sale solo de él
 // es el aviso de redirección (ver maybeSendRedirect).
+
+// ─────────────────────────────────────────── Fotos del número nuevo
+
+// La Cloud API no da fotos de perfil: las pide este número por los chats del
+// nuevo. Una vuelta cada 15 s alcanza para que la foto de alguien que recién
+// escribió aparezca enseguida (ver worker/cloud-avatars.ts).
+setInterval(
+  () =>
+    void syncCloudAvatars(supabase, () =>
+      isSocketAlive() ? currentSock : null,
+    ),
+  15_000,
+);
 
 // ─────────────────────────────────────────── Connection lifecycle
 

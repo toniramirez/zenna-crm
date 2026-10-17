@@ -180,6 +180,42 @@ export async function fetchAndStoreAvatar(
     candidateJids.push(`${phoneDigits}@s.whatsapp.net`);
   }
 
+  // Prefer the real phone for the storage key so a later LID change for the
+  // same contact still hits the same avatar file.
+  const keyDigits =
+    phoneDigits && phoneDigits.length >= 8
+      ? phoneDigits
+      : jid.split("@")[0]?.replace(/\D/g, "") || "anon";
+
+  const path = await storeProfilePicture(
+    supabase,
+    sock,
+    candidateJids,
+    keyDigits,
+  );
+  if (!path) return;
+
+  await supabase
+    .from("conversations")
+    .update({ avatar_path: path })
+    .eq("id", conversationId);
+}
+
+/**
+ * Pide la foto de perfil del primer JID que la tenga visible y la guarda en
+ * el bucket como `avatars/<keyDigits>.jpg`. Devuelve el path, o null si no se
+ * ve (privada, sin foto) o algo falló en el camino.
+ *
+ * No toca la conversación: de eso se encarga quien llama. La URL que da
+ * WhatsApp vence a los pocos días, por eso la foto se copia y no se guarda
+ * el link.
+ */
+export async function storeProfilePicture(
+  supabase: SupabaseClient<Database>,
+  sock: WASocket,
+  candidateJids: string[],
+  keyDigits: string,
+): Promise<string | null> {
   let url: string | undefined;
   for (const candidate of candidateJids) {
     try {
@@ -192,21 +228,14 @@ export async function fetchAndStoreAvatar(
       // Private picture or unauthorized for this JID — try the next candidate.
     }
   }
-  if (!url) return;
+  if (!url) return null;
 
   try {
     const res = await fetch(url);
-    if (!res.ok) return;
+    if (!res.ok) return null;
     const buffer = Buffer.from(await res.arrayBuffer());
 
-    // Prefer the real phone for the storage key so a later LID change for the
-    // same contact still hits the same avatar file.
-    const keyDigits =
-      phoneDigits && phoneDigits.length >= 8
-        ? phoneDigits
-        : jid.split("@")[0]?.replace(/\D/g, "") || "anon";
     const path = `avatars/${keyDigits}.jpg`;
-
     const { error } = await supabase.storage
       .from("wa-media")
       .upload(path, buffer, {
@@ -215,13 +244,11 @@ export async function fetchAndStoreAvatar(
       });
     if (error) {
       console.error("[avatar] storage upload error:", error.message);
-      return;
+      return null;
     }
-    await supabase
-      .from("conversations")
-      .update({ avatar_path: path })
-      .eq("id", conversationId);
+    return path;
   } catch {
     // Network or storage glitch — skip silently.
+    return null;
   }
 }
