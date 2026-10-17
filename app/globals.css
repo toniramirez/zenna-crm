@@ -1056,6 +1056,28 @@
   bottom: calc(0px - var(--vp-gap));
 }
 
+/*
+ * Instalada, la ventana arranca debajo del reloj (ver `[data-app-shell]`): un
+ * diálogo largo, centrado y con 1rem de margen subía hasta la barra de estado,
+ * el título quedaba tras la isla y la X junto a la batería, donde iOS no pasa
+ * los toques. Centrado, el margen de arriba es el de abajo, así que reserva el
+ * mayor de los dos bordes seguros. Fuera de una capa para ganarle también a
+ * los `max-h-[90dvh]` que pasan algunos diálogos.
+ */
+@media screen and (width < 48rem) {
+  [data-slot="dialog-content"] {
+    max-height: calc(
+      100dvh -
+        2 *
+        max(
+          1rem,
+          env(safe-area-inset-top) + 0.5rem,
+          env(safe-area-inset-bottom) + 0.5rem
+        )
+    );
+  }
+}
+
 /* ── Barra de pestañas del teléfono ───────────────────────────────────────
  * La navegación de la app en el celular es esta barra, no el rail ni el menú
  * hamburguesa: la barra de iOS 26 que usa WhatsApp en el iPhone. Pastilla de
