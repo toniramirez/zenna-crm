@@ -32,6 +32,7 @@ import {
   type QuickClient,
 } from "../clientas/actions";
 import { createAppointmentAction } from "../turnos/actions";
+import { servicesLabel } from "../turnos/appointment-utils";
 import { DepositField } from "../turnos/deposit-field";
 import type {
   AppointmentWithRelations,
@@ -181,6 +182,38 @@ function buildDaySlots(
   return slots;
 }
 
+/**
+ * Los turnos que la profesional ya tiene ese día y que todavía no terminaron,
+ * en orden. Cancelados y no-show quedan afuera: no ocupan el horario.
+ */
+function dayAppointments(
+  dateStr: string,
+  proId: string,
+  appointments: AppointmentWithRelations[],
+): AppointmentWithRelations[] {
+  if (!dateStr || !proId) return [];
+  const [y, m, d] = dateStr.split("-").map(Number);
+  if (!y || !m || !d) return [];
+  const dayStart = new Date(y, m - 1, d).getTime();
+  const dayEnd = new Date(y, m - 1, d + 1).getTime();
+  const now = Date.now();
+  return appointments
+    .filter((a) => {
+      if (a.professional_id !== proId) return false;
+      if (a.status === "cancelled" || a.status === "no_show") return false;
+      const start = new Date(a.starts_at).getTime();
+      return (
+        start >= dayStart &&
+        start < dayEnd &&
+        new Date(a.ends_at).getTime() > now
+      );
+    })
+    .sort(
+      (a, b) =>
+        new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
+    );
+}
+
 function hexToRgba(hex: string, alpha: number): string {
   const cleaned = hex.replace("#", "");
   const r = parseInt(cleaned.slice(0, 2), 16);
@@ -195,10 +228,7 @@ function appointmentToEvent(
 ): EventInput {
   const isCancelled = a.status === "cancelled";
   const isNoShow = a.status === "no_show";
-  const services = a.appointment_services
-    .map((s) => s.services?.name)
-    .filter(Boolean)
-    .join(" + ");
+  const services = servicesLabel(a);
   const title = `${a.clients?.full_name ?? "Sin clienta"}${services ? ` · ${services}` : ""}`;
   const bg =
     isCancelled || isNoShow
@@ -518,6 +548,7 @@ export function NewTurnoDialog({
               setProfessionalId={setProfessionalId}
               startsAt={startsAt}
               setStartsAt={setStartsAt}
+              durationMinutes={totalDuration}
               appointments={appointments}
             />
           ) : (
@@ -784,6 +815,7 @@ function MobileSlotPicker({
   setProfessionalId,
   startsAt,
   setStartsAt,
+  durationMinutes,
   appointments,
 }: {
   resources: { id: string }[];
@@ -792,6 +824,7 @@ function MobileSlotPicker({
   setProfessionalId: (id: string) => void;
   startsAt: string;
   setStartsAt: (iso: string) => void;
+  durationMinutes: number;
   appointments: AppointmentWithRelations[];
 }) {
   // The picker has its own day cursor so the user can browse availability
@@ -809,6 +842,25 @@ function MobileSlotPicker({
     () => buildDaySlots(pickedDate, professionalId, appointments),
     [pickedDate, professionalId, appointments],
   );
+
+  // Con los horarios solos no se sabe quién está ni qué se hace, y sin eso no
+  // se puede decidir si conviene superponer: abajo de la grilla va la lista
+  // del día, como en la agenda.
+  const dayTurnos = useMemo(
+    () => dayAppointments(pickedDate, professionalId, appointments),
+    [pickedDate, professionalId, appointments],
+  );
+  const proColor =
+    professionals.find((p) => p.id === professionalId)?.color ?? "#94a3b8";
+
+  // El turno nuevo dura lo que suman los servicios (media hora mientras no
+  // se elija ninguno). Se marcan los turnos con los que se pisaría.
+  const pickStart = startsAt ? new Date(startsAt).getTime() : null;
+  const pickEnd =
+    pickStart === null
+      ? null
+      : pickStart +
+        (durationMinutes > 0 ? durationMinutes : SLOT_MINUTES) * 60 * 1000;
 
   if (resources.length === 0) {
     return (
@@ -933,6 +985,64 @@ function MobileSlotPicker({
           </div>
         )}
       </div>
+
+      {dayTurnos.length > 0 ? (
+        <div className="space-y-1.5">
+          <Label className="text-xs">Ya agendados ese día</Label>
+          <ul className="space-y-1.5">
+            {dayTurnos.map((a) => {
+              const start = new Date(a.starts_at);
+              const end = new Date(a.ends_at);
+              const services = servicesLabel(a);
+              const overlaps =
+                pickStart !== null &&
+                pickEnd !== null &&
+                start.getTime() < pickEnd &&
+                end.getTime() > pickStart;
+              return (
+                <li
+                  key={a.id}
+                  className={`flex items-stretch gap-2.5 rounded-xl px-2.5 py-2 ${
+                    overlaps ? "ring-2 ring-amber-400" : ""
+                  }`}
+                  style={{
+                    backgroundColor: `color-mix(in oklab, ${proColor} 11%, var(--card))`,
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    className="w-[3px] shrink-0 rounded-full"
+                    style={{ backgroundColor: proColor }}
+                  />
+                  <span className="w-10 shrink-0 text-xs leading-tight tabular-nums">
+                    <span className="block font-semibold">
+                      {format(start, "HH:mm")}
+                    </span>
+                    <span className="mt-0.5 block text-muted-foreground">
+                      {format(end, "HH:mm")}
+                    </span>
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold">
+                      {a.clients?.full_name ?? "Sin clienta"}
+                    </span>
+                    {services ? (
+                      <span className="block text-xs text-muted-foreground">
+                        {services}
+                      </span>
+                    ) : null}
+                  </span>
+                  {overlaps ? (
+                    <span className="shrink-0 self-center text-[10px] font-medium text-amber-700">
+                      se superpone
+                    </span>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }
