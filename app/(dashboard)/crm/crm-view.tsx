@@ -80,6 +80,7 @@ import type {
   ProfessionalRow,
   ServiceRow,
 } from "../turnos/types";
+import type { LoadedWindow } from "../turnos/use-appointment-window";
 import { ChatAvatar } from "./chat-avatar";
 import { ChatTagsBar, type LinkedClient } from "./chat-tags-bar";
 import type { ClientTag, PaymentMethod, QuickReply } from "./config-types";
@@ -256,6 +257,7 @@ export function CrmView({
   professionals = [],
   clients = [],
   appointments = [],
+  appointmentsWindow,
   paymentMethods = [],
   onOpenConfig,
 }: {
@@ -274,6 +276,8 @@ export function CrmView({
   professionals?: ProfessionalRow[];
   clients?: Pick<ClientRow, "id" | "full_name" | "phone">[];
   appointments?: AppointmentWithRelations[];
+  /** Rango de `appointments` que trajo la página. */
+  appointmentsWindow?: LoadedWindow;
   paymentMethods?: PaymentMethod[];
   /** Abre la solapa de configuración desde el menú "⋮" de la bandeja. */
   onOpenConfig?: () => void;
@@ -1868,6 +1872,7 @@ export function CrmView({
         services={bookingServices}
         clients={clients}
         appointments={appointments}
+        appointmentsWindow={appointmentsWindow}
       />
 
       <PresupuestoDialog

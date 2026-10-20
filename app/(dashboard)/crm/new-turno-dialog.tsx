@@ -40,7 +40,9 @@ import type {
   ProfessionalRow,
   ServiceRow,
 } from "../turnos/types";
+import type { LoadedWindow } from "../turnos/use-appointment-window";
 import { linkConversationClientAction, sendMessageAction } from "./actions";
+import { MobileSlotPicker } from "./mobile-slot-picker";
 import type { ConversationWithClient } from "./types";
 
 type Props = {
@@ -51,6 +53,8 @@ type Props = {
   services: ServiceRow[];
   clients: Pick<ClientRow, "id" | "full_name" | "phone">[];
   appointments: AppointmentWithRelations[];
+  /** Rango de `appointments` que precargó la página. */
+  appointmentsWindow?: LoadedWindow;
 };
 
 function jidToPhone(
@@ -87,21 +91,10 @@ function buildConfirmationMessage(args: {
   return `¡Buenísimo! Te agendé ${services} para el ${day} a las ${time} hs. Cualquier cosa avisame ✨`;
 }
 
-function toDateInput(iso: string): string {
-  if (!iso) {
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  }
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
 /*
  * La mini-agenda comparte el módulo de la grilla con /turnos, y se baja recién
  * cuando este diálogo la va a dibujar: en el teléfono nunca —abajo de 640px se
- * reemplaza por un select de profesional y un campo de fecha y hora— y en el
+ * reemplaza por `MobileSlotPicker`, la semana que se desliza— y en el
  * escritorio recién al abrir "Nuevo turno". Sin esto, todo `@fullcalendar/*`
  * viajaba dentro del chunk de la bandeja y lo pagaba cada apertura del chat.
  */
@@ -116,103 +109,6 @@ const FcGrid = dynamic(
     ),
   },
 );
-
-const OPEN_HOUR = 8;
-const CLOSE_HOUR = 22;
-const SLOT_MINUTES = 30;
-
-type DaySlot = {
-  iso: string;
-  label: string;
-  taken: boolean;
-  busyWith?: string;
-};
-
-/**
- * Build the 30-min slot grid for a (date, pro) pair and mark taken slots
- * using the existing appointment intervals. Cancelled / no-show turnos
- * free up the slot. The "now" cutoff hides past slots when picking today.
- */
-function buildDaySlots(
-  dateStr: string,
-  proId: string,
-  appointments: AppointmentWithRelations[],
-): DaySlot[] {
-  if (!dateStr || !proId) return [];
-  const [y, m, d] = dateStr.split("-").map(Number);
-  if (!y || !m || !d) return [];
-  const dayStart = new Date(y, m - 1, d, OPEN_HOUR, 0, 0, 0);
-  const dayEnd = new Date(y, m - 1, d, CLOSE_HOUR, 0, 0, 0);
-  const now = new Date();
-
-  const busy = appointments
-    .filter(
-      (a) =>
-        a.professional_id === proId &&
-        a.status !== "cancelled" &&
-        a.status !== "no_show",
-    )
-    .map((a) => ({
-      start: new Date(a.starts_at).getTime(),
-      end: new Date(a.ends_at).getTime(),
-      title: a.clients?.full_name ?? "Ocupado",
-    }));
-
-  const slots: DaySlot[] = [];
-  for (
-    let t = dayStart.getTime();
-    t < dayEnd.getTime();
-    t += SLOT_MINUTES * 60 * 1000
-  ) {
-    const slotStart = t;
-    const slotEnd = t + SLOT_MINUTES * 60 * 1000;
-    if (slotEnd <= now.getTime()) continue;
-    const overlap = busy.find(
-      (b) => b.start < slotEnd && b.end > slotStart,
-    );
-    const dt = new Date(slotStart);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    slots.push({
-      iso: dt.toISOString(),
-      label: `${pad(dt.getHours())}:${pad(dt.getMinutes())}`,
-      taken: !!overlap,
-      busyWith: overlap?.title,
-    });
-  }
-  return slots;
-}
-
-/**
- * Los turnos que la profesional ya tiene ese día y que todavía no terminaron,
- * en orden. Cancelados y no-show quedan afuera: no ocupan el horario.
- */
-function dayAppointments(
-  dateStr: string,
-  proId: string,
-  appointments: AppointmentWithRelations[],
-): AppointmentWithRelations[] {
-  if (!dateStr || !proId) return [];
-  const [y, m, d] = dateStr.split("-").map(Number);
-  if (!y || !m || !d) return [];
-  const dayStart = new Date(y, m - 1, d).getTime();
-  const dayEnd = new Date(y, m - 1, d + 1).getTime();
-  const now = Date.now();
-  return appointments
-    .filter((a) => {
-      if (a.professional_id !== proId) return false;
-      if (a.status === "cancelled" || a.status === "no_show") return false;
-      const start = new Date(a.starts_at).getTime();
-      return (
-        start >= dayStart &&
-        start < dayEnd &&
-        new Date(a.ends_at).getTime() > now
-      );
-    })
-    .sort(
-      (a, b) =>
-        new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
-    );
-}
 
 function hexToRgba(hex: string, alpha: number): string {
   const cleaned = hex.replace("#", "");
@@ -262,6 +158,7 @@ export function NewTurnoDialog({
   services,
   clients,
   appointments,
+  appointmentsWindow,
 }: Props) {
   // ──── Client state ────────────────────────────────────────────────────────
   const hasLinkedClient = !!conversation?.clients;
@@ -542,7 +439,6 @@ export function NewTurnoDialog({
           {/* Slot picker: mini-agenda on desktop, plain selectors on mobile */}
           {isMobile ? (
             <MobileSlotPicker
-              resources={resources}
               professionals={professionals}
               professionalId={professionalId}
               setProfessionalId={setProfessionalId}
@@ -550,6 +446,7 @@ export function NewTurnoDialog({
               setStartsAt={setStartsAt}
               durationMinutes={totalDuration}
               appointments={appointments}
+              appointmentsWindow={appointmentsWindow}
             />
           ) : (
             <div className="rounded-md border bg-card p-2 zenna-calendar zenna-mini-calendar min-w-0">
@@ -805,244 +702,5 @@ export function NewTurnoDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function MobileSlotPicker({
-  resources,
-  professionals,
-  professionalId,
-  setProfessionalId,
-  startsAt,
-  setStartsAt,
-  durationMinutes,
-  appointments,
-}: {
-  resources: { id: string }[];
-  professionals: ProfessionalRow[];
-  professionalId: string;
-  setProfessionalId: (id: string) => void;
-  startsAt: string;
-  setStartsAt: (iso: string) => void;
-  durationMinutes: number;
-  appointments: AppointmentWithRelations[];
-}) {
-  // The picker has its own day cursor so the user can browse availability
-  // without losing their slot selection on the other field.
-  const [pickedDate, setPickedDate] = useState<string>(() =>
-    toDateInput(startsAt || ""),
-  );
-
-  // Keep pickedDate in sync if startsAt changes (e.g. dialog reset).
-  useEffect(() => {
-    if (startsAt) setPickedDate(toDateInput(startsAt));
-  }, [startsAt]);
-
-  const slots = useMemo(
-    () => buildDaySlots(pickedDate, professionalId, appointments),
-    [pickedDate, professionalId, appointments],
-  );
-
-  // Con los horarios solos no se sabe quién está ni qué se hace, y sin eso no
-  // se puede decidir si conviene superponer: abajo de la grilla va la lista
-  // del día, como en la agenda.
-  const dayTurnos = useMemo(
-    () => dayAppointments(pickedDate, professionalId, appointments),
-    [pickedDate, professionalId, appointments],
-  );
-  const proColor =
-    professionals.find((p) => p.id === professionalId)?.color ?? "#94a3b8";
-
-  // El turno nuevo dura lo que suman los servicios (media hora mientras no
-  // se elija ninguno). Se marcan los turnos con los que se pisaría.
-  const pickStart = startsAt ? new Date(startsAt).getTime() : null;
-  const pickEnd =
-    pickStart === null
-      ? null
-      : pickStart +
-        (durationMinutes > 0 ? durationMinutes : SLOT_MINUTES) * 60 * 1000;
-
-  if (resources.length === 0) {
-    return (
-      <div className="rounded-md border bg-card p-3 min-w-0">
-        <p className="text-sm text-muted-foreground text-center px-2 py-4">
-          Todavía no hay profesionales activas. Cargá al menos una en
-          «Profesionales» para poder agendar.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-md border bg-card p-3 space-y-3 min-w-0">
-      {/*
-        Profesional con botones y no con un Select: el Select abierto pone la
-        primera opción justo encima del disparador, y Radix descarta el toque
-        que cae a menos de 10px del que lo abrió. En algunos iPhone eso dejaba
-        la lista abierta con la profesional a la vista pero sin elegir, y los
-        horarios nunca aparecían. Un botón es un toque y no tiene esa trampa.
-      */}
-      <div className="space-y-1.5">
-        <Label className="text-xs">Profesional</Label>
-        <div
-          role="radiogroup"
-          aria-label="Profesional"
-          className="flex flex-wrap gap-1.5"
-        >
-          {professionals
-            .filter((p) => p.active)
-            .map((p) => {
-              const picked = p.id === professionalId;
-              return (
-                <button
-                  type="button"
-                  key={p.id}
-                  role="radio"
-                  aria-checked={picked}
-                  onClick={() => setProfessionalId(p.id)}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                    picked
-                      ? "bg-foreground text-background border-foreground font-semibold"
-                      : "bg-card hover:bg-muted/40"
-                  }`}
-                >
-                  <span
-                    aria-hidden
-                    className="size-2.5 shrink-0 rounded-full border"
-                    style={{ backgroundColor: p.color }}
-                  />
-                  {p.full_name}
-                </button>
-              );
-            })}
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label className="text-xs" htmlFor="new-turno-day">
-          Día
-        </Label>
-        {/* Sin `appearance-none` el iPhone le da al campo de fecha un ancho
-            propio y se sale de la tarjeta. */}
-        <Input
-          id="new-turno-day"
-          type="date"
-          value={pickedDate}
-          onChange={(e) => setPickedDate(e.target.value)}
-          className="appearance-none [&::-webkit-date-and-time-value]:text-left"
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
-          <Label className="text-xs">Horario disponible</Label>
-          {slots.some((s) => s.taken) ? (
-            <span className="inline-flex items-center gap-1 text-[10px] text-amber-700">
-              <span className="size-1.5 rounded-full bg-amber-500" />
-              ya tiene turno
-            </span>
-          ) : null}
-        </div>
-        {!professionalId ? (
-          <p className="text-xs text-muted-foreground italic px-1">
-            Elegí una profesional para ver los horarios.
-          </p>
-        ) : slots.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic px-1">
-            No hay horarios disponibles para este día.
-          </p>
-        ) : (
-          <div className="grid grid-cols-3 gap-1.5 max-h-[280px] overflow-y-auto pr-1">
-            {slots.map((s) => {
-              const isPicked = s.iso === startsAt;
-              return (
-                <button
-                  type="button"
-                  key={s.iso}
-                  // Taken slots stay selectable to allow more than one turno
-                  // at the same time. The amber dot just flags an existing one.
-                  onClick={() => setStartsAt(s.iso)}
-                  title={
-                    s.taken
-                      ? `Ya hay un turno (${s.busyWith}) · tocá para agregar otro`
-                      : undefined
-                  }
-                  className={`relative rounded-md border px-2 py-2 text-sm tabular-nums transition-colors ${
-                    isPicked
-                      ? "bg-foreground text-background border-foreground font-semibold"
-                      : s.taken
-                        ? "bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100"
-                        : "bg-card hover:bg-muted/40"
-                  }`}
-                >
-                  {s.label}
-                  {s.taken && !isPicked ? (
-                    <span className="absolute right-1 top-1 size-1.5 rounded-full bg-amber-500" />
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {dayTurnos.length > 0 ? (
-        <div className="space-y-1.5">
-          <Label className="text-xs">Ya agendados ese día</Label>
-          <ul className="space-y-1.5">
-            {dayTurnos.map((a) => {
-              const start = new Date(a.starts_at);
-              const end = new Date(a.ends_at);
-              const services = servicesLabel(a);
-              const overlaps =
-                pickStart !== null &&
-                pickEnd !== null &&
-                start.getTime() < pickEnd &&
-                end.getTime() > pickStart;
-              return (
-                <li
-                  key={a.id}
-                  className={`flex items-stretch gap-2.5 rounded-xl px-2.5 py-2 ${
-                    overlaps ? "ring-2 ring-amber-400" : ""
-                  }`}
-                  style={{
-                    backgroundColor: `color-mix(in oklab, ${proColor} 11%, var(--card))`,
-                  }}
-                >
-                  <span
-                    aria-hidden
-                    className="w-[3px] shrink-0 rounded-full"
-                    style={{ backgroundColor: proColor }}
-                  />
-                  <span className="w-10 shrink-0 text-xs leading-tight tabular-nums">
-                    <span className="block font-semibold">
-                      {format(start, "HH:mm")}
-                    </span>
-                    <span className="mt-0.5 block text-muted-foreground">
-                      {format(end, "HH:mm")}
-                    </span>
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold">
-                      {a.clients?.full_name ?? "Sin clienta"}
-                    </span>
-                    {services ? (
-                      <span className="block text-xs text-muted-foreground">
-                        {services}
-                      </span>
-                    ) : null}
-                  </span>
-                  {overlaps ? (
-                    <span className="shrink-0 self-center text-[10px] font-medium text-amber-700">
-                      se superpone
-                    </span>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : null}
-    </div>
   );
 }

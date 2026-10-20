@@ -15,6 +15,7 @@ import type {
   ProfessionalRow,
   ServiceRow,
 } from "../turnos/types";
+import type { LoadedWindow } from "../turnos/use-appointment-window";
 import type { WhatsappTemplateRow } from "@/lib/whatsapp-cloud/templates";
 import type {
   AutomationFlow,
@@ -49,6 +50,7 @@ export function CrmShell({
   professionals,
   clients,
   appointments,
+  appointmentsWindow,
   paymentMethods,
   outreachSuggestions,
 }: {
@@ -66,6 +68,7 @@ export function CrmShell({
   professionals: ProfessionalRow[];
   clients: Pick<ClientRow, "id" | "full_name" | "phone">[];
   appointments: AppointmentWithRelations[];
+  appointmentsWindow: LoadedWindow;
   paymentMethods: PaymentMethod[];
   outreachSuggestions: OutreachSuggestionWithRelations[];
 }) {
@@ -100,6 +103,7 @@ export function CrmShell({
           professionals={professionals}
           clients={clients}
           appointments={appointments}
+          appointmentsWindow={appointmentsWindow}
           paymentMethods={paymentMethods.filter((m) => m.active)}
           onOpenConfig={() => setTab("config")}
         />

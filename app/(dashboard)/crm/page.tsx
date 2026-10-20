@@ -23,9 +23,10 @@ type Props = {
 };
 
 /**
- * Window of appointments to pre-load for the in-chat mini-agenda. Anything
- * outside this range simply won't render until the user reloads. We bias
- * forward because the receptionist is almost always booking future slots.
+ * Window of appointments to pre-load for the in-chat mini-agenda. On desktop,
+ * anything outside this range simply won't render until the user reloads; the
+ * phone slot picker asks the server for weeks outside it. We bias forward
+ * because the receptionist is almost always booking future slots.
  */
 function appointmentWindow(now: Date) {
   const start = startOfDay(addDays(now, -3));
@@ -197,6 +198,7 @@ export default async function CrmPage({ searchParams }: Props) {
         appointments={
           (appointmentsResult.data as AppointmentWithRelations[] | null) ?? []
         }
+        appointmentsWindow={{ start: start.toISOString(), end: end.toISOString() }}
         paymentMethods={
           (paymentMethodsResult.data as PaymentMethod[] | null) ?? []
         }
