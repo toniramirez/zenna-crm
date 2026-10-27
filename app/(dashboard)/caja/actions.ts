@@ -6,9 +6,9 @@ import { todayDateStr } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/server";
 import { expenseSchema } from "@/lib/validations/expenses";
 import {
-  type ChangePaymentMethodsInput,
-  changePaymentMethodsSchema,
+  type CorrectPaymentsInput,
   closeCajaSchema,
+  correctPaymentsSchema,
   recordPaymentSchema,
 } from "@/lib/validations/payments";
 import { fieldErrorsFromZod } from "@/lib/zod-helpers";
@@ -84,44 +84,53 @@ export async function recordPaymentAction(
 }
 
 /**
- * Corrige el método de pagos de una venta ya cerrada (se cargó efectivo y era
- * transferencia, etc.). Todo o nada: la base cambia todas las líneas en una
- * transacción y rechaza a la recepción si la caja de algún pago ya se cerró.
+ * Corrige pagos de una venta ya cerrada: el método (se cargó efectivo y era
+ * transferencia) o, el mismo día del cobro, el importe. Todo o nada: la base
+ * corrige todas las líneas en una transacción y rechaza a la recepción si la
+ * caja de algún pago ya se cerró.
  */
-export async function changePaymentMethodsAction(
-  changes: ChangePaymentMethodsInput,
+export async function correctPaymentsAction(
+  changes: CorrectPaymentsInput,
 ): Promise<ActionState> {
   await requireRole(["owner", "receptionist"]);
 
-  const parsed = changePaymentMethodsSchema.safeParse(changes);
+  const parsed = correctPaymentsSchema.safeParse(changes);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("cambiar_metodo_pago", {
+  const { error } = await supabase.rpc("corregir_pagos", {
     p_changes: parsed.data,
   });
 
   if (error) {
     if (error.code === "42501") {
-      return { error: "No tenés permiso para cambiar pagos." };
+      return { error: "No tenés permiso para corregir pagos." };
     }
     if (error.code === "P0002") {
       return { error: "Ese pago ya no existe. Recargá la página." };
     }
     if (error.hint === "caja_cerrada") {
       return {
-        error: "Esa caja ya está cerrada: sólo la dueña puede cambiar el método.",
+        error: "Esa caja ya está cerrada: sólo la dueña puede corregir el pago.",
       };
     }
-    console.error("[caja] cambiar_metodo_pago failed:", error);
+    if (error.hint === "fuera_de_dia") {
+      return {
+        error: "El importe sólo se puede corregir el mismo día en que se cobró.",
+      };
+    }
+    if (error.hint === "importe_invalido") {
+      return { error: "Cada pago tiene que tener importe." };
+    }
+    console.error("[caja] corregir_pagos failed:", error);
     if (process.env.NODE_ENV !== "production") {
       return {
         error: `Error DB${error.code ? ` ${error.code}` : ""}: ${error.message ?? "desconocido"}`,
       };
     }
-    return { error: "No pudimos cambiar el método. Intentalo de nuevo." };
+    return { error: "No pudimos corregir el pago. Intentalo de nuevo." };
   }
 
   revalidatePath("/caja");

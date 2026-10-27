@@ -198,7 +198,7 @@ export default async function CajaPage({ searchParams }: Props) {
   const salesTotal = sales.reduce((acc, a) => acc + saleBreakdown(a).total, 0);
 
   // Cajas ya cerradas entre los pagos de las ventas (la seña puede ser de otro
-  // día): ahí la recepción no puede cambiar el método. La base lo hace cumplir
+  // día): ahí la recepción no puede corregir pagos. La base lo hace cumplir
   // igual; esto es para avisarlo antes de que lo intente.
   const saleCajaDates = [
     ...new Set(sales.flatMap((a) => a.payments.map((p) => p.caja_date))),
@@ -336,6 +336,7 @@ export default async function CajaPage({ searchParams }: Props) {
             </h3>
             <SalesList
               sales={sales}
+              today={today}
               isOwner={isOwner}
               closedCajaDates={closedCajaDates}
             />

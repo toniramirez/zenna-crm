@@ -70,7 +70,7 @@ import {
   type PaymentMethod,
 } from "@/lib/validations/payments";
 import { deleteExpenseAction, reopenCajaAction } from "./actions";
-import { CambiarMetodoDialog } from "./cambiar-metodo-dialog";
+import { CorregirPagoDialog } from "./corregir-pago-dialog";
 import { CloseDialog } from "./close-caja";
 import { CobrarDialog } from "./cobrar-dialog";
 import {
@@ -231,10 +231,10 @@ export function PhoneCaja({
   const [cobrarTarget, setCobrarTarget] = useState<DayAppointment | null>(null);
   const [cobrarOpen, setCobrarOpen] = useState(false);
 
-  const [metodoTarget, setMetodoTarget] = useState<DayAppointment | null>(
+  const [corregirTarget, setCorregirTarget] = useState<DayAppointment | null>(
     null,
   );
-  const [metodoOpen, setMetodoOpen] = useState(false);
+  const [corregirOpen, setCorregirOpen] = useState(false);
 
   const [group, setGroup] = useState<MethodGroup | "all">("all");
 
@@ -478,8 +478,8 @@ export function PhoneCaja({
                       key={a.id}
                       appointment={a}
                       onClick={() => {
-                        setMetodoTarget(a);
-                        setMetodoOpen(true);
+                        setCorregirTarget(a);
+                        setCorregirOpen(true);
                       }}
                     />
                   ))}
@@ -609,14 +609,15 @@ export function PhoneCaja({
         appointment={cobrarTarget}
       />
 
-      <CambiarMetodoDialog
-        key={metodoTarget?.id ?? "none"}
-        open={metodoOpen}
+      <CorregirPagoDialog
+        key={corregirTarget?.id ?? "none"}
+        open={corregirOpen}
         onOpenChange={(open) => {
-          setMetodoOpen(open);
-          if (!open) setMetodoTarget(null);
+          setCorregirOpen(open);
+          if (!open) setCorregirTarget(null);
         }}
-        sale={metodoTarget}
+        sale={corregirTarget}
+        today={today}
         isOwner={isOwner}
         closedCajaDates={closedCajaDates}
       />
@@ -940,7 +941,7 @@ function PendingCard({
 /**
  * Venta cerrada: de dónde salió cada peso. La seña puede haber entrado otro
  * día (en la caja de ese día); acá se ve igual, porque la venta es del turno.
- * Tocarla abre el cambio de método, por si se cargó mal cómo pagó.
+ * Tocarla abre la corrección del pago, por si se cargó mal.
  */
 function SaleRow({
   appointment: a,

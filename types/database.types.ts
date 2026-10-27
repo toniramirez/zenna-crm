@@ -1788,12 +1788,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      cambiar_metodo_pago: {
-        Args: { p_changes: Json }
-        Returns: number
-      }
       cobrar_turno: {
         Args: { p_appointment_id: string; p_lines: Json; p_notes?: string }
+        Returns: number
+      }
+      corregir_pagos: {
+        Args: { p_changes: Json }
         Returns: number
       }
       record_appointment_payment: {

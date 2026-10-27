@@ -18,7 +18,7 @@ import {
 import { ZENNA_TZ } from "@/lib/dates";
 import { formatCurrency } from "@/lib/format";
 import { PAYMENT_METHODS, type PaymentMethod } from "@/lib/validations/payments";
-import { CambiarMetodoDialog } from "./cambiar-metodo-dialog";
+import { CorregirPagoDialog } from "./corregir-pago-dialog";
 import { type DayAppointment, saleBreakdown } from "./types";
 
 const SHORT: Record<PaymentMethod, string> = Object.fromEntries(
@@ -28,14 +28,17 @@ const SHORT: Record<PaymentMethod, string> = Object.fromEntries(
 /**
  * Ventas del día: los turnos de este día ya cobrados. La venta es del día del
  * turno aunque la seña haya entrado antes (a la caja de su propio día): acá se
- * ve de dónde salió cada peso, y se corrige el método si se cargó mal.
+ * ve de dónde salió cada peso, y se corrige un pago mal cargado.
  */
 export function SalesList({
   sales,
+  today,
   isOwner,
   closedCajaDates,
 }: {
   sales: DayAppointment[];
+  /** "YYYY-MM-DD" de hoy: el único día en que se corrige un importe. */
+  today: string;
   isOwner: boolean;
   /** Días de caja ya cerrados entre los pagos de estas ventas. */
   closedCajaDates: string[];
@@ -145,7 +148,7 @@ export function SalesList({
                       variant="ghost"
                       size="icon"
                       className="size-8"
-                      title="Cambiar método de pago"
+                      title="Corregir pago"
                       onClick={() => {
                         setTarget(a);
                         setOpen(true);
@@ -153,7 +156,7 @@ export function SalesList({
                     >
                       <Pencil className="size-3.5" />
                       <span className="sr-only">
-                        Cambiar método de pago de{" "}
+                        Corregir pago de{" "}
                         {a.client?.full_name ?? "la venta"}
                       </span>
                     </Button>
@@ -188,7 +191,7 @@ export function SalesList({
           {formatCurrency(totals.charged)} se cobraron al atender.
         </p>
       ) : null}
-      <CambiarMetodoDialog
+      <CorregirPagoDialog
         key={target?.id ?? "none"}
         open={open}
         onOpenChange={(next) => {
@@ -196,6 +199,7 @@ export function SalesList({
           if (!next) setTarget(null);
         }}
         sale={target}
+        today={today}
         isOwner={isOwner}
         closedCajaDates={closedCajaDates}
       />
