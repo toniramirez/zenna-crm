@@ -71,12 +71,19 @@ import { UserMenu } from "./user-menu";
  * Con la barra de estado translúcida la app ocupa la pantalla entera, así que
  * el alto de la pantalla es el piso: con el teclado abajo y la ventana entre
  * 2 y 120px más corta que ella, el shell toma el alto de la pantalla y
- * `--vp-gap` lleva la diferencia, que es lo que baja lo que está fijo al
- * borde inferior (barra de pestañas, hojas, velos). Para eso el shell tiene
- * que estar en el flujo: lo que se pasa de la ventana se pinta sólo si el
- * documento llega hasta ahí, y un shell `fixed` no lo alarga —así fue como
- * la barra de pestañas quedó cortada por la mitad. Cuando iOS se corrige
- * solo, la diferencia vuelve a 0 y todo queda como siempre.
+ * `--vp-gap` lleva lo que le falta al bloque de lo `fixed` para llegar al
+ * borde, que es lo que baja lo que está fijo abajo (barra de pestañas, hojas,
+ * velos). Para eso el shell tiene que estar en el flujo: lo que se pasa de la
+ * ventana se pinta sólo si el documento llega hasta ahí, y un shell `fixed`
+ * no lo alarga —así fue como la barra de pestañas quedó cortada por la
+ * mitad. Cuando iOS se corrige solo, la diferencia vuelve a 0 y todo queda
+ * como siempre.
+ *
+ * Esa falta se mide con una sonda fija y no se deduce de `innerHeight`: en un
+ * iPhone de 852pt `innerHeight` llegaba corto mientras lo fijo ya ocupaba la
+ * pantalla entera, y la barra de pestañas bajaba de más los 59px de la barra
+ * de estado y quedaba cortada contra el borde. La sonda además se entera si
+ * iOS le devuelve el alto a lo fijo sin avisar con un `resize`.
  */
 function useViewportMetrics() {
   useEffect(() => {
@@ -110,6 +117,13 @@ function useViewportMetrics() {
       if (Math.abs(window.innerWidth - height) <= 1) return width;
       return 0;
     };
+
+    // Del alto del bloque de lo `fixed` sale `--vp-gap`: ver `apply`.
+    const probe = document.createElement("div");
+    probe.setAttribute("aria-hidden", "true");
+    probe.style.cssText =
+      "position:fixed;top:0;bottom:0;left:0;width:0;visibility:hidden;pointer-events:none";
+    document.body.appendChild(probe);
 
     /** Hay un campo de texto con el foco: el teclado está arriba o en camino. */
     const isTyping = () =>
@@ -146,7 +160,10 @@ function useViewportMetrics() {
             keyboard = short;
           } else {
             height = full;
-            gap = short;
+            // Lo que le falta a lo fijo, no a `innerHeight`: los dos no
+            // siempre quedan cortos juntos.
+            const fixed = Math.round(probe.getBoundingClientRect().height);
+            gap = Math.max(0, full - fixed);
           }
         }
       }
@@ -186,6 +203,11 @@ function useViewportMetrics() {
       if (document.visibilityState === "visible") remeasure();
     };
 
+    // iOS puede devolverle el alto a lo `fixed` sin avisar con un `resize`
+    // (ni dentro de los 2,5 s de `remeasure`): la sonda se entera igual.
+    const observer = new ResizeObserver(schedule);
+    observer.observe(probe);
+
     apply();
     remeasure();
     vv.addEventListener("resize", schedule);
@@ -203,6 +225,8 @@ function useViewportMetrics() {
     return () => {
       if (frame) cancelAnimationFrame(frame);
       for (const id of timers) window.clearTimeout(id);
+      observer.disconnect();
+      probe.remove();
       vv.removeEventListener("resize", schedule);
       vv.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
