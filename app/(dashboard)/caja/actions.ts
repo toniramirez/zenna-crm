@@ -5,7 +5,12 @@ import { requireRole } from "@/lib/auth";
 import { todayDateStr } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/server";
 import { expenseSchema } from "@/lib/validations/expenses";
-import { closeCajaSchema, recordPaymentSchema } from "@/lib/validations/payments";
+import {
+  type ChangePaymentMethodsInput,
+  changePaymentMethodsSchema,
+  closeCajaSchema,
+  recordPaymentSchema,
+} from "@/lib/validations/payments";
 import { fieldErrorsFromZod } from "@/lib/zod-helpers";
 import { computeDayTotals } from "./day-totals";
 
@@ -74,6 +79,54 @@ export async function recordPaymentAction(
   }
 
   revalidatePath("/caja");
+  revalidatePath("/turnos");
+  return { success: true };
+}
+
+/**
+ * Corrige el método de pagos de una venta ya cerrada (se cargó efectivo y era
+ * transferencia, etc.). Todo o nada: la base cambia todas las líneas en una
+ * transacción y rechaza a la recepción si la caja de algún pago ya se cerró.
+ */
+export async function changePaymentMethodsAction(
+  changes: ChangePaymentMethodsInput,
+): Promise<ActionState> {
+  await requireRole(["owner", "receptionist"]);
+
+  const parsed = changePaymentMethodsSchema.safeParse(changes);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("cambiar_metodo_pago", {
+    p_changes: parsed.data,
+  });
+
+  if (error) {
+    if (error.code === "42501") {
+      return { error: "No tenés permiso para cambiar pagos." };
+    }
+    if (error.code === "P0002") {
+      return { error: "Ese pago ya no existe. Recargá la página." };
+    }
+    if (error.hint === "caja_cerrada") {
+      return {
+        error: "Esa caja ya está cerrada: sólo la dueña puede cambiar el método.",
+      };
+    }
+    console.error("[caja] cambiar_metodo_pago failed:", error);
+    if (process.env.NODE_ENV !== "production") {
+      return {
+        error: `Error DB${error.code ? ` ${error.code}` : ""}: ${error.message ?? "desconocido"}`,
+      };
+    }
+    return { error: "No pudimos cambiar el método. Intentalo de nuevo." };
+  }
+
+  revalidatePath("/caja");
+  revalidatePath("/caja/archivo");
+  revalidatePath("/finanzas");
   revalidatePath("/turnos");
   return { success: true };
 }

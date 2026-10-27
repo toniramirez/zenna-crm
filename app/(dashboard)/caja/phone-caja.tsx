@@ -70,6 +70,7 @@ import {
   type PaymentMethod,
 } from "@/lib/validations/payments";
 import { deleteExpenseAction, reopenCajaAction } from "./actions";
+import { CambiarMetodoDialog } from "./cambiar-metodo-dialog";
 import { CloseDialog } from "./close-caja";
 import { CobrarDialog } from "./cobrar-dialog";
 import {
@@ -155,6 +156,8 @@ type Props = {
   salesTotal: number;
   pending: DayAppointment[];
   sales: DayAppointment[];
+  /** Días de caja ya cerrados entre los pagos de las ventas. */
+  closedCajaDates: string[];
   payments: PaymentWithDetails[];
   expenses: ExpenseRow[];
   totalExpensesMonth: number;
@@ -204,6 +207,7 @@ export function PhoneCaja({
   salesTotal,
   pending,
   sales,
+  closedCajaDates,
   payments,
   expenses,
   totalExpensesMonth,
@@ -226,6 +230,11 @@ export function PhoneCaja({
 
   const [cobrarTarget, setCobrarTarget] = useState<DayAppointment | null>(null);
   const [cobrarOpen, setCobrarOpen] = useState(false);
+
+  const [metodoTarget, setMetodoTarget] = useState<DayAppointment | null>(
+    null,
+  );
+  const [metodoOpen, setMetodoOpen] = useState(false);
 
   const [group, setGroup] = useState<MethodGroup | "all">("all");
 
@@ -465,7 +474,14 @@ export function PhoneCaja({
               <>
                 <PhoneGroup>
                   {sales.map((a) => (
-                    <SaleRow key={a.id} appointment={a} />
+                    <SaleRow
+                      key={a.id}
+                      appointment={a}
+                      onClick={() => {
+                        setMetodoTarget(a);
+                        setMetodoOpen(true);
+                      }}
+                    />
                   ))}
                 </PhoneGroup>
                 <SalesNote sales={sales} />
@@ -591,6 +607,18 @@ export function PhoneCaja({
           if (!open) setCobrarTarget(null);
         }}
         appointment={cobrarTarget}
+      />
+
+      <CambiarMetodoDialog
+        key={metodoTarget?.id ?? "none"}
+        open={metodoOpen}
+        onOpenChange={(open) => {
+          setMetodoOpen(open);
+          if (!open) setMetodoTarget(null);
+        }}
+        sale={metodoTarget}
+        isOwner={isOwner}
+        closedCajaDates={closedCajaDates}
       />
     </PhoneScreen>
   );
@@ -912,8 +940,15 @@ function PendingCard({
 /**
  * Venta cerrada: de dónde salió cada peso. La seña puede haber entrado otro
  * día (en la caja de ese día); acá se ve igual, porque la venta es del turno.
+ * Tocarla abre el cambio de método, por si se cargó mal cómo pagó.
  */
-function SaleRow({ appointment: a }: { appointment: DayAppointment }) {
+function SaleRow({
+  appointment: a,
+  onClick,
+}: {
+  appointment: DayAppointment;
+  onClick: () => void;
+}) {
   const b = saleBreakdown(a);
   const deposits = a.payments.filter((p) => p.is_deposit);
   const charges = a.payments.filter((p) => !p.is_deposit);
@@ -938,33 +973,53 @@ function SaleRow({ appointment: a }: { appointment: DayAppointment }) {
   }
 
   return (
-    <li className="flex items-start gap-3 px-4 py-3">
-      <span className="w-10 shrink-0 pt-px text-[0.8125rem] font-semibold tabular-nums">
-        {formatInTimeZone(a.starts_at, ZENNA_TZ, "HH:mm")}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-baseline justify-between gap-2">
-          <span className="truncate text-[0.9375rem] font-medium">
-            {a.client?.full_name ?? "—"}
+    <li>
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex w-full items-start gap-3 px-4 py-3 text-left active:bg-[var(--wa-hover)]"
+      >
+        <span className="w-10 shrink-0 pt-px text-[0.8125rem] font-semibold tabular-nums">
+          {formatInTimeZone(a.starts_at, ZENNA_TZ, "HH:mm")}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline justify-between gap-2">
+            <span className="truncate text-[0.9375rem] font-medium">
+              {a.client?.full_name ?? "—"}
+            </span>
+            <span className="shrink-0 text-[0.9375rem] font-semibold tabular-nums">
+              {formatCurrency(b.total)}
+            </span>
           </span>
-          <span className="shrink-0 text-[0.9375rem] font-semibold tabular-nums">
-            {formatCurrency(b.total)}
+          <span className="mt-0.5 block truncate text-[0.8125rem] text-[var(--wa-text-2)]">
+            {[
+              services,
+              a.professional
+                ? `con ${a.professional.full_name.trim().split(/\s+/)[0]}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ") || "—"}
+          </span>
+          <span className="mt-0.5 block text-[0.75rem] text-[var(--wa-text-3)] tabular-nums">
+            {parts.join(" + ")}
           </span>
         </span>
-        <span className="mt-0.5 block truncate text-[0.8125rem] text-[var(--wa-text-2)]">
-          {[
-            services,
-            a.professional
-              ? `con ${a.professional.full_name.trim().split(/\s+/)[0]}`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" · ") || "—"}
-        </span>
-        <span className="mt-0.5 block text-[0.75rem] text-[var(--wa-text-3)] tabular-nums">
-          {parts.join(" + ")}
-        </span>
-      </span>
+        <svg
+          aria-hidden
+          viewBox="0 0 8 14"
+          className="mt-1.5 h-3.5 w-2 shrink-0 text-[var(--wa-text-3)]"
+        >
+          <path
+            d="M1 1l6 6-6 6"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
     </li>
   );
 }

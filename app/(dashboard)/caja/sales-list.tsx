@@ -1,6 +1,11 @@
+"use client";
+
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { formatInTimeZone } from "date-fns-tz";
+import { Pencil } from "lucide-react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -13,6 +18,7 @@ import {
 import { ZENNA_TZ } from "@/lib/dates";
 import { formatCurrency } from "@/lib/format";
 import { PAYMENT_METHODS, type PaymentMethod } from "@/lib/validations/payments";
+import { CambiarMetodoDialog } from "./cambiar-metodo-dialog";
 import { type DayAppointment, saleBreakdown } from "./types";
 
 const SHORT: Record<PaymentMethod, string> = Object.fromEntries(
@@ -22,9 +28,21 @@ const SHORT: Record<PaymentMethod, string> = Object.fromEntries(
 /**
  * Ventas del día: los turnos de este día ya cobrados. La venta es del día del
  * turno aunque la seña haya entrado antes (a la caja de su propio día): acá se
- * ve de dónde salió cada peso.
+ * ve de dónde salió cada peso, y se corrige el método si se cargó mal.
  */
-export function SalesList({ sales }: { sales: DayAppointment[] }) {
+export function SalesList({
+  sales,
+  isOwner,
+  closedCajaDates,
+}: {
+  sales: DayAppointment[];
+  isOwner: boolean;
+  /** Días de caja ya cerrados entre los pagos de estas ventas. */
+  closedCajaDates: string[];
+}) {
+  const [target, setTarget] = useState<DayAppointment | null>(null);
+  const [open, setOpen] = useState(false);
+
   if (sales.length === 0) {
     return (
       <div className="rounded-md border bg-card p-6 text-center">
@@ -59,6 +77,7 @@ export function SalesList({ sales }: { sales: DayAppointment[] }) {
               <TableHead className="text-right">Seña</TableHead>
               <TableHead className="text-right">Cobrado al atender</TableHead>
               <TableHead className="text-right">Venta</TableHead>
+              <TableHead className="w-[44px]" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -120,6 +139,25 @@ export function SalesList({ sales }: { sales: DayAppointment[] }) {
                   <TableCell className="text-right tabular-nums font-semibold">
                     {formatCurrency(b.total)}
                   </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8"
+                      title="Cambiar método de pago"
+                      onClick={() => {
+                        setTarget(a);
+                        setOpen(true);
+                      }}
+                    >
+                      <Pencil className="size-3.5" />
+                      <span className="sr-only">
+                        Cambiar método de pago de{" "}
+                        {a.client?.full_name ?? "la venta"}
+                      </span>
+                    </Button>
+                  </TableCell>
                 </TableRow>
               );
             })}
@@ -138,6 +176,7 @@ export function SalesList({ sales }: { sales: DayAppointment[] }) {
               <TableCell className="text-right tabular-nums font-semibold">
                 {formatCurrency(totals.total)}
               </TableCell>
+              <TableCell />
             </TableRow>
           </TableFooter>
         </Table>
@@ -149,6 +188,17 @@ export function SalesList({ sales }: { sales: DayAppointment[] }) {
           {formatCurrency(totals.charged)} se cobraron al atender.
         </p>
       ) : null}
+      <CambiarMetodoDialog
+        key={target?.id ?? "none"}
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) setTarget(null);
+        }}
+        sale={target}
+        isOwner={isOwner}
+        closedCajaDates={closedCajaDates}
+      />
     </div>
   );
 }

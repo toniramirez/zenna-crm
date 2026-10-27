@@ -197,6 +197,22 @@ export default async function CajaPage({ searchParams }: Props) {
   const sales = dayAppointments.filter((a) => a.charged_at);
   const salesTotal = sales.reduce((acc, a) => acc + saleBreakdown(a).total, 0);
 
+  // Cajas ya cerradas entre los pagos de las ventas (la seña puede ser de otro
+  // día): ahí la recepción no puede cambiar el método. La base lo hace cumplir
+  // igual; esto es para avisarlo antes de que lo intente.
+  const saleCajaDates = [
+    ...new Set(sales.flatMap((a) => a.payments.map((p) => p.caja_date))),
+  ];
+  const closedCajaDates =
+    saleCajaDates.length > 0
+      ? ((
+          await supabase
+            .from("cash_closings")
+            .select("caja_date")
+            .in("caja_date", saleCajaDates)
+        ).data ?? []).map((c) => c.caja_date)
+      : [];
+
   // ── Totals
   // Cash expenses ATTRIBUTED to this specific day's caja.
   // Only counts when cash_source_date is set — null means the expense isn't
@@ -318,7 +334,11 @@ export default async function CajaPage({ searchParams }: Props) {
                 · {formatCurrency(salesTotal)}
               </span>
             </h3>
-            <SalesList sales={sales} />
+            <SalesList
+              sales={sales}
+              isOwner={isOwner}
+              closedCajaDates={closedCajaDates}
+            />
           </div>
         ) : null}
       </section>
@@ -424,6 +444,7 @@ export default async function CajaPage({ searchParams }: Props) {
           salesTotal={salesTotal}
           pending={pending}
           sales={sales}
+          closedCajaDates={closedCajaDates}
           payments={paymentsResult.error ? [] : payments}
           expenses={expenses}
           totalExpensesMonth={totalExpensesMonth}

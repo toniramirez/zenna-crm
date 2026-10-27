@@ -52,6 +52,18 @@ export const recordPaymentSchema = z.object({
 
 export type RecordPaymentInput = z.infer<typeof recordPaymentSchema>;
 
+/** Corrección del método de pagos ya cargados: sólo el método, nunca el importe. */
+export const changePaymentMethodsSchema = z
+  .array(
+    z.object({
+      id: z.string().uuid("Falta el pago."),
+      method: paymentLineSchema.shape.method,
+    }),
+  )
+  .min(1, "No hay cambios para guardar.");
+
+export type ChangePaymentMethodsInput = z.infer<typeof changePaymentMethodsSchema>;
+
 export const closeCajaSchema = z.object({
   cajaDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida."),
   countedCash: z
