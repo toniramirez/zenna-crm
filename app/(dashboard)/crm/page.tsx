@@ -1,5 +1,6 @@
 import { addDays, startOfDay } from "date-fns";
 import { requireRole } from "@/lib/auth";
+import { loadBroadcastsWithStats } from "@/lib/broadcasts/load";
 import { PRIMARY_CHANNELS, WA_LEGACY_CHANNEL } from "@/lib/channels";
 import { INBOX_LIMIT } from "@/lib/inbox-unread";
 import { createClient } from "@/lib/supabase/server";
@@ -57,6 +58,7 @@ export default async function CrmPage({ searchParams }: Props) {
     paymentMethodsResult,
     outreachResult,
     waTemplatesResult,
+    broadcasts,
   ] = await Promise.all([
     // Bandeja principal: el número nuevo (WhatsApp API) y los DMs de
     // Instagram. Va en una consulta aparte de la del número viejo, y no en una
@@ -142,6 +144,10 @@ export default async function CrmPage({ searchParams }: Props) {
       .select("*")
       .eq("status", "APPROVED")
       .order("name"),
+    // Difusiones con sus números (entregados, leídos…) para la pestaña de
+    // configuración. Si la tabla todavía no existe devuelve [] y la página
+    // sigue andando.
+    loadBroadcastsWithStats(supabase),
   ]);
 
   const conversations =
@@ -207,6 +213,7 @@ export default async function CrmPage({ searchParams }: Props) {
             | OutreachSuggestionWithRelations[]
             | null) ?? []
         }
+        broadcasts={broadcasts}
       />
     </div>
   );

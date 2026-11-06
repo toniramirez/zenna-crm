@@ -19,6 +19,7 @@ import type { LoadedWindow } from "../turnos/use-appointment-window";
 import type { WhatsappTemplateRow } from "@/lib/whatsapp-cloud/templates";
 import type {
   AutomationFlow,
+  BroadcastWithStats,
   ClientTag,
   PaymentMethod,
   QuickReply,
@@ -53,6 +54,7 @@ export function CrmShell({
   appointmentsWindow,
   paymentMethods,
   outreachSuggestions,
+  broadcasts,
 }: {
   initialTab: "chat" | "config";
   conversations: ConversationWithClient[];
@@ -71,6 +73,7 @@ export function CrmShell({
   appointmentsWindow: LoadedWindow;
   paymentMethods: PaymentMethod[];
   outreachSuggestions: OutreachSuggestionWithRelations[];
+  broadcasts: BroadcastWithStats[];
 }) {
   const [tab, setTab] = useState<"chat" | "config">(initialTab);
 
@@ -141,6 +144,11 @@ export function CrmShell({
             services={services}
             paymentMethods={paymentMethods}
             outreachSuggestions={outreachSuggestions}
+            broadcasts={broadcasts}
+            professionals={professionals.map((p) => ({
+              id: p.id,
+              full_name: p.full_name,
+            }))}
           />
         </div>
       </TabsContent>

@@ -361,6 +361,148 @@ export type Database = {
         }
         Relationships: []
       }
+      broadcast_recipients: {
+        Row: {
+          broadcast_id: string
+          client_id: string | null
+          conversation_id: string | null
+          created_at: string
+          error: string | null
+          full_name: string
+          id: string
+          message_id: string | null
+          phone: string
+          processed_at: string | null
+          status: string
+        }
+        Insert: {
+          broadcast_id: string
+          client_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          error?: string | null
+          full_name: string
+          id?: string
+          message_id?: string | null
+          phone: string
+          processed_at?: string | null
+          status?: string
+        }
+        Update: {
+          broadcast_id?: string
+          client_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          error?: string | null
+          full_name?: string
+          id?: string
+          message_id?: string | null
+          phone?: string
+          processed_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_recipients_broadcast_id_fkey"
+            columns: ["broadcast_id"]
+            isOneToOne: false
+            referencedRelation: "broadcasts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broadcast_recipients_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broadcast_recipients_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broadcast_recipients_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      broadcasts: {
+        Row: {
+          audience_size: number | null
+          cancelled_at: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          filters: Json
+          id: string
+          last_error: string | null
+          message_body: string
+          name: string
+          scheduled_for: string | null
+          send_mode: string
+          started_at: string | null
+          status: string
+          template_language: string | null
+          template_name: string | null
+          template_params: Json
+          updated_at: string
+        }
+        Insert: {
+          audience_size?: number | null
+          cancelled_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          filters?: Json
+          id?: string
+          last_error?: string | null
+          message_body?: string
+          name: string
+          scheduled_for?: string | null
+          send_mode?: string
+          started_at?: string | null
+          status?: string
+          template_language?: string | null
+          template_name?: string | null
+          template_params?: Json
+          updated_at?: string
+        }
+        Update: {
+          audience_size?: number | null
+          cancelled_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          filters?: Json
+          id?: string
+          last_error?: string | null
+          message_body?: string
+          name?: string
+          scheduled_for?: string | null
+          send_mode?: string
+          started_at?: string | null
+          status?: string
+          template_language?: string | null
+          template_name?: string | null
+          template_params?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcasts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       budget_items: {
         Row: {
           budget_id: string
@@ -1785,7 +1927,29 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      broadcast_stats: {
+        Row: {
+          broadcast_id: string | null
+          delivered: number | null
+          failed: number | null
+          in_queue: number | null
+          pending: number | null
+          read: number | null
+          replied: number | null
+          sent: number | null
+          skipped: number | null
+          total: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_recipients_broadcast_id_fkey"
+            columns: ["broadcast_id"]
+            isOneToOne: false
+            referencedRelation: "broadcasts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       cobrar_turno: {

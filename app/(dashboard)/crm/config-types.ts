@@ -11,3 +11,13 @@ export type ServiceSlim = {
   name: string;
   category: Database["public"]["Enums"]["service_category"];
 };
+
+export type {
+  BroadcastRecipientView,
+  BroadcastRow,
+  BroadcastStats,
+  BroadcastStatsRow,
+  BroadcastStatus,
+  BroadcastWithStats,
+  ProfessionalSlim,
+} from "@/lib/broadcasts/types";

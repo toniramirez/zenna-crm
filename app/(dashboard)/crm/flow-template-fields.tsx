@@ -109,6 +109,8 @@ export function FlowTemplateFields({
   onButtonRepliesChange,
   variables,
   freeTextNote,
+  previewNote,
+  freeTextSubtitle,
   error,
 }: {
   /** Las plantillas cacheadas del WABA (la página ya filtra las aprobadas). */
@@ -132,6 +134,10 @@ export function FlowTemplateFields({
   variables: readonly FlowVariable[];
   /** Aclaración propia del editor para el modo "mensaje libre". */
   freeTextNote?: string;
+  /** Aclaración bajo la vista previa: de dónde salen los valores. */
+  previewNote?: string;
+  /** Subtítulo del botón "Mensaje libre". */
+  freeTextSubtitle?: string;
   error?: string;
 }) {
   // Solo se ofrecen las que el CRM sabe armar: una cabecera con imagen o un
@@ -192,7 +198,7 @@ export function FlowTemplateFields({
             onClick={() => onSendModeChange("text")}
             icon={<MessageSquareText className="size-4" />}
             title="Mensaje libre"
-            subtitle="Solo llega dentro de las 24 h"
+            subtitle={freeTextSubtitle ?? "Solo llega dentro de las 24 h"}
           />
           <ModeButton
             active={sendMode === "template"}
@@ -321,8 +327,8 @@ export function FlowTemplateFields({
                     .join("\n\n")}
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Las variables del CRM se reemplazan recién al disparar el
-                  flujo, con los datos del turno.
+                  {previewNote ??
+                    "Las variables del CRM se reemplazan recién al disparar el flujo, con los datos del turno."}
                 </p>
               </div>
 

@@ -28,6 +28,7 @@ import {
   processAutomations,
   processNoReplyAutomations,
 } from "./automations";
+import { processBroadcasts } from "./broadcasts";
 
 /**
  * Worker de salida de la WhatsApp Cloud API (canal `whatsapp_cloud`).
@@ -387,6 +388,13 @@ const RESCUE_INTERVAL_MS = 60 * 1000;
  */
 const AUTOMATION_TICK_MS = 60 * 1000;
 
+/**
+ * Cada cuánto avanza la cola de las difusiones. Corto a propósito: cada vuelta
+ * agrega pocos mensajes (ver MAX_IN_FLIGHT en worker/broadcasts.ts), así que
+ * el ritmo de una difusión lo marca este intervalo y no el tamaño del lote.
+ */
+const BROADCAST_TICK_MS = 5 * 1000;
+
 async function rescueStuckSending(): Promise<void> {
   const cutoff = new Date(Date.now() - STUCK_SENDING_MS).toISOString();
 
@@ -433,6 +441,10 @@ setInterval(() => void processAutomations(supabase), AUTOMATION_TICK_MS);
 // no mira turnos sino la bandeja, y además vacía la cola de los que esperaban
 // a que fuera una hora razonable para escribir.
 setInterval(() => void processNoReplyAutomations(supabase), AUTOMATION_TICK_MS);
+
+// Difusiones (CRM → Configuración → Difusiones): arranca las programadas que
+// vencieron y va encolando de a poco las que están saliendo.
+setInterval(() => void processBroadcasts(supabase), BROADCAST_TICK_MS);
 
 // El chequeo de arranque avisa en logs si la cuenta no está lista, que es la
 // pregunta número uno cuando "no sale nada".
